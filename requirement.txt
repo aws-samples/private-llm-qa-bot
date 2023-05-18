@@ -1,0 +1,4 @@
+langchain
+boto3
+sagemaker
+opensearch-py
