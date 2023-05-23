@@ -97,12 +97,9 @@ export class DeployStack extends Stack {
       removalPolicy: RemovalPolicy.DESTROY, // NOT recommended for production code
     });
 
-    const ecrRepoName = `chatbot_qa_main_brain_func`;
-    const repo = ecr.Repository.fromRepositoryName(this, "Repository", ecrRepoName)
-
-    const ecrImage = DockerImageCode.fromEcr(repo,{tagOrDigest: 'latest' });
-    const dockerImageProps = {
-      code: ecrImage,
+    const lambda_main_brain = new DockerImageFunction(this,
+      "lambda_main_brain", {
+      code: DockerImageCode.fromImageAsset(join(__dirname, "../lambda/main_brain")),
       timeout: Duration.minutes(15),
       memorySize: 1024,
       runtime: 'python3.9',
@@ -124,11 +121,8 @@ export class DeployStack extends Stack {
         llm_chatglm_endpoint:process.env.llm_chatglm_endpoint,
         chat_session_table:chat_session_table.tableName,
       },
-    };
+    });
 
-    // Create the Docker image function
-    const lambda_main_brain = new DockerImageFunction(this, 'lambda_main_brain', dockerImageProps);
-    
     // Grant the Lambda function can invoke sagemaker
     lambda_main_brain.addToRolePolicy(new iam.PolicyStatement({
       // principals: [new iam.AnyPrincipal()],
