@@ -1,0 +1,22 @@
+{
+  "name": "deploy",
+  "version": "0.1.0",
+  "bin": {
+    "deploy": "bin/deploy.js"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "echo \"The build step is not required when using JavaScript!\" && exit 0",
+    "cdk": "cdk",
+    "test": "jest"
+  },
+  "devDependencies": {
+    "jest": "^29.5.0"
+  },
+  "dependencies": {
+    "@aws-cdk/aws-apigatewayv2-integrations-alpha": "^2.78.0-alpha.0",
+    "@aws-cdk/aws-glue-alpha": "^2.78.0-alpha.0",
+    "constructs": "^10.0.0",
+    "dotenv": "^16.0.3"
+  }
+}
