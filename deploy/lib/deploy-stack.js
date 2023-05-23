@@ -197,7 +197,7 @@ export class DeployStack extends Stack {
     );
 
     bucket.addEventNotification(
-      s3.EventType.OBJECT_CREATED_POST,
+      s3.EventType.OBJECT_CREATED_PUT,
       new s3n.LambdaDestination(offline_trigger_lambda),{
           prefix: process.env.UPLOAD_OBJ_PREFIX,
       }
