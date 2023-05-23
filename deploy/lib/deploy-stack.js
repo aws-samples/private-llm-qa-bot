@@ -48,16 +48,11 @@ export class DeployStack extends Stack {
     const subnets = vpcStack.subnets;
     const securityGroups = vpcStack.securityGroups;
 
-    const cn_region = ["cn-north-1","cn-northwest-1"];
-
-    
-    if (!cn_region.includes(region)) {
-      const ec2stack = new Ec2Stack(this,'Ec2Stack',{vpc:vpc,securityGroup:securityGroups[0]});
-      new CfnOutput(this, 'OpenSearch EC2 Proxy Address', { value: `http://${ec2stack.publicIP}:8081/_dashboards/`});
-      new CfnOutput(this, 'Download Key Command', { value: 'aws secretsmanager get-secret-value --secret-id ec2-ssh-key/cdk-keypair/private --query SecretString --output text > cdk-key.pem && chmod 400 cdk-key.pem' })
-      new CfnOutput(this, 'ssh command', { value: 'ssh -i cdk-key.pem -o IdentitiesOnly=yes ec2-user@' + ec2stack.dnsName})
-      ec2stack.addDependency(vpcStack);
-    }
+    const ec2stack = new Ec2Stack(this,'Ec2Stack',{vpc:vpc,securityGroup:securityGroups[0]});
+    new CfnOutput(this, 'EC2 Proxy Address', { value: `https://${ec2stack.dnsName}`});
+    new CfnOutput(this, 'Download Key Command', { value: 'aws secretsmanager get-secret-value --secret-id ec2-ssh-key/cdk-keypair/private --query SecretString --output text > cdk-key.pem && chmod 400 cdk-key.pem' })
+    new CfnOutput(this, 'ssh command', { value: 'ssh -i cdk-key.pem -o IdentitiesOnly=yes ec2-user@' + ec2stack.dnsName})
+    ec2stack.addDependency(vpcStack);
 
       // Create open search if the aos endpoint not provided
     let opensearch_endpoint=aos_existing_endpoint;
@@ -74,7 +69,6 @@ export class DeployStack extends Stack {
     new CfnOutput(this,'llm_chatglm_endpoint',{value:process.env.llm_chatglm_endpoint});
     new CfnOutput(this,'embedding_endpoint',{value:process.env.embedding_endpoint});
     new CfnOutput(this,'model_name',{value:process.env.llm_chatglm_endpoint.replace('-endpoint','')});
-    new CfnOutput(this,'embedding_model_name',{value:process.env.embedding_endpoint.replace('-endpoint','')});
 
 
     
@@ -197,7 +191,7 @@ export class DeployStack extends Stack {
     );
 
     bucket.addEventNotification(
-      s3.EventType.OBJECT_CREATED_POST,
+      s3.EventType.OBJECT_CREATED_PUT,
       new s3n.LambdaDestination(offline_trigger_lambda),{
           prefix: process.env.UPLOAD_OBJ_PREFIX,
       }
