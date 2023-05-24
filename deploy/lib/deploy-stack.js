@@ -219,7 +219,7 @@ export class DeployStack extends Stack {
       assumedBy: new iam.ServicePrincipal('logs.amazonaws.com'),
     });
 
-    const logResource =  (region.startsWith === 'cn')?
+    const logResource =  (region.startsWith('cn'))?
                 `arn:aws-cn:logs:${region}:${account_id}:log-group:*`:
                 `arn:aws:logs:${region}:${account_id}:log-group:*`;
 
