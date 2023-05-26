@@ -216,6 +216,7 @@ export class DeployStack extends Stack {
     const logResource =  (region.startsWith('cn'))?
                 `arn:aws-cn:logs:${region}:${account_id}:log-group:*`:
                 `arn:aws:logs:${region}:${account_id}:log-group:*`;
+                
 
     const policy = new iam.Policy(this, 'chatbot-kinesis-policy', {
       statements: [
