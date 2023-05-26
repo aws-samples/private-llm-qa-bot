@@ -214,17 +214,17 @@ export class DeployStack extends Stack {
     const restapi = new ApiGatewayStack(this,'ChatBotRestApi',{lambda_fn:lambda_main_brain})
     new CfnOutput(this, `API gateway endpoint url`,{value:`${restapi.endpoint}`});
 
-    const role = new iam.Role(this, 'MyRole', {
-      roleName: 'chatbot-kinesis-firehose-role',
+    const role = new iam.Role(this, 'chatbot-kinesis-firehose', {
       assumedBy: new iam.ServicePrincipal('logs.amazonaws.com'),
     });
+    new CfnOutput(this, 'Kinesis_Firehose_Role',{value:`${role.roleName}`});
 
     const logResource =  (region.startsWith('cn'))?
                 `arn:aws-cn:logs:${region}:${account_id}:log-group:*`:
                 `arn:aws:logs:${region}:${account_id}:log-group:*`;
+                
 
-    const policy = new iam.Policy(this, 'MyPolicy', {
-      policyName: 'chatbot-kinesis-data-firehose',
+    const policy = new iam.Policy(this, 'chatbot-kinesis-policy', {
       statements: [
         new iam.PolicyStatement({
           effect: iam.Effect.ALLOW,
@@ -257,7 +257,5 @@ export class DeployStack extends Stack {
     });
     
     role.attachInlinePolicy(policy);
-  
-
   }
 }

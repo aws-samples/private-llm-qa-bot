@@ -1,5 +1,6 @@
 import json
 import logging
+import time
 import os
 import re
 from botocore import config
@@ -14,7 +15,21 @@ from enum import Enum
 from typing import List
 from opensearchpy import OpenSearch, RequestsHttpConnection
 from requests_aws4auth import AWS4Auth
-import langchain
+from langchain.chains.question_answering import load_qa_chain
+from langchain.chains import LLMChain
+from typing import Dict, List
+from langchain.embeddings import SagemakerEndpointEmbeddings
+from langchain.embeddings.sagemaker_endpoint import EmbeddingsContentHandler
+from langchain.llms.sagemaker_endpoint import LLMContentHandler
+from langchain import PromptTemplate, SagemakerEndpoint
+from langchain.chains import LLMChain,ConversationalRetrievalChain,ConversationChain
+from langchain.schema import BaseRetriever
+from langchain.schema import Document
+from pydantic import BaseModel
+
+
+
+
 credentials = boto3.Session().get_credentials()
 region = boto3.Session().region_name
 awsauth = AWS4Auth(credentials.access_key, credentials.secret_key, region, 'es', session_token=credentials.token)
@@ -34,6 +49,104 @@ Fewshot_prefix_Q="问题"
 Fewshot_prefix_A="回答"
 STOP=[f"\n{A_Role}", f"\n{B_Role}"]
 
+
+
+class ContentHandler(EmbeddingsContentHandler):
+    parameters = {
+        "max_new_tokens": 50,
+        "temperature": 0,
+        "min_length": 10,
+        "no_repeat_ngram_size": 2,
+    }
+    def transform_input(self, inputs: list[str], model_kwargs: Dict) -> bytes:
+        input_str = json.dumps({"inputs": inputs, **model_kwargs})
+        return input_str.encode('utf-8')
+
+    def transform_output(self, output: bytes) -> List[List[float]]:
+        response_json = json.loads(output.read().decode("utf-8"))
+        return response_json["sentence_embeddings"]
+
+
+
+class llmContentHandler(LLMContentHandler):
+    parameters = {
+        "max_length": 2048,
+        "temperature": 0.01,
+        "num_beams": 1, # >1可能会报错，"probability tensor contains either `inf`, `nan` or element < 0"； 即使remove_invalid_values=True也不能解决
+        "do_sample": False,
+        "top_p": 0.7,
+    }
+    def transform_input(self, prompt: str, model_kwargs: Dict) -> bytes:
+        input_str = json.dumps({'inputs': prompt,'history':[],**model_kwargs})
+        return input_str.encode('utf-8')
+    
+    def transform_output(self, output: bytes) -> str:
+        response_json = json.loads(output.read().decode("utf-8"))
+        return response_json["outputs"]
+
+class CustomDocRetriever(BaseRetriever,BaseModel):
+    embedding_model_endpoint :str
+    aos_endpoint: str
+    aos_index: str
+        
+    class Config:
+        """Configuration for this pydantic object."""
+        arbitrary_types_allowed = True
+        
+    @classmethod
+    def from_endpoints(cls,embedding_model_endpoint:str, aos_endpoint:str, aos_index:str,):
+        return cls(embedding_model_endpoint=embedding_model_endpoint,
+                  aos_endpoint=aos_endpoint,
+                  aos_index=aos_index)
+    
+    #this is for standard langchain interface
+    def get_relevant_documents(self, query_input: str) -> List[Document]:
+        top_k_results,_,_ = self.get_relevant_documents_custom(query_input)
+        return top_k_results
+       
+
+    async def aget_relevant_documents(self, query: str) -> List[Document]:
+        raise NotImplementedError
+    
+    def get_relevant_documents_custom(self, query_input: str):
+        start = time.time()
+        query_embedding = get_vector_by_sm_endpoint(query_input, sm_client, self.embedding_model_endpoint)
+        opensearch_knn_respose = search_using_aos_knn(query_embedding[0], self.aos_endpoint, self.aos_index)
+        elpase_time = time.time() - start
+        logger.info(f'runing time of opensearch_knn : {elpase_time}s seconds')
+        
+        # 4. get AOS invertedIndex recall
+        start = time.time()
+        opensearch_query_response = aos_search(self.aos_endpoint, self.aos_index, "doc", query_input)
+        # logger.info(opensearch_query_response)
+        elpase_time = time.time() - start
+        logger.info(f'runing time of opensearch_query : {elpase_time}s seconds')
+
+        # 5. combine these two opensearch_knn_respose and opensearch_query_response
+        def combine_recalls(opensearch_knn_respose, opensearch_query_response):
+            '''
+            filter knn_result if the result don't appear in filter_inverted_result
+            '''
+            knn_threshold = 0.2
+            inverted_theshold = 5.0
+            filter_knn_result = { item["doc"] : item["score"] for item in opensearch_knn_respose if item["score"]> knn_threshold }
+            filter_inverted_result = { item["doc"] : item["score"] for item in opensearch_query_response if item["score"]> inverted_theshold }
+
+            combine_result = []
+            for doc, score in filter_knn_result.items():
+                if doc in filter_inverted_result.keys():
+                    combine_result.append({ "doc" : doc, "score" : score })
+
+            return combine_result
+        
+        recall_knowledge = combine_recalls(opensearch_knn_respose, opensearch_query_response)
+        recall_knowledge.sort(key=lambda x: x["score"])
+        recall_knowledge = recall_knowledge[-2:]
+        top_k_results = []
+        for item in recall_knowledge:
+            top_k_results.append(Document(page_content=item.get('doc')))
+        return top_k_results,opensearch_knn_respose,opensearch_query_response
+    
 class ErrorCode:
     DUPLICATED_INDEX_PREFIX = "DuplicatedIndexPrefix"
     DUPLICATED_WITH_INACTIVE_INDEX_PREFIX = "DuplicatedWithInactiveIndexPrefix"
@@ -423,6 +536,161 @@ def qa_knowledge_prompt_build(post_text, qa_recalls, role_a, role_b):
     fewshots_str = "\n\n".join(qa_fewshots[-3:])
     return AWS_Knowledge_QA_Prompt.format(fewshot=fewshots_str, question=post_text, A=role_a, B=role_b)
 
+
+def get_chat_history(inputs) -> str:
+    res = []
+    for human, ai in inputs:
+        res.append(f"{A_Role}:{human}\n{B_Role}:{ai}")
+    return "\n".join(res)
+
+def create_qa_prompt_templete(lang='zh'):
+    if lang == 'zh':
+        prompt_template_zh = """假设你是AWS亚马逊云科技的智能客服机器人{role_bot}，请根据以下的对话记录和上下文信息，用中文回答{role_user}的问题，如果上下文信息是空的，则回答对不起没有这方面的知识内容: 
+
+        对话记录：
+        {chat_history}
+        
+        上下文信息：
+        {context}
+
+        问题: {question}
+        答案: """
+        PROMPT = PromptTemplate(
+            template=prompt_template_zh, input_variables=["context",'question','chat_history','role_bot','role_user']
+        )
+    return PROMPT
+
+def create_chat_prompt_templete(lang='zh'):
+    if lang == 'zh':
+        prompt_template_zh = """假设你是AWS亚马逊云科技的智能客服机器人{role_bot}，能够回答{role_user}的各种问题以及陪{role_user}聊天,请根据以下的对话记录,用中文回答{role_user}的问题: 
+
+        对话记录：
+        {chat_history}
+
+
+        问题: {question}
+        答案: """
+        PROMPT = PromptTemplate(
+            template=prompt_template_zh, input_variables=['question','chat_history','role_bot','role_user']
+        )
+    return PROMPT
+
+def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str, llm_model_endpoint:str, llm_model_name:str, aos_endpoint:str, aos_index:str, aos_knn_field:str, aos_result_num:int, kendra_index_id:str, kendra_result_num:int):
+    """
+    Entry point for the Lambda function.
+
+    Parameters:
+        session_id (str): The ID of the session.
+        query_input (str): The query input.
+        embedding_model_endpoint (str): The endpoint of the embedding model.
+        llm_model_endpoint (str): The endpoint of the language model.
+        aos_endpoint (str): The endpoint of the AOS engine.
+        aos_index (str): The index of the AOS engine.
+        aos_knn_field (str): The knn field of the AOS engine.
+        aos_result_num (int): The number of results of the AOS engine.
+        kendra_index_id (str): The ID of the Kendra index.
+        kendra_result_num (int): The number of results of the Kendra Service.
+
+    return: answer(str)
+    """
+    # emb_content_handler = ContentHandler()
+    # sg_embeddings = SagemakerEndpointEmbeddings(
+    #     endpoint_name=embedding_model_endpoint, 
+    #     region_name=region, 
+    #     model_kwargs={'parameters':emb_content_handler.parameters},
+    #     content_handler=emb_content_handler
+    #     )
+    llmcontent_handler = llmContentHandler()
+    llm=SagemakerEndpoint(
+            endpoint_name=llm_model_endpoint, 
+            region_name=region, 
+            model_kwargs={'parameters':llmcontent_handler.parameters},
+            content_handler=llmcontent_handler
+        )
+    sm_client = boto3.client("sagemaker-runtime")
+    
+    # 1. get_session
+    start1 = time.time()
+    session_history = get_session(session_id=session_id)
+    elpase_time = time.time() - start1
+    logger.info(f'runing time of get_session : {elpase_time}s seconds')
+    
+    # 2. aos retriever
+    doc_retriever = CustomDocRetriever.from_endpoints(embedding_model_endpoint=embedding_model_endpoint,
+                                   aos_endpoint= aos_endpoint,
+                                   aos_index=aos_index)
+    # 6. check is it keyword search
+    exactly_match_result = aos_search(aos_endpoint, aos_index, "doc", query_input, exactly_match=True)
+
+    start = time.time()
+    recall_knowledge,opensearch_knn_respose,opensearch_query_response = doc_retriever.get_relevant_documents_custom(query_input)
+    elpase_time = time.time() - start
+    logger.info(f'runing time of opensearch_query : {elpase_time}s seconds')
+
+    answer = None
+    query_type = None
+    free_chat_coversions = []
+    verbose = True
+    if exactly_match_result and recall_knowledge: 
+        query_type = QueryType.KeywordQuery
+        answer = exactly_match_result[0]["doc"]
+        final_prompt = ''
+    elif recall_knowledge:
+        chat_coversions = [ (item[0],item[1]) for item in session_history if item[2] == QueryType.KnowledgeQuery ]
+        chat_history= get_chat_history(chat_coversions[-2:])
+        query_type = QueryType.KnowledgeQuery
+        prompt_template = create_qa_prompt_templete(lang='zh')
+        llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
+        context = "\n".join([doc.page_content for doc in recall_knowledge])
+        ##最终的answer
+        answer = llmchain.run({'question':query_input,'context':context,'chat_history':chat_history,'role_bot':B_Role,'role_user':A_Role})
+        ##最终的prompt日志
+        final_prompt = prompt_template.format(question=query_input,role_bot=B_Role,role_user=A_Role,context=context,chat_history=chat_history)
+
+    else:
+        query_type = QueryType.Conversation
+        free_chat_coversions = [ (item[0],item[1]) for item in session_history if item[2] == QueryType.Conversation ]
+        chat_history= get_chat_history(free_chat_coversions[-2:])
+        prompt_template = create_chat_prompt_templete(lang='zh')
+        llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
+        ##最终的answer
+        answer = llmchain.run({'question':query_input,'chat_history':chat_history,'role_bot':B_Role,'role_user':A_Role})
+        ##最终的prompt日志
+        final_prompt = prompt_template.format(question=query_input,role_bot=B_Role,role_user=A_Role,chat_history=chat_history)
+
+
+    json_obj = {
+        "query": query_input,
+        "opensearch_doc":  opensearch_query_response,
+        "opensearch_knn_doc":  opensearch_knn_respose,
+        "kendra_doc": [],
+        "knowledges" : recall_knowledge,
+        "detect_query_type": str(query_type),
+        "LLM_input": final_prompt
+    }
+
+    json_obj['session_id'] = session_id
+    json_obj['chatbot_answer'] = answer
+    json_obj['conversations'] = free_chat_coversions
+    json_obj['timestamp'] = int(time.time())
+    json_obj['log_type'] = "all"
+    json_obj_str = json.dumps(json_obj, ensure_ascii=False)
+    logger.info(json_obj_str)
+
+    start = time.time()
+    update_session(session_id=session_id, question=query_input, answer=answer, intention=str(query_type))
+    elpase_time = time.time() - start
+    elpase_time1 = time.time() - start1
+    logger.info(f'runing time of update_session : {elpase_time}s seconds')
+    logger.info(f'runing time of all  : {elpase_time1}s seconds')
+
+    return answer
+
+  
+
+
+
+
 def main_entry(session_id:str, query_input:str, embedding_model_endpoint:str, llm_model_endpoint:str, llm_model_name:str, aos_endpoint:str, aos_index:str, aos_knn_field:str, aos_result_num:int, kendra_index_id:str, kendra_result_num:int):
     """
     Entry point for the Lambda function.
@@ -614,7 +882,7 @@ def lambda_handler(event, context):
     logger.info(f'Kendra_result_num : {Kendra_result_num}')
     
     main_entry_start = time.time()  # 或者使用 time.time_ns() 获取纳秒级别的时间戳
-    answer = main_entry(session_id, question, embedding_endpoint, llm_endpoint, model_name, aos_endpoint, aos_index, aos_knn_field, aos_result_num,
+    answer = main_entry_new(session_id, question, embedding_endpoint, llm_endpoint, model_name, aos_endpoint, aos_index, aos_knn_field, aos_result_num,
                        Kendra_index_id, Kendra_result_num)
     main_entry_elpase = time.time() - main_entry_start  # 或者使用 time.time_ns() 获取纳秒级别的时间戳
     logger.info(f'runing time of main_entry : {main_entry_elpase}s seconds')
