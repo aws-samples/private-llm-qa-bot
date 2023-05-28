@@ -101,7 +101,10 @@ class CustomDocRetriever(BaseRetriever,BaseModel):
     
     #this is for standard langchain interface
     def get_relevant_documents(self, query_input: str) -> List[Document]:
-        top_k_results,_,_ = self.get_relevant_documents_custom(query_input)
+        recall_knowledge,_,_ = self.get_relevant_documents_custom(query_input)
+        top_k_results = []
+        for item in recall_knowledge:
+            top_k_results.append(Document(page_content=item.get('doc')))
         return top_k_results
        
 
@@ -111,13 +114,20 @@ class CustomDocRetriever(BaseRetriever,BaseModel):
     def get_relevant_documents_custom(self, query_input: str):
         start = time.time()
         query_embedding = get_vector_by_sm_endpoint(query_input, sm_client, self.embedding_model_endpoint)
-        opensearch_knn_respose = search_using_aos_knn(query_embedding[0], self.aos_endpoint, self.aos_index)
+        aos_client = OpenSearch(
+                hosts=[{'host': self.aos_endpoint, 'port': 443}],
+                http_auth = awsauth,
+                use_ssl=True,
+                verify_certs=True,
+                connection_class=RequestsHttpConnection
+            )
+        opensearch_knn_respose = search_using_aos_knn(aos_client,query_embedding[0], self.aos_index)
         elpase_time = time.time() - start
         logger.info(f'runing time of opensearch_knn : {elpase_time}s seconds')
         
         # 4. get AOS invertedIndex recall
         start = time.time()
-        opensearch_query_response = aos_search(self.aos_endpoint, self.aos_index, "doc", query_input)
+        opensearch_query_response = aos_search(aos_client, self.aos_index, "doc", query_input)
         # logger.info(opensearch_query_response)
         elpase_time = time.time() - start
         logger.info(f'runing time of opensearch_query : {elpase_time}s seconds')
@@ -139,13 +149,25 @@ class CustomDocRetriever(BaseRetriever,BaseModel):
 
             return combine_result
         
+        def combine_union_recalls(opensearch_knn_respose, opensearch_query_response):
+            '''
+            filter knn_result if the result don't appear in filter_inverted_result
+            '''
+            knn_threshold = 0.2
+            inverted_theshold = 5.0
+            filter_knn_result = { item["id"] :( item["doc"],item["score"]) for item in opensearch_knn_respose if item["score"]> knn_threshold }
+            filter_inverted_result = { item["id"] :( item["doc"],item["score"]) for item in opensearch_query_response if item["score"]> inverted_theshold }
+
+            combine_result = []
+            
+            for key, items in (filter_knn_result|filter_inverted_result).items():
+                combine_result.append({ "doc" : items[0], "score" : items[1] })
+            return combine_result
+        
         recall_knowledge = combine_recalls(opensearch_knn_respose, opensearch_query_response)
         recall_knowledge.sort(key=lambda x: x["score"])
         recall_knowledge = recall_knowledge[-2:]
-        top_k_results = []
-        for item in recall_knowledge:
-            top_k_results.append(Document(page_content=item.get('doc')))
-        return top_k_results,opensearch_knn_respose,opensearch_query_response
+        return recall_knowledge,opensearch_knn_respose,opensearch_query_response
     
 class ErrorCode:
     DUPLICATED_INDEX_PREFIX = "DuplicatedIndexPrefix"
@@ -252,7 +274,7 @@ def get_vector_by_sm_endpoint(questions, sm_client, endpoint_name):
     embeddings = json_obj['sentence_embeddings']
     return embeddings
 
-def search_using_aos_knn(q_embedding, hostname, index, size=10):
+def search_using_aos_knn(client, q_embedding, index, size=10):
     # awsauth = (username, passwd)
     # print(type(q_embedding))
     # logger.info(f"q_embedding:")
@@ -305,20 +327,26 @@ def search_using_aos_knn(q_embedding, hostname, index, size=10):
         }
     }
     opensearch_knn_respose = []
-    try:
-        r = requests.post("https://"+hostname + "/" + index +
-                        '/_search', headers=headers, json=query)
-        results = json.loads(r.text)["hits"]["hits"]
-        for item in results:
-            opensearch_knn_respose.append( {'doc':"{}{}{}".format(item['_source']['doc'], QA_SEP, item['_source']['answer']),"doc_type":item["_source"]["doc_type"],"score":item["_score"]} )
-        return opensearch_knn_respose
-    except Exception as e:
-        print(f'knn query exception:{str(e)}')
-        return []
+    query_response = client.search(
+        body=query,
+        index=index
+    )
+    opensearch_knn_respose = [{'id':item['_id'],'doc':"{}{}{}".format(item['_source']['doc'], QA_SEP, item['_source']['answer']),"doc_type":item["_source"]["doc_type"],"score":item["_score"]}  for item in query_response["hits"]["hits"]]
+    return opensearch_knn_respose
+    # try:
+    #     r = requests.post("https://"+hostname + "/" + index +
+    #                     '/_search', headers=headers, json=query)
+    #     results = json.loads(r.text)["hits"]["hits"]
+    #     for item in results:
+    #         opensearch_knn_respose.append( {'id':item['_id'],'doc':"{}{}{}".format(item['_source']['doc'], QA_SEP, item['_source']['answer']),"doc_type":item["_source"]["doc_type"],"score":item["_score"]} )
+    #     return opensearch_knn_respose
+    # except Exception as e:
+    #     print(f'knn query exception:{str(e)}')
+    #     return []
     
 
 
-def aos_search(host, index_name, field, query_term, exactly_match=False, size=10):
+def aos_search(client, index_name, field, query_term, exactly_match=False, size=10):
     """
     search opensearch with query.
     :param host: AOS endpoint
@@ -327,13 +355,14 @@ def aos_search(host, index_name, field, query_term, exactly_match=False, size=10
     :param query_term: query term
     :return: aos response json
     """
-    client = OpenSearch(
-        hosts=[{'host': host, 'port': 443}],
-        http_auth = awsauth,
-        use_ssl=True,
-        verify_certs=True,
-        connection_class=RequestsHttpConnection
-    )
+    if not isinstance(client, OpenSearch):   
+        client = OpenSearch(
+            hosts=[{'host': client, 'port': 443}],
+            http_auth = awsauth,
+            use_ssl=True,
+            verify_certs=True,
+            connection_class=RequestsHttpConnection
+        )
     query = None
     if exactly_match:
         query =  {
@@ -366,9 +395,9 @@ def aos_search(host, index_name, field, query_term, exactly_match=False, size=10
     )
 
     if exactly_match:
-        result_arr = [ {'doc': item['_source']['answer'], 'doc_type': 'A', 'score': item['_score']} for item in query_response["hits"]["hits"]]
+        result_arr = [ {'id':item['_id'],'doc': item['_source']['answer'], 'doc_type': 'A', 'score': item['_score']} for item in query_response["hits"]["hits"]]
     else:
-        result_arr = [ {'doc':"{}{}{}".format(item['_source']['doc'], QA_SEP, item['_source']['answer']), 'doc_type': item['_source']['doc_type'], 'score': item['_score']} for item in query_response["hits"]["hits"]]
+        result_arr = [ {'id':item['_id'],'doc':"{}{}{}".format(item['_source']['doc'], QA_SEP, item['_source']['answer']), 'doc_type': item['_source']['doc_type'], 'score': item['_score']} for item in query_response["hits"]["hits"]]
 
     return result_arr
 
@@ -536,6 +565,17 @@ def qa_knowledge_prompt_build(post_text, qa_recalls, role_a, role_b):
     fewshots_str = "\n\n".join(qa_fewshots[-3:])
     return AWS_Knowledge_QA_Prompt.format(fewshot=fewshots_str, question=post_text, A=role_a, B=role_b)
 
+def get_question_history(inputs) -> str:
+    res = []
+    for human, _ in inputs:
+        res.append(f"{human}\n")
+    return "\n".join(res)
+
+def get_qa_history(inputs) -> str:
+    res = []
+    for human, ai in inputs:
+        res.append(f"{human}:{ai}\n")
+    return "\n".join(res)
 
 def get_chat_history(inputs) -> str:
     res = []
@@ -545,16 +585,18 @@ def get_chat_history(inputs) -> str:
 
 def create_qa_prompt_templete(lang='zh'):
     if lang == 'zh':
-        prompt_template_zh = """假设你是AWS亚马逊云科技的智能客服机器人{role_bot}，请根据以下的对话记录和上下文信息，用中文回答{role_user}的问题，如果上下文信息是空的，则回答对不起没有这方面的知识内容: 
+        prompt_template_zh = """假设你是AWS亚马逊云科技的智能客服机器人{role_bot}，请根据以下的对话记录和上下文信息，用中文回答{role_user}的问题: 
 
         对话记录：
         {chat_history}
         
         上下文信息：
-        {context}
-
+        ``` {context} ```
+        如果上面三个反引号中上下文信息是空的，则回答对不起没有这方面的知识内容
+        
         问题: {question}
         答案: """
+
         PROMPT = PromptTemplate(
             template=prompt_template_zh, input_variables=["context",'question','chat_history','role_bot','role_user']
         )
@@ -607,11 +649,17 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
             model_kwargs={'parameters':llmcontent_handler.parameters},
             content_handler=llmcontent_handler
         )
-    sm_client = boto3.client("sagemaker-runtime")
+    # sm_client = boto3.client("sagemaker-runtime")
     
     # 1. get_session
     start1 = time.time()
     session_history = get_session(session_id=session_id)
+
+    chat_coversions = [ (item[0],item[1]) for item in session_history]
+
+
+
+
     elpase_time = time.time() - start1
     logger.info(f'runing time of get_session : {elpase_time}s seconds')
     
@@ -619,48 +667,55 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
     doc_retriever = CustomDocRetriever.from_endpoints(embedding_model_endpoint=embedding_model_endpoint,
                                    aos_endpoint= aos_endpoint,
                                    aos_index=aos_index)
-    # 6. check is it keyword search
+    # 3. check is it keyword search
     exactly_match_result = aos_search(aos_endpoint, aos_index, "doc", query_input, exactly_match=True)
 
     start = time.time()
-    recall_knowledge,opensearch_knn_respose,opensearch_query_response = doc_retriever.get_relevant_documents_custom(query_input)
+    ## 加上一轮的问题拼接来召回内容
+    query_with_history= get_question_history(chat_coversions[-2:])+query_input
+    recall_knowledge,opensearch_knn_respose,opensearch_query_response = doc_retriever.get_relevant_documents_custom(query_with_history) 
     elpase_time = time.time() - start
     logger.info(f'runing time of opensearch_query : {elpase_time}s seconds')
 
     answer = None
     query_type = None
     free_chat_coversions = []
-    verbose = True
+    verbose = False
     if exactly_match_result and recall_knowledge: 
         query_type = QueryType.KeywordQuery
         answer = exactly_match_result[0]["doc"]
         final_prompt = ''
-    elif recall_knowledge:
-        chat_coversions = [ (item[0],item[1]) for item in session_history if item[2] == QueryType.KnowledgeQuery ]
+    # elif recall_knowledge:
+    else:
+        # chat_coversions = [ (item[0],item[1]) for item in session_history if item[2] == QueryType.KnowledgeQuery ]
+        
         chat_history= get_chat_history(chat_coversions[-2:])
         query_type = QueryType.KnowledgeQuery
         prompt_template = create_qa_prompt_templete(lang='zh')
         llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
-        context = "\n".join([doc.page_content for doc in recall_knowledge])
+        context = "\n".join([doc['doc'] for doc in recall_knowledge])
         ##最终的answer
         answer = llmchain.run({'question':query_input,'context':context,'chat_history':chat_history,'role_bot':B_Role,'role_user':A_Role})
         ##最终的prompt日志
         final_prompt = prompt_template.format(question=query_input,role_bot=B_Role,role_user=A_Role,context=context,chat_history=chat_history)
+        print(final_prompt)
+        print(answer)
 
-    else:
-        query_type = QueryType.Conversation
-        free_chat_coversions = [ (item[0],item[1]) for item in session_history if item[2] == QueryType.Conversation ]
-        chat_history= get_chat_history(free_chat_coversions[-2:])
-        prompt_template = create_chat_prompt_templete(lang='zh')
-        llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
-        ##最终的answer
-        answer = llmchain.run({'question':query_input,'chat_history':chat_history,'role_bot':B_Role,'role_user':A_Role})
-        ##最终的prompt日志
-        final_prompt = prompt_template.format(question=query_input,role_bot=B_Role,role_user=A_Role,chat_history=chat_history)
+    # else:
+    #     query_type = QueryType.Conversation
+    #     # free_chat_coversions = [ (item[0],item[1]) for item in session_history if item[2] == QueryType.Conversation ]
+    #     free_chat_coversions = [ (item[0],item[1]) for item in session_history ]
+    #     chat_history= get_chat_history(free_chat_coversions[-2:])
+    #     prompt_template = create_chat_prompt_templete(lang='zh')
+    #     llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
+    #     ##最终的answer
+    #     answer = llmchain.run({'question':query_input,'chat_history':chat_history,'role_bot':B_Role,'role_user':A_Role})
+    #     ##最终的prompt日志
+    #     final_prompt = prompt_template.format(question=query_input,role_bot=B_Role,role_user=A_Role,chat_history=chat_history)
 
 
     json_obj = {
-        "query": query_input,
+        "query": query_with_history,
         "opensearch_doc":  opensearch_query_response,
         "opensearch_knn_doc":  opensearch_knn_respose,
         "kendra_doc": [],
@@ -710,7 +765,13 @@ def main_entry(session_id:str, query_input:str, embedding_model_endpoint:str, ll
     return: answer(str)
     """
     sm_client = boto3.client("sagemaker-runtime")
-    
+    aos_client = OpenSearch(
+        hosts=[{'host': aos_endpoint, 'port': 443}],
+        http_auth = awsauth,
+        use_ssl=True,
+        verify_certs=True,
+        connection_class=RequestsHttpConnection
+    )
     # 1. get_session
     import time
     start1 = time.time()
@@ -727,13 +788,13 @@ def main_entry(session_id:str, query_input:str, embedding_model_endpoint:str, ll
     # 3. get AOS knn recall 
     start = time.time()
     query_embedding = get_vector_by_sm_endpoint(query_input, sm_client, embedding_model_endpoint)
-    opensearch_knn_respose = search_using_aos_knn(query_embedding[0], aos_endpoint, aos_index)
+    opensearch_knn_respose = search_using_aos_knn(aos_client,query_embedding[0], aos_index)
     elpase_time = time.time() - start
     logger.info(f'runing time of opensearch_knn : {elpase_time}s seconds')
     
     # 4. get AOS invertedIndex recall
     start = time.time()
-    opensearch_query_response = aos_search(aos_endpoint, aos_index, "doc", query_input)
+    opensearch_query_response = aos_search(aos_client, aos_index, "doc", query_input)
     # logger.info(opensearch_query_response)
     elpase_time = time.time() - start
     logger.info(f'runing time of opensearch_query : {elpase_time}s seconds')
@@ -776,7 +837,7 @@ def main_entry(session_id:str, query_input:str, embedding_model_endpoint:str, ll
         final_prompt = qa_knowledge_prompt_build(query_input, recall_knowledge, A_Role, B_Role)
     else:
         query_type = QueryType.Conversation
-        free_chat_coversions = [ item for item in session_history if item[2] == "QueryType.Conversation" ]
+        free_chat_coversions = [ item for item in session_history if item[2] == QueryType.Conversation ]
         final_prompt = conversion_prompt_build(query_input, free_chat_coversions[-2:], A_Role, B_Role)
 
     json_obj = {
