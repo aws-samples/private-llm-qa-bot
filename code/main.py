@@ -48,7 +48,7 @@ B_Role="AWSBot"
 Fewshot_prefix_Q="问题"
 Fewshot_prefix_A="回答"
 STOP=[f"\n{A_Role}", f"\n{B_Role}"]
-
+RESET = '/rs'
 
 
 class ContentHandler(EmbeddingsContentHandler):
@@ -401,6 +401,18 @@ def aos_search(client, index_name, field, query_term, exactly_match=False, size=
 
     return result_arr
 
+def delete_session(session_id):
+    dynamodb = boto3.resource('dynamodb')
+    table = dynamodb.Table(chat_session_table)
+    try:
+        table.delete_item(
+        Key={
+            'session-id': session_id,
+        })
+    except Exception as e:
+        logger.info(f"delete session failed {str(e)}")
+
+        
 def get_session(session_id):
 
     table_name = chat_session_table
@@ -635,13 +647,29 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
 
     return: answer(str)
     """
-    # emb_content_handler = ContentHandler()
-    # sg_embeddings = SagemakerEndpointEmbeddings(
-    #     endpoint_name=embedding_model_endpoint, 
-    #     region_name=region, 
-    #     model_kwargs={'parameters':emb_content_handler.parameters},
-    #     content_handler=emb_content_handler
-    #     )
+    #如果是reset命令，则清空历史聊天
+    if query_input == RESET:
+        delete_session(session_id)
+        answer = '历史对话已清空'
+        json_obj = {
+            "query": query_input,
+            "opensearch_doc":  [],
+            "opensearch_knn_doc":  [],
+            "kendra_doc": [],
+            "knowledges" : [],
+            "detect_query_type": '',
+            "LLM_input": ''
+        }
+
+        json_obj['session_id'] = session_id
+        json_obj['chatbot_answer'] = answer
+        json_obj['conversations'] = []
+        json_obj['timestamp'] = int(time.time())
+        json_obj['log_type'] = "all"
+        json_obj_str = json.dumps(json_obj, ensure_ascii=False)
+        logger.info(json_obj_str)
+        return answer
+    
     llmcontent_handler = llmContentHandler()
     llm=SagemakerEndpoint(
             endpoint_name=llm_model_endpoint, 
@@ -672,7 +700,8 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
 
     start = time.time()
     ## 加上一轮的问题拼接来召回内容
-    query_with_history= get_question_history(chat_coversions[-2:])+query_input
+    # query_with_history= get_question_history(chat_coversions[-2:])+query_input
+    query_with_history= query_input
     recall_knowledge,opensearch_knn_respose,opensearch_query_response = doc_retriever.get_relevant_documents_custom(query_with_history) 
     elpase_time = time.time() - start
     logger.info(f'runing time of opensearch_query : {elpase_time}s seconds')
