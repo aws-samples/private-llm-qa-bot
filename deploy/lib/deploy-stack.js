@@ -54,8 +54,8 @@ export class DeployStack extends Stack {
     if (!cn_region.includes(region)) {
       const ec2stack = new Ec2Stack(this,'Ec2Stack',{vpc:vpc,securityGroup:securityGroups[0]});
       new CfnOutput(this, 'OpenSearch EC2 Proxy Address', { value: `http://${ec2stack.publicIP}:8081/_dashboards/`});
-      new CfnOutput(this, 'Download Key Command', { value: 'aws secretsmanager get-secret-value --secret-id ec2-ssh-key/cdk-keypair/private --query SecretString --output text > cdk-key.pem && chmod 400 cdk-key.pem' })
-      new CfnOutput(this, 'ssh command', { value: 'ssh -i cdk-key.pem -o IdentitiesOnly=yes ec2-user@' + ec2stack.dnsName})
+      // new CfnOutput(this, 'Download Key Command', { value: 'aws secretsmanager get-secret-value --secret-id ec2-ssh-key/cdk-keypair/private --query SecretString --output text > cdk-key.pem && chmod 400 cdk-key.pem' })
+      // new CfnOutput(this, 'ssh command', { value: 'ssh -i cdk-key.pem -o IdentitiesOnly=yes ec2-user@' + ec2stack.dnsName})
       ec2stack.addDependency(vpcStack);
     }
 
@@ -68,6 +68,7 @@ export class DeployStack extends Stack {
         opensearch_endpoint = opensearchStack.domainEndpoint;
         opensearchStack.addDependency(vpcStack);
     }
+    new CfnOutput(this,'VPC',{value:vpc.vpcId});
     new CfnOutput(this,'opensearch endpoint',{value:opensearch_endpoint});
     new CfnOutput(this,'region',{value:process.env.CDK_DEFAULT_REGION});
     new CfnOutput(this,'UPLOAD_BUCKET',{value:process.env.UPLOAD_BUCKET});
@@ -139,6 +140,7 @@ export class DeployStack extends Stack {
         }))
       
     chat_session_table.grantReadWriteData(lambda_main_brain);
+    new CfnOutput(this,'lambda roleName',{value:lambda_main_brain.role.roleName});
 
 
     //glue job
@@ -155,10 +157,42 @@ export class DeployStack extends Stack {
     const layer = new lambda.LayerVersion(this, 'ChatbotLayer', {
       code: lambda.Code.fromAsset(path.join(__dirname,'../../code/layer_asset')),
       description: 'ChatbotLayer Python helper utility',
-      compatibleRuntimes: [lambda.Runtime.PYTHON_3_8],
+      compatibleRuntimes: [lambda.Runtime.PYTHON_3_9],
       removalPolicy: RemovalPolicy.DESTROY,
-      layerVersionName:'ChatbotLayer',
+      layerVersionName:'AwsAuthLayer',
     });
+
+    const plugins_table = new Table(this, "plugins_info", {
+      partitionKey: {
+        name: "name",
+        type: AttributeType.STRING,
+      },
+      removalPolicy: RemovalPolicy.DESTROY, // NOT recommended for production code
+    });
+
+    const fn_plugins_trigger = new lambda.Function(this,'plugins_trigger',{
+        environment: {
+          
+        },
+        layers:[layer],
+        runtime: lambda.Runtime.PYTHON_3_9,
+        timeout: Duration.minutes(1),
+        memorySize: 256,
+        handler: 'app.lambda_handler',
+        code: lambda.Code.fromAsset(path.join(__dirname,'../../code/lambda_plugins_trigger')),
+        vpc:vpc,
+        vpcSubnets:subnets,
+    });
+    plugins_table.grantReadWriteData(fn_plugins_trigger);
+
+    fn_plugins_trigger.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['lambda:InvokeFunction'],
+        effect: iam.Effect.ALLOW,
+        resources: [ '*']
+      })
+    );
+
 
     const offline_trigger_lambda =  new lambda.Function(this, 'offline_trigger_lambda', {
           environment: {
@@ -167,14 +201,12 @@ export class DeployStack extends Stack {
           },
           runtime: lambda.Runtime.PYTHON_3_9,
           timeout: Duration.minutes(1),
-          // functionName:'offline_trigger_lambda',
           handler: 'offline_trigger_lambda.lambda_handler',
           code: lambda.Code.fromAsset(path.join(__dirname,'../../code/lambda_offline_trigger')),
           vpc:vpc,
           vpcSubnets:subnets,
         });
 
-    // offline_trigger_lambda.role?.addManagedPolicy('arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole')
     offline_trigger_lambda.addToRolePolicy(
       new iam.PolicyStatement({
         actions: ['s3:GetBucketNotification', 's3:PutBucketNotification'],
