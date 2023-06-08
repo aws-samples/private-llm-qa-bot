@@ -82,7 +82,7 @@ def WriteVecIndexToAOS(paragraph_array, smr_client, aos_endpoint=AOS_ENDPOINT, r
 
             documents = []
             if paragraph.lower().find("question:") > -1:
-                question, answer = paragraph.split("\n", 1)
+                question, answer = paragraph.strip().split("\n", 1)
                 question = question.replace("Question: ", "")
                 answer = answer.replace("Answer: ", "")
                 documents.append({ "doc" : question, "doc_type" : "Q", "answer" : answer, "embedding" : get_st_embedding(smr_client, question)})
