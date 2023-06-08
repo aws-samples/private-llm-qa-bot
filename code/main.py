@@ -563,6 +563,12 @@ def conversion_prompt_build(post_text, conversations, role_a, role_b):
     
     return AWS_Free_Chat_Prompt.format(chat_history=chat_histories, question=post_text, A=role_a, B=role_b)
 
+def qa_knowledge_fewshot_build(qa_recalls):
+    qa_pairs = [ obj["doc"].split(QA_SEP) for obj in qa_recalls ]
+    qa_fewshots = [ "{}: {}\n{}: {}".format(Fewshot_prefix_Q, pair[0], Fewshot_prefix_A, pair[1]) for pair in qa_pairs ]
+    fewshots_str = "\n\n".join(qa_fewshots[-3:])
+    return fewshots_str
+
 # different scan
 def qa_knowledge_prompt_build(post_text, qa_recalls, role_a, role_b):
     """
@@ -597,17 +603,18 @@ def get_chat_history(inputs) -> str:
 
 def create_qa_prompt_templete(lang='zh'):
     if lang == 'zh':
-        prompt_template_zh = """假设你是AWS亚马逊云科技的智能客服机器人{role_bot}，请根据以下的对话记录和上下文信息，用中文回答{role_user}的问题: 
+        # AWS_Knowledge_QA_Prompt = """你是云服务AWS的智能客服机器人{B}，请严格根据反括号中的资料提取相关信息\n```\n{fewshot}\n```\n回答{A}的各种问题，比如:\n\n{A}: {question}\n{B}: """
 
-        对话记录：
-        {chat_history}
-        
-        上下文信息：
-        ``` {context} ```
-        如果上面三个反引号中上下文信息是空的，则回答对不起没有这方面的知识内容
-        
-        问题: {question}
-        答案: """
+        prompt_template_zh = """你是云服务AWS的智能客服机器人{role_bot}，请严格根据反括号中的资料提取相关信息\n```\n{chat_history}\n{context}\n```\n回答{role_user}的各种问题，比如:\n\n:{role_user}: {question}\n回答: """
+
+        # prompt_template_zh = """你是云服务AWS的智能客服机器人{role_bot}，请严格根据反括号中的资料提取相关信息
+        # ```
+        # {chat_history}\n
+        # {context}\n
+        # ```
+        # 回答{role_user}的各种问题, 比如
+        # 问题: {question}
+        # 回答: """
 
         PROMPT = PromptTemplate(
             template=prompt_template_zh, input_variables=["context",'question','chat_history','role_bot','role_user']
@@ -715,14 +722,14 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         answer = exactly_match_result[0]["doc"]
         final_prompt = ''
     # elif recall_knowledge:
-    else:
-        # chat_coversions = [ (item[0],item[1]) for item in session_history if item[2] == QueryType.KnowledgeQuery ]
-        
-        chat_history= get_chat_history(chat_coversions[-2:])
+    else:        
+        # chat_history= get_chat_history(chat_coversions[-2:]) ##chatglm模型质量不高，暂时屏蔽历史对话
+        chat_history = ''
         query_type = QueryType.KnowledgeQuery
         prompt_template = create_qa_prompt_templete(lang='zh')
         llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
-        context = "\n".join([doc['doc'] for doc in recall_knowledge])
+        # context = "\n".join([doc['doc'] for doc in recall_knowledge])
+        context = qa_knowledge_fewshot_build(recall_knowledge)
         ##最终的answer
         answer = llmchain.run({'question':query_input,'context':context,'chat_history':chat_history,'role_bot':B_Role,'role_user':A_Role})
         ##最终的prompt日志
