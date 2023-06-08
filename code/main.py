@@ -50,7 +50,6 @@ Fewshot_prefix_A="回答"
 STOP=[f"\n{A_Role}", f"\n{B_Role}"]
 RESET = '/rs'
 
-
 class ContentHandler(EmbeddingsContentHandler):
     parameters = {
         "max_new_tokens": 50,
@@ -65,8 +64,6 @@ class ContentHandler(EmbeddingsContentHandler):
     def transform_output(self, output: bytes) -> List[List[float]]:
         response_json = json.loads(output.read().decode("utf-8"))
         return response_json["sentence_embeddings"]
-
-
 
 class llmContentHandler(LLMContentHandler):
     parameters = {
@@ -605,7 +602,7 @@ def create_qa_prompt_templete(lang='zh'):
     if lang == 'zh':
         # AWS_Knowledge_QA_Prompt = """你是云服务AWS的智能客服机器人{B}，请严格根据反括号中的资料提取相关信息\n```\n{fewshot}\n```\n回答{A}的各种问题，比如:\n\n{A}: {question}\n{B}: """
 
-        prompt_template_zh = """你是云服务AWS的智能客服机器人{role_bot}，请严格根据反括号中的资料提取相关信息\n```\n{chat_history}\n{context}\n```\n回答{role_user}的各种问题，比如:\n\n:{role_user}: {question}\n回答: """
+        prompt_template_zh = """你是云服务AWS的智能客服机器人{role_bot}，请严格根据反括号中的资料提取相关信息\n```{chat_history}{context}\n```\n回答{role_user}的各种问题，比如:\n\n{role_user}: {question}\n{role_bot}: """
 
         # prompt_template_zh = """你是云服务AWS的智能客服机器人{role_bot}，请严格根据反括号中的资料提取相关信息
         # ```
@@ -623,14 +620,8 @@ def create_qa_prompt_templete(lang='zh'):
 
 def create_chat_prompt_templete(lang='zh'):
     if lang == 'zh':
-        prompt_template_zh = """假设你是AWS亚马逊云科技的智能客服机器人{role_bot}，能够回答{role_user}的各种问题以及陪{role_user}聊天,请根据以下的对话记录,用中文回答{role_user}的问题: 
+        prompt_template_zh = """你是AWS亚马逊云科技的智能客服机器人{role_bot}，能够回答{role_user}的各种问题以及陪{role_user}聊天,如:{chat_history}\n\n{role_user}: {question}\n{role_bot}:"""
 
-        对话记录：
-        {chat_history}
-
-
-        问题: {question}
-        答案: """
         PROMPT = PromptTemplate(
             template=prompt_template_zh, input_variables=['question','chat_history','role_bot','role_user']
         )
@@ -721,8 +712,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         query_type = QueryType.KeywordQuery
         answer = exactly_match_result[0]["doc"]
         final_prompt = ''
-    # elif recall_knowledge:
-    else:        
+    elif recall_knowledge:      
         # chat_history= get_chat_history(chat_coversions[-2:]) ##chatglm模型质量不高，暂时屏蔽历史对话
         chat_history = ''
         query_type = QueryType.KnowledgeQuery
@@ -734,21 +724,21 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         answer = llmchain.run({'question':query_input,'context':context,'chat_history':chat_history,'role_bot':B_Role,'role_user':A_Role})
         ##最终的prompt日志
         final_prompt = prompt_template.format(question=query_input,role_bot=B_Role,role_user=A_Role,context=context,chat_history=chat_history)
-        print(final_prompt)
-        print(answer)
+        # print(final_prompt)
+        # print(answer)
+    else:
+        query_type = QueryType.Conversation
+        free_chat_coversions = [ (item[0],item[1]) for item in session_history if item[2] == QueryType.Conversation ]
+        # free_chat_coversions = [ (item[0],item[1]) for item in session_history ]
+        chat_history= get_chat_history(free_chat_coversions[-2:])
+        prompt_template = create_chat_prompt_templete(lang='zh')
+        llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
+        ##最终的answer
+        answer = llmchain.run({'question':query_input,'chat_history':chat_history,'role_bot':B_Role,'role_user':A_Role})
+        ##最终的prompt日志
+        final_prompt = prompt_template.format(question=query_input,role_bot=B_Role,role_user=A_Role,chat_history=chat_history)
 
-    # else:
-    #     query_type = QueryType.Conversation
-    #     # free_chat_coversions = [ (item[0],item[1]) for item in session_history if item[2] == QueryType.Conversation ]
-    #     free_chat_coversions = [ (item[0],item[1]) for item in session_history ]
-    #     chat_history= get_chat_history(free_chat_coversions[-2:])
-    #     prompt_template = create_chat_prompt_templete(lang='zh')
-    #     llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
-    #     ##最终的answer
-    #     answer = llmchain.run({'question':query_input,'chat_history':chat_history,'role_bot':B_Role,'role_user':A_Role})
-    #     ##最终的prompt日志
-    #     final_prompt = prompt_template.format(question=query_input,role_bot=B_Role,role_user=A_Role,chat_history=chat_history)
-
+    answer = enforce_stop_tokens(answer, STOP)
 
     json_obj = {
         "query": query_with_history,
