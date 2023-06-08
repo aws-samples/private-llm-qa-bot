@@ -1,10 +1,24 @@
 import os
 import re
 import argparse
+import json
+import boto3
 from bs4 import BeautifulSoup
 from langchain.document_loaders import PDFMinerPDFasHTMLLoader
 from langchain.docstore.document import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter,CharacterTextSplitter
+
+
+smr_client = boto3.client("sagemaker-runtime")
+parameters = {
+  "max_length": 2048,
+  "temperature": 0.01,
+  "num_beams": 1, # >1可能会报错，"probability tensor contains either `inf`, `nan` or element < 0"； 即使remove_invalid_values=True也不能解决
+  "do_sample": False,
+  "top_p": 0.7,
+  "logits_processor" : None,
+  # "remove_invalid_values" : True
+}
 
 '''
 1. pip install pdfminer.six
@@ -100,12 +114,36 @@ def split_pdf(pdf_path):
         }
         yield snippet_info
 
-def summerize(content, chunk_size = 128):
-    if len(content) > chunk_size:
+def summarize(content, chunk_size = 512, llm_endpoint=""):
+    summary = content
+    if llm_endpoint and len(content) > chunk_size:
         # todo: call LLM to summarize
-        pass
+        prompt_template = """对下面反引号这段文档进行摘要，字数不超过{}
+
+        ```
+        {}
+        ```
+        摘要:
+        """
+
+        prompt = prompt_template.format(chunk_size, content[:1536])
+
+        response_model = smr_client.invoke_endpoint(
+            EndpointName=llm_endpoint,
+            Body=json.dumps(
+            {
+                "inputs": prompt,
+                "parameters": parameters,
+                "history" : []
+            }
+            ),
+            ContentType="application/json",
+        )
+
+        json_ret = json.loads(response_model['Body'].read().decode('utf8'))
+        summary = json_ret['outputs']
     
-    return content
+    return summary
 
 def convert_snippetJson2markdown(snippet_info, max_level=3):
     mk_head = ""
@@ -126,6 +164,7 @@ if __name__ == '__main__':
     parser.add_argument('--sep', type=str, default='=====', help='separtor')
     parser.add_argument('--title_level', type=int, default=4, help='keep the tiltes of level')
     parser.add_argument('--chunk_size', type=int, default=128, help='chunk_size')
+    parser.add_argument('--llm_endpoint', type=str, default="", help='llm_endpoint')
     args = parser.parse_args()
     pdf_path = args.input_file
     kg_dir = args.output_dir
@@ -133,13 +172,15 @@ if __name__ == '__main__':
     separtor = args.sep
     max_title_level = args.title_level
     chunk_size = args.chunk_size
+    llm_endpoint = args.llm_endpoint
     idx = 1
 
     f_name = "{}/{}".format(kg_dir, kg_name)
     out_f = open(f_name, 'w')
     for snippet_info in split_pdf(pdf_path):
         p_content = convert_snippetJson2markdown(snippet_info, max_title_level)
-        out_f.write(summerize(p_content, chunk_size))
+        out_f.write(summarize(p_content, chunk_size, llm_endpoint))
+        out_f.write("\n")
         out_f.write(separtor)
         out_f.write("\n")
 
