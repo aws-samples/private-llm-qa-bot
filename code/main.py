@@ -50,7 +50,6 @@ Fewshot_prefix_A="回答"
 STOP=[f"\n{A_Role}", f"\n{B_Role}"]
 RESET = '/rs'
 
-
 class ContentHandler(EmbeddingsContentHandler):
     parameters = {
         "max_new_tokens": 50,
@@ -65,8 +64,6 @@ class ContentHandler(EmbeddingsContentHandler):
     def transform_output(self, output: bytes) -> List[List[float]]:
         response_json = json.loads(output.read().decode("utf-8"))
         return response_json["sentence_embeddings"]
-
-
 
 class llmContentHandler(LLMContentHandler):
     parameters = {
@@ -742,6 +739,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         final_prompt = prompt_template.format(question=query_input,role_bot=B_Role,role_user=A_Role,chat_history=chat_history)
 
     answer = enforce_stop_tokens(answer, STOP)
+
     json_obj = {
         "query": query_with_history,
         "opensearch_doc":  opensearch_query_response,
