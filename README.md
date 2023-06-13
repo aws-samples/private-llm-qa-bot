@@ -51,7 +51,9 @@
   ![arch](./arch.png)
 
 - 知识库构建
-    构建Opensearch Index
+  + 构建Opensearch Index
+    其中**doc_type**可以为以下四个值**['Question','Paragraph','Sentence','Abstract']**
+    
     ```shell
     PUT chatbot-index
     {
@@ -108,7 +110,7 @@
         }
     }
     ```
-
+  
 - Script/Notebook 使用方法
   - QA_auto_generator.py 
 
