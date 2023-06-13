@@ -177,13 +177,17 @@ if __name__ == '__main__':
 
     f_name = "{}/{}".format(kg_dir, kg_name)
     out_f = open(f_name, 'w')
+    snippet_arr = []
     for snippet_info in split_pdf(pdf_path):
-        p_content = convert_snippetJson2markdown(snippet_info, max_title_level)
-        out_f.write(summarize(p_content, chunk_size, llm_endpoint))
-        out_f.write("\n")
-        out_f.write(separtor)
-        out_f.write("\n")
-
+        snippet_arr.append(snippet_info)
+        
+        # p_content = convert_snippetJson2markdown(snippet_info, max_title_level)
+        # out_f.write(summarize(p_content, chunk_size, llm_endpoint))
+        # out_f.write("\n")
+        # out_f.write(separtor)
+        # out_f.write("\n")
+    all_info = json.dumps(snippet_arr, ensure_ascii=False)
+    out_f.write(all_info)
     out_f.close()
     print("finish separation of {}".format(pdf_path))
 

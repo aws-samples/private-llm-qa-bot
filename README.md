@@ -50,6 +50,67 @@
 - 系统架构
   ![arch](./arch.png)
 
+- 知识库构建
+  + 构建Opensearch Index
+    其中**doc_type**可以为以下四个值**['Question','Paragraph','Sentence','Abstract']**
+    
+    ```shell
+    PUT chatbot-index
+    {
+        "settings" : {
+            "index":{
+                "number_of_shards" : 1,
+                "number_of_replicas" : 0,
+                "knn": "true",
+                "knn.algo_param.ef_search": 32
+            }
+        },
+        "mappings": {
+            "properties": {
+                "publish_date" : {
+                    "type": "date",
+                    "format": "yyyy-MM-dd HH:mm:ss"
+                },
+                "idx" : {
+                    "type": "integer"
+                },
+                "doc_type" : {
+                    "type" : "keyword"
+                },
+                "doc": {
+                    "type": "text",
+                    "analyzer": "ik_max_word",
+                    "search_analyzer": "ik_smart"
+                },
+                "content": {
+                    "type": "text",
+                    "analyzer": "ik_max_word",
+                    "search_analyzer": "ik_smart"
+                },
+                "doc_title": {
+                    "type": "text"
+                },
+                "doc_category": {
+                    "type": "keyword"
+                },
+                "embedding": {
+                    "type": "knn_vector",
+                    "dimension": 768,
+                    "method": {
+                        "name": "hnsw",
+                        "space_type": "cosinesimil",
+                        "engine": "nmslib",
+                        "parameters": {
+                            "ef_construction": 512,
+                            "m": 32
+                        }
+                    }            
+                }
+            }
+        }
+    }
+    ```
+  
 - Script/Notebook 使用方法
   - QA_auto_generator.py 
 
