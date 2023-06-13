@@ -50,7 +50,6 @@ Fewshot_prefix_A="回答"
 STOP=[f"\n{A_Role}", f"\n{B_Role}"]
 RESET = '/rs'
 
-
 class ContentHandler(EmbeddingsContentHandler):
     parameters = {
         "max_new_tokens": 50,
@@ -65,8 +64,6 @@ class ContentHandler(EmbeddingsContentHandler):
     def transform_output(self, output: bytes) -> List[List[float]]:
         response_json = json.loads(output.read().decode("utf-8"))
         return response_json["sentence_embeddings"]
-
-
 
 class llmContentHandler(LLMContentHandler):
     parameters = {
@@ -137,17 +134,49 @@ class CustomDocRetriever(BaseRetriever,BaseModel):
             '''
             filter knn_result if the result don't appear in filter_inverted_result
             '''
+            def get_topk_items(opensearch_knn_respose, opensearch_query_response, doc_type, topk=1):
+                opensearch_knn_items = [ (item['doc'], item['score']) for item in opensearch_knn_respose ]
+                opensearch_bm25_items = [ (item['doc'], item['score']) for item in opensearch_query_response ]
+
+                opensearch_knn_items.sort(key=lambda x: x[1])
+                opensearch_bm25_items.sort(key=lambda x: x[1])
+
+                opensearch_knn_nodup = [(k,v) for k,v in dict(opensearch_knn_items).items()]
+                opensearch_bm25_nodup = [(k,v) for k,v in dict(opensearch_bm25_items).items()]
+
+                opensearch_knn_nodup.sort(key=lambda x: x[1])
+                opensearch_bm25_nodup.sort(key=lambda x: x[1])
+
+                kg_combine_result = [ { "doc": item[0], "score": item[1], "doc_type": doc_type } for item in opensearch_knn_nodup[-1*topk:]]
+                knn_kept_doc = [ item[0] for item in opensearch_knn_nodup[-1*topk:] ]
+
+                count = 0
+                for item in opensearch_bm25_nodup[::-1]:
+                    if item[0] not in knn_kept_doc:
+                        kg_combine_result.append({ "doc": item[0], "score": item[1], "doc_type": doc_type })
+                        count += 1
+                    if count == topk:
+                        break
+
+                return kg_combine_result
+
+
             knn_threshold = 0.2
             inverted_theshold = 5.0
-            filter_knn_result = { item["doc"] : item["score"] for item in opensearch_knn_respose if item["score"]> knn_threshold }
-            filter_inverted_result = { item["doc"] : item["score"] for item in opensearch_query_response if item["score"]> inverted_theshold }
+            filter_knn_result = [ item for item in opensearch_knn_respose if item['doc_type'] in ['Paragraph','Sentence'] and item['score'] > knn_threshold ]
+            filter_inverted_result = [ item for item in opensearch_query_response if item['doc_type'] in ['Paragraph','Sentence'] and item['score'] > inverted_theshold ]
+            
+            paragraph_content = get_topk_items(filter_knn_result, filter_inverted_result, "Paragraph", 2)
 
-            combine_result = []
-            for doc, score in filter_knn_result.items():
-                if doc in filter_inverted_result.keys():
-                    combine_result.append({ "doc" : doc, "score" : score })
+            knn_threshold = 0.2
+            inverted_theshold = 5.0
+            filter_knn_result = [ item for item in opensearch_knn_respose if item['doc_type'] == 'Question' and item['score'] > knn_threshold ]
+            filter_inverted_result = [ item for item in opensearch_knn_respose if item['doc_type'] == 'Question' and item['score'] > inverted_theshold ]
 
-            return combine_result
+            qa_content = get_topk_items(filter_knn_result, filter_inverted_result, "Question", 2)
+
+            ret_content = paragraph_content + qa_content
+            return ret_content
         
         def combine_union_recalls(opensearch_knn_respose, opensearch_query_response):
             '''
@@ -165,8 +194,6 @@ class CustomDocRetriever(BaseRetriever,BaseModel):
             return combine_result
         
         recall_knowledge = combine_recalls(opensearch_knn_respose, opensearch_query_response)
-        recall_knowledge.sort(key=lambda x: x["score"])
-        recall_knowledge = recall_knowledge[-2:]
         return recall_knowledge,opensearch_knn_respose,opensearch_query_response
     
 class ErrorCode:
@@ -331,7 +358,7 @@ def search_using_aos_knn(client, q_embedding, index, size=10):
         body=query,
         index=index
     )
-    opensearch_knn_respose = [{'id':item['_id'],'doc':"{}{}{}".format(item['_source']['doc'], QA_SEP, item['_source']['answer']),"doc_type":item["_source"]["doc_type"],"score":item["_score"]}  for item in query_response["hits"]["hits"]]
+    opensearch_knn_respose = [{'id':item['_id'],'doc':"{}{}{}".format(item['_source']['doc'], QA_SEP, item['_source']['content']),"doc_type":item["_source"]["doc_type"],"score":item["_score"]}  for item in query_response["hits"]["hits"]]
     return opensearch_knn_respose
     # try:
     #     r = requests.post("https://"+hostname + "/" + index +
@@ -376,18 +403,45 @@ def aos_search(client, index_name, field, query_term, exactly_match=False, size=
         query = {
             "size": size,
             "query": {
-                "bool":{
-                    "must":[ {"term": { "doc_type": "Q" }} ],
-                    "should": [ {"match": { field : query_term }} ]
+                "bool": {
+                    "should": [{
+                            "bool": {
+                                "must": [{
+                                        "term": {
+                                            "doc_type": "Question"
+                                        }
+                                    },
+                                    {
+                                        "match": {
+                                            "doc": query_term
+                                        }
+                                    }
+                                ]
+                            }
+                        },
+                        {
+                            "bool": {
+                                "must": [{
+                                        "term": {
+                                            "doc_type": "Paragraph"
+                                        }
+                                    },
+                                    {
+                                        "match": {
+                                            "content": query_term
+                                        }
+                                    }
+                                ]
+                            }
+                        }
+                    ]
                 }
             },
-            "sort": [
-                {
-                    "_score": {
-                        "order": "desc"
-                    }
+            "sort": [{
+                "_score": {
+                    "order": "desc"
                 }
-            ]
+            }]
         }
     query_response = client.search(
         body=query,
@@ -395,9 +449,9 @@ def aos_search(client, index_name, field, query_term, exactly_match=False, size=
     )
 
     if exactly_match:
-        result_arr = [ {'id':item['_id'],'doc': item['_source']['answer'], 'doc_type': 'A', 'score': item['_score']} for item in query_response["hits"]["hits"]]
+        result_arr = [ {'id':item['_id'],'doc': item['_source']['content'], 'doc_type': item['_source']['doc_type'], 'score': item['_score']} for item in query_response["hits"]["hits"]]
     else:
-        result_arr = [ {'id':item['_id'],'doc':"{}{}{}".format(item['_source']['doc'], QA_SEP, item['_source']['answer']), 'doc_type': item['_source']['doc_type'], 'score': item['_score']} for item in query_response["hits"]["hits"]]
+        result_arr = [ {'id':item['_id'],'doc':"{}{}{}".format(item['_source']['doc'], QA_SEP, item['_source']['content']), 'doc_type': item['_source']['doc_type'], 'score': item['_score']} for item in query_response["hits"]["hits"]]
 
     return result_arr
 
@@ -563,11 +617,20 @@ def conversion_prompt_build(post_text, conversations, role_a, role_b):
     
     return AWS_Free_Chat_Prompt.format(chat_history=chat_histories, question=post_text, A=role_a, B=role_b)
 
-def qa_knowledge_fewshot_build(qa_recalls):
-    qa_pairs = [ obj["doc"].split(QA_SEP) for obj in qa_recalls ]
-    qa_fewshots = [ "{}: {}\n{}: {}".format(Fewshot_prefix_Q, pair[0], Fewshot_prefix_A, pair[1]) for pair in qa_pairs ]
-    fewshots_str = "\n\n".join(qa_fewshots[-3:])
-    return fewshots_str
+def qa_knowledge_fewshot_build(recalls):
+    ret_context = []
+    for recall in recalls:
+        if recall['doc_type'] == 'Question':
+            q, a = recall['doc'].split(QA_SEP)
+            qa_example = "{}: {}\n{}: {}".format(Fewshot_prefix_Q, q, Fewshot_prefix_A, a)
+            ret_context.append(qa_example)
+        elif recall['doc_type'] == 'Paragraph':
+            recall_doc, p = recall['doc'].split(QA_SEP)
+            p_example = "{}".format(p)
+            ret_context.append(p_example)
+
+    context_str = "\n\n".join(ret_context)
+    return context_str
 
 # different scan
 def qa_knowledge_prompt_build(post_text, qa_recalls, role_a, role_b):
@@ -605,7 +668,7 @@ def create_qa_prompt_templete(lang='zh'):
     if lang == 'zh':
         # AWS_Knowledge_QA_Prompt = """你是云服务AWS的智能客服机器人{B}，请严格根据反括号中的资料提取相关信息\n```\n{fewshot}\n```\n回答{A}的各种问题，比如:\n\n{A}: {question}\n{B}: """
 
-        prompt_template_zh = """你是云服务AWS的智能客服机器人{role_bot}，请严格根据反括号中的资料提取相关信息\n```\n{chat_history}\n{context}\n```\n回答{role_user}的各种问题，比如:\n\n:{role_user}: {question}\n回答: """
+        prompt_template_zh = """你是云服务AWS的智能客服机器人{role_bot}，请严格根据反括号中的资料提取相关信息，回答{role_user}的各种问题\n```\n{chat_history}{context}\n```\n\n{role_user}: {question}\n{role_bot}: """
 
         # prompt_template_zh = """你是云服务AWS的智能客服机器人{role_bot}，请严格根据反括号中的资料提取相关信息
         # ```
@@ -623,14 +686,8 @@ def create_qa_prompt_templete(lang='zh'):
 
 def create_chat_prompt_templete(lang='zh'):
     if lang == 'zh':
-        prompt_template_zh = """假设你是AWS亚马逊云科技的智能客服机器人{role_bot}，能够回答{role_user}的各种问题以及陪{role_user}聊天,请根据以下的对话记录,用中文回答{role_user}的问题: 
+        prompt_template_zh = """你是AWS亚马逊云科技的智能客服机器人{role_bot}，能够回答{role_user}的各种问题以及陪{role_user}聊天,如:{chat_history}\n\n{role_user}: {question}\n{role_bot}:"""
 
-        对话记录：
-        {chat_history}
-
-
-        问题: {question}
-        答案: """
         PROMPT = PromptTemplate(
             template=prompt_template_zh, input_variables=['question','chat_history','role_bot','role_user']
         )
@@ -721,8 +778,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         query_type = QueryType.KeywordQuery
         answer = exactly_match_result[0]["doc"]
         final_prompt = ''
-    # elif recall_knowledge:
-    else:        
+    elif recall_knowledge:      
         # chat_history= get_chat_history(chat_coversions[-2:]) ##chatglm模型质量不高，暂时屏蔽历史对话
         chat_history = ''
         query_type = QueryType.KnowledgeQuery
@@ -734,21 +790,21 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         answer = llmchain.run({'question':query_input,'context':context,'chat_history':chat_history,'role_bot':B_Role,'role_user':A_Role})
         ##最终的prompt日志
         final_prompt = prompt_template.format(question=query_input,role_bot=B_Role,role_user=A_Role,context=context,chat_history=chat_history)
-        print(final_prompt)
-        print(answer)
+        # print(final_prompt)
+        # print(answer)
+    else:
+        query_type = QueryType.Conversation
+        free_chat_coversions = [ (item[0],item[1]) for item in session_history if item[2] == QueryType.Conversation ]
+        # free_chat_coversions = [ (item[0],item[1]) for item in session_history ]
+        chat_history= get_chat_history(free_chat_coversions[-2:])
+        prompt_template = create_chat_prompt_templete(lang='zh')
+        llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
+        ##最终的answer
+        answer = llmchain.run({'question':query_input,'chat_history':chat_history,'role_bot':B_Role,'role_user':A_Role})
+        ##最终的prompt日志
+        final_prompt = prompt_template.format(question=query_input,role_bot=B_Role,role_user=A_Role,chat_history=chat_history)
 
-    # else:
-    #     query_type = QueryType.Conversation
-    #     # free_chat_coversions = [ (item[0],item[1]) for item in session_history if item[2] == QueryType.Conversation ]
-    #     free_chat_coversions = [ (item[0],item[1]) for item in session_history ]
-    #     chat_history= get_chat_history(free_chat_coversions[-2:])
-    #     prompt_template = create_chat_prompt_templete(lang='zh')
-    #     llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
-    #     ##最终的answer
-    #     answer = llmchain.run({'question':query_input,'chat_history':chat_history,'role_bot':B_Role,'role_user':A_Role})
-    #     ##最终的prompt日志
-    #     final_prompt = prompt_template.format(question=query_input,role_bot=B_Role,role_user=A_Role,chat_history=chat_history)
-
+    answer = enforce_stop_tokens(answer, STOP)
 
     json_obj = {
         "query": query_with_history,
