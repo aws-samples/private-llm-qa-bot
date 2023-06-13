@@ -16,6 +16,6 @@
 - Usage
     ```shell
     mkdir kg_dir
-    # 指定 endpoint, 可以激活对长文本的摘要能力
-    python doc_spliter.py --input_file ec2-ug.pdf --output_dir ./kg_dir --sep "=====" --title_level 4 --llm_endpoint ${llm_endpoint}
+    # 指定 endpoint, 可以激活对长文本的摘要能力 --llm_endpoint ${llm_endpoint}
+    python doc_spliter.py --input_file ec2-ug.pdf --output_dir ./kg_dir
     ```
