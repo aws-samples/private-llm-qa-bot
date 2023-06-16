@@ -58,7 +58,10 @@ def iterate_paragraph(file_content, smr_client, index_name, endpoint_name):
     publish_date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     for idx, json_item in enumerate(json_arr):
-        header = json_item['heading'][0]['heading']
+        header = ""
+        if len(json_item['heading']) > 0:
+            header = json_item['heading'][0]['heading']
+            
         paragraph_content = json_item['content']
 
         if len(paragraph_content) > 1024:
