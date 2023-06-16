@@ -151,7 +151,12 @@ export class DeployStack extends Stack {
     //file upload bucket
     const bucket = new s3.Bucket(this, 'DocUploadBucket', {
       removalPolicy: RemovalPolicy.DESTROY,
-      bucketName:process.env.UPLOAD_BUCKET
+      bucketName:process.env.UPLOAD_BUCKET,
+      cors:[{
+        allowedMethods: [s3.HttpMethods.GET,s3.HttpMethods.POST,s3.HttpMethods.PUT],
+        allowedOrigins: ['*'],
+        allowedHeaders: ['*'],
+      }]
     });
 
     const layer = new lambda.LayerVersion(this, 'ChatbotLayer', {
