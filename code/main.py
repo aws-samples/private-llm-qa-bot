@@ -693,7 +693,7 @@ def create_chat_prompt_templete(lang='zh'):
         )
     return PROMPT
 
-def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str, llm_model_endpoint:str, llm_model_name:str, aos_endpoint:str, aos_index:str, aos_knn_field:str, aos_result_num:int, kendra_index_id:str, kendra_result_num:int):
+def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str, llm_model_endpoint:str, llm_model_name:str, aos_endpoint:str, aos_index:str, aos_knn_field:str, aos_result_num:int, kendra_index_id:str, kendra_result_num:int,use_qa:bool):
     """
     Entry point for the Lambda function.
 
@@ -755,47 +755,13 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
     elpase_time = time.time() - start1
     logger.info(f'runing time of get_session : {elpase_time}s seconds')
     
-    # 2. aos retriever
-    doc_retriever = CustomDocRetriever.from_endpoints(embedding_model_endpoint=embedding_model_endpoint,
-                                   aos_endpoint= aos_endpoint,
-                                   aos_index=aos_index)
-    # 3. check is it keyword search
-    exactly_match_result = aos_search(aos_endpoint, aos_index, "doc", query_input, exactly_match=True)
-
-    start = time.time()
-    ## 加上一轮的问题拼接来召回内容
-    # query_with_history= get_question_history(chat_coversions[-2:])+query_input
-    query_with_history= query_input
-    recall_knowledge,opensearch_knn_respose,opensearch_query_response = doc_retriever.get_relevant_documents_custom(query_with_history) 
-    elpase_time = time.time() - start
-    logger.info(f'runing time of opensearch_query : {elpase_time}s seconds')
-
     answer = None
     query_type = None
     free_chat_coversions = []
     verbose = False
-    if exactly_match_result and recall_knowledge: 
-        query_type = QueryType.KeywordQuery
-        answer = exactly_match_result[0]["doc"]
-        final_prompt = ''
-    elif recall_knowledge:      
-        # chat_history= get_chat_history(chat_coversions[-2:]) ##chatglm模型质量不高，暂时屏蔽历史对话
-        chat_history = ''
-        query_type = QueryType.KnowledgeQuery
-        prompt_template = create_qa_prompt_templete(lang='zh')
-        llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
-        # context = "\n".join([doc['doc'] for doc in recall_knowledge])
-        context = qa_knowledge_fewshot_build(recall_knowledge)
-        ##最终的answer
-        answer = llmchain.run({'question':query_input,'context':context,'chat_history':chat_history,'role_bot':B_Role,'role_user':A_Role})
-        ##最终的prompt日志
-        final_prompt = prompt_template.format(question=query_input,role_bot=B_Role,role_user=A_Role,context=context,chat_history=chat_history)
-        # print(final_prompt)
-        # print(answer)
-    else:
+    if not use_qa:##如果不使用QA
         query_type = QueryType.Conversation
-        free_chat_coversions = [ (item[0],item[1]) for item in session_history if item[2] == QueryType.Conversation ]
-        # free_chat_coversions = [ (item[0],item[1]) for item in session_history ]
+        free_chat_coversions = [ (item[0],item[1]) for item in session_history if item[2] == QueryType.Conversation]
         chat_history= get_chat_history(free_chat_coversions[-2:])
         prompt_template = create_chat_prompt_templete(lang='zh')
         llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
@@ -803,11 +769,56 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         answer = llmchain.run({'question':query_input,'chat_history':chat_history,'role_bot':B_Role,'role_user':A_Role})
         ##最终的prompt日志
         final_prompt = prompt_template.format(question=query_input,role_bot=B_Role,role_user=A_Role,chat_history=chat_history)
+        recall_knowledge,opensearch_knn_respose,opensearch_query_response = [],[],[]
+    else: ##如果使用QA
+        # 2. aos retriever
+        doc_retriever = CustomDocRetriever.from_endpoints(embedding_model_endpoint=embedding_model_endpoint,
+                                    aos_endpoint= aos_endpoint,
+                                    aos_index=aos_index)
+        # 3. check is it keyword search
+        exactly_match_result = aos_search(aos_endpoint, aos_index, "doc", query_input, exactly_match=True)
+
+        start = time.time()
+        ## 加上一轮的问题拼接来召回内容
+        # query_with_history= get_question_history(chat_coversions[-2:])+query_input
+        recall_knowledge,opensearch_knn_respose,opensearch_query_response = doc_retriever.get_relevant_documents_custom(query_input) 
+        elpase_time = time.time() - start
+        logger.info(f'runing time of opensearch_query : {elpase_time}s seconds')
+
+        if exactly_match_result and recall_knowledge: 
+            query_type = QueryType.KeywordQuery
+            answer = exactly_match_result[0]["doc"]
+            final_prompt = ''
+        elif recall_knowledge:      
+            # chat_history= get_chat_history(chat_coversions[-2:]) ##chatglm模型质量不高，暂时屏蔽历史对话
+            chat_history = ''
+            query_type = QueryType.KnowledgeQuery
+            prompt_template = create_qa_prompt_templete(lang='zh')
+            llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
+            # context = "\n".join([doc['doc'] for doc in recall_knowledge])
+            context = qa_knowledge_fewshot_build(recall_knowledge)
+            ##最终的answer
+            answer = llmchain.run({'question':query_input,'context':context,'chat_history':chat_history,'role_bot':B_Role,'role_user':A_Role})
+            ##最终的prompt日志
+            final_prompt = prompt_template.format(question=query_input,role_bot=B_Role,role_user=A_Role,context=context,chat_history=chat_history)
+            # print(final_prompt)
+            # print(answer)
+        else:
+            query_type = QueryType.Conversation
+            free_chat_coversions = [ (item[0],item[1]) for item in session_history if item[2] == QueryType.Conversation ]
+            # free_chat_coversions = [ (item[0],item[1]) for item in session_history ]
+            chat_history= get_chat_history(free_chat_coversions[-2:])
+            prompt_template = create_chat_prompt_templete(lang='zh')
+            llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
+            ##最终的answer
+            answer = llmchain.run({'question':query_input,'chat_history':chat_history,'role_bot':B_Role,'role_user':A_Role})
+            ##最终的prompt日志
+            final_prompt = prompt_template.format(question=query_input,role_bot=B_Role,role_user=A_Role,chat_history=chat_history)
 
     answer = enforce_stop_tokens(answer, STOP)
 
     json_obj = {
-        "query": query_with_history,
+        "query": query_input,
         "opensearch_doc":  opensearch_query_response,
         "opensearch_knn_doc":  opensearch_knn_respose,
         "kendra_doc": [],
@@ -982,6 +993,7 @@ def lambda_handler(event, context):
     question = event['prompt']
     model_name = event['model']
     embedding_endpoint = event['embedding_model'] 
+    use_qa = event.get('use_qa',True)
 
     # model_name = 'chatglm-7b'
     llm_endpoint = None
@@ -1036,7 +1048,7 @@ def lambda_handler(event, context):
     
     main_entry_start = time.time()  # 或者使用 time.time_ns() 获取纳秒级别的时间戳
     answer = main_entry_new(session_id, question, embedding_endpoint, llm_endpoint, model_name, aos_endpoint, aos_index, aos_knn_field, aos_result_num,
-                       Kendra_index_id, Kendra_result_num)
+                       Kendra_index_id, Kendra_result_num,use_qa)
     main_entry_elpase = time.time() - main_entry_start  # 或者使用 time.time_ns() 获取纳秒级别的时间戳
     logger.info(f'runing time of main_entry : {main_entry_elpase}s seconds')
     # 2. return rusult
