@@ -10,11 +10,18 @@ import sys
 import hashlib
 import datetime
 import re
+import os
+from bs4 import BeautifulSoup
+from langchain.document_loaders import PDFMinerPDFasHTMLLoader
+from langchain.docstore.document import Document
+from langchain.text_splitter import RecursiveCharacterTextSplitter,CharacterTextSplitter
 
 args = getResolvedOptions(sys.argv, ['bucket', 'object_key','AOS_ENDPOINT','REGION','EMB_MODEL_ENDPOINT'])
 s3 = boto3.resource('s3')
 bucket = args['bucket']
 object_key = args['object_key']
+QA_SEP = '=====' # args['qa_sep'] # 
+arg_chunk_size = 384
 
 # EMB_MODEL_ENDPOINT = "st-paraphrase-mpnet-base-v2-2023-04-19-04-14-31-658-endpoint"
 EMB_MODEL_ENDPOINT=args['EMB_MODEL_ENDPOINT']
@@ -24,7 +31,6 @@ smr_client = boto3.client("sagemaker-runtime")
 AOS_ENDPOINT = args['AOS_ENDPOINT']
 REGION = args['REGION']
 INDEX_NAME = 'chatbot-index'
-# REGION='us-east-1'
 
 def get_embedding(smr_client, text_arrs, endpoint_name=EMB_MODEL_ENDPOINT):
     parameters = {
@@ -91,10 +97,6 @@ def iterate_QA(file_content, smr_client, index_name, endpoint_name):
     json_content = json.loads(file_content)
     json_arr = json_content["qa_list"]
 
-    for json_item in json_arr:
-        q = json_item['Question']
-        a = json_item['Answer']
-
     doc_title = json_content["doc_title"]
     doc_category = json_content["doc_category"]
     questions = [ json_item['Question'] for json_item in json_arr ]
@@ -107,7 +109,159 @@ def iterate_QA(file_content, smr_client, index_name, endpoint_name):
         document = { "publish_date": publish_date, "doc" : questions[i], "doc_type" : "Question", "content" : answers[i], "doc_title": doc_title, "doc_category": doc_category, "embedding" : embeddings[i]}
         yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document).encode('utf-8')).hexdigest()}
 
-def WriteVecIndexToAOS(file_content, content_type, smr_client, aos_endpoint=AOS_ENDPOINT, region=REGION, index_name=INDEX_NAME):
+def link_header(semantic_snippets):
+    heading_fonts_arr = [ item.metadata['heading_font'] for item in semantic_snippets ]
+    heading_arr = [ item.metadata['heading'] for item in semantic_snippets ]
+
+    def fontsize_mapping(heading_fonts_arr):
+        heading_fonts_set = list(set(heading_fonts_arr))
+        heading_fonts_set.sort(reverse=True)
+        idxs = range(len(heading_fonts_set))
+        font_idx_mapping = dict(zip(heading_fonts_set,idxs))
+        return font_idx_mapping
+        
+    fontsize_dict = fontsize_mapping(heading_fonts_arr)
+
+    snippet_arr = []
+    for idx, snippet in enumerate(semantic_snippets):
+        font_size = heading_fonts_arr[idx]
+        heading_stack = []
+        heading_info = {"font_size":heading_fonts_arr[idx], "heading":heading_arr[idx], "fontsize_idx" : fontsize_dict[font_size]}
+        heading_stack.append(heading_info)
+        for id in range(0,idx)[::-1]:
+            if font_size < heading_fonts_arr[id]:
+                font_size = heading_fonts_arr[id]
+                heading_info = {"font_size":font_size, "heading":heading_arr[id], "fontsize_idx" : fontsize_dict[font_size]}
+                heading_stack.append(heading_info)
+            
+        snippet_info = {
+            "heading" : heading_stack,
+            "content" : snippet.page_content
+        }
+        snippet_arr.append(snippet_info)
+        
+    json_arr = json.dumps(snippet_arr, ensure_ascii=False)
+    return json_arr
+
+def parse_pdf_to_json(file_content):
+    soup = BeautifulSoup(file_content,'html.parser')
+    content = soup.find_all('div')
+
+    cur_fs = None
+    cur_text = ''
+    snippets = []   # first collect all snippets that have the same font size
+    for c in content:
+        sp = c.find('span')
+        if not sp:
+            continue
+        st = sp.get('style')
+        if not st:
+            continue
+        fs = re.findall('font-size:(\d+)px',st)
+        if not fs:
+            continue
+        fs = int(fs[0])
+        if not cur_fs:
+            cur_fs = fs
+        if fs == cur_fs:
+            cur_text += c.text
+        else:
+            snippets.append((cur_text,cur_fs))
+            cur_fs = fs
+            cur_text = c.text
+    snippets.append((cur_text,cur_fs))
+
+    cur_idx = -1
+    semantic_snippets = []
+    # Assumption: headings have higher font size than their respective content
+    for s in snippets:
+        # if current snippet's font size > previous section's heading => it is a new heading
+        if not semantic_snippets or s[1] > semantic_snippets[cur_idx].metadata['heading_font']:
+            metadata={'heading':s[0], 'content_font': 0, 'heading_font': s[1]}
+            #metadata.update(data.metadata)
+            semantic_snippets.append(Document(page_content='',metadata=metadata))
+            cur_idx += 1
+            continue
+        
+        # if current snippet's font size <= previous section's content => content belongs to the same section (one can also create
+        # a tree like structure for sub sections if needed but that may require some more thinking and may be data specific)
+        if not semantic_snippets[cur_idx].metadata['content_font'] or s[1] <= semantic_snippets[cur_idx].metadata['content_font']:
+            semantic_snippets[cur_idx].page_content += s[0]
+            semantic_snippets[cur_idx].metadata['content_font'] = max(s[1], semantic_snippets[cur_idx].metadata['content_font'])
+            continue
+        
+        # if current snippet's font size > previous section's content but less tha previous section's heading than also make a new 
+        # section (e.g. title of a pdf will have the highest font size but we don't want it to subsume all sections)
+        metadata={'heading':s[0], 'content_font': 0, 'heading_font': s[1]}
+        #metadata.update(data.metadata)
+        semantic_snippets.append(Document(page_content='',metadata=metadata))
+        cur_idx += 1
+
+    json_content = link_header(semantic_snippets)
+    return json_content
+
+def parse_faq_to_json(file_content):
+    arr = file_content.split(QA_SEP)
+    json_arr = []
+    for item in arr:
+        question, answer = item.strip().split("\n", 1)
+        question = question.replace("Question: ", "")
+        answer = answer.replace("Answer: ", "")
+        obj = {
+            "Question":question, "Answer":answer
+        }
+        json_arr.append(obj)
+
+    qa_content = {
+        "doc_title" : "",
+        "doc_category" : "",
+        "qa_list" : json_arr
+    }
+    
+    json_content = json.dumps(qa_content, ensure_ascii=False)
+    return json_content
+    
+def parse_txt_to_json(file_content):
+    text_splitter = RecursiveCharacterTextSplitter( 
+        chunk_size = arg_chunk_size,
+        chunk_overlap  = 0,
+    )
+    
+    results = []
+    chunks = text_splitter.create_documents([ file_content ] )
+    for chunk in chunks:
+        snippet_info = {
+            "heading" : [],
+            "content" : chunk.page_content
+        }
+        results.append(snippet_info)
+
+    json_content = json.dumps(results, ensure_ascii=False)
+    return json_content
+
+def load_content_json_from_s3(bucket, object_key, content_type, credentials):
+    if content_type == 'pdf':
+        pdf_path=os.path.basename(object_key)
+        s3_client=boto3.client('s3', region_name=REGION)
+        s3_client.download_file(Bucket=bucket, Key=object_key, Filename=pdf_path)
+        loader = PDFMinerPDFasHTMLLoader(pdf_path)
+        file_content = loader.load()[0].page_content
+        json_content = parse_pdf_to_json(file_content)
+        return json_content
+    else:
+        obj = s3.Object(bucket,object_key)
+        file_content = obj.get()['Body'].read().decode('utf-8').strip()
+        
+        if content_type == 'faq':
+            json_content = parse_faq_to_json(file_content)
+        elif content_type =='txt':
+            json_content = parse_txt_to_json(file_content)
+        else:
+            raise "unsupport content type...(pdf, faq, txt are supported.)"
+        
+        return json_content
+
+def WriteVecIndexToAOS(bucket, object_key, content_type, smr_client, aos_endpoint=AOS_ENDPOINT, region=REGION, index_name=INDEX_NAME):
     """
     write paragraph to AOS for Knn indexing.
     :param paragraph_input : document content 
@@ -119,6 +273,10 @@ def WriteVecIndexToAOS(file_content, content_type, smr_client, aos_endpoint=AOS_
     auth = AWSV4SignerAuth(credentials, region)
     # auth = ('xxxx', 'yyyy') master user/pwd
     # auth = (aos_master, aos_pwd)
+    
+    file_content = load_content_json_from_s3(bucket, object_key, content_type, credentials)
+    # print("file_content:")
+    # print(file_content)
 
     client = OpenSearch(
         hosts = [{'host': aos_endpoint, 'port': 443}],
@@ -131,7 +289,7 @@ def WriteVecIndexToAOS(file_content, content_type, smr_client, aos_endpoint=AOS_
     gen_aos_record_func = None
     if content_type == "faq":
         gen_aos_record_func = iterate_QA(file_content, smr_client, index_name, EMB_MODEL_ENDPOINT)
-    elif content_type == "paragraph":
+    elif content_type in ['txt', 'pdf']:
         gen_aos_record_func = iterate_paragraph(file_content, smr_client, index_name, EMB_MODEL_ENDPOINT)
     else:
         raise RuntimeError('No Such Content type supported') 
@@ -139,27 +297,23 @@ def WriteVecIndexToAOS(file_content, content_type, smr_client, aos_endpoint=AOS_
     response = helpers.bulk(client, gen_aos_record_func)
     return response
 
-def split_by(content, sep):
-    return content.split(sep)
-
 def process_s3_uploaded_file(bucket, object_key):
     print("********** object_key : " + object_key)
-    obj = s3.Object(bucket,object_key)
-    body = obj.get()['Body'].read().decode('utf-8').strip()
 
+    content_type = None
     if object_key.endswith(".faq"):
         print("********** pre-processing faq file")
-        if(len(body) > 0):
-            WriteVecIndexToAOS(body, "faq", smr_client)
+        content_type = 'faq'
     elif object_key.endswith(".txt"):
-        print("********** pre-processing paragraph file")
-        if(len(body) > 0):
-            WriteVecIndexToAOS(body, "paragraph", smr_client)
-
-    #print("********** body : " + body)
+        print("********** pre-processing text file")
+        content_type = 'txt'
+    elif object_key.endswith(".pdf"):
+        print("********** pre-processing pdf file")
+        content_type = 'pdf'
+    else:
+        raise "unsupport content type...(pdf, faq, txt are supported.)"
+        
+    WriteVecIndexToAOS(bucket, object_key, content_type, smr_client)
             
 
-#if __name__ == '__main__':
-#paragraph_array = ["Question: 在中国区是否可用？\nAnswer: 目前没有落地中国区的时间表，已经在以下区域推出：美国东部（弗吉尼亚州北部）、美国东部（俄亥俄州）、美国西部（俄勒冈州）、亚太地区（首尔）、亚太地区（新加坡）、亚太地区（悉尼）、亚太地区（东京）、欧洲地区（法兰克福）、欧洲地区（爱尔兰）、欧洲地区（伦敦）和欧洲地区（斯德哥尔摩）","Question: 目前可以支持什么数据源的接入？ \nAnswer: 目前只支持S3，其他数据源近期没有具体计划。"]
- 
 process_s3_uploaded_file(bucket, object_key)
