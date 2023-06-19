@@ -1,3 +1,6 @@
 [submodule "chatbotFE"]
 	path = chatbotFE
 	url = git@github.com:xiehust/chatbotFE.git
+[submodule "aquila-7b-deploy"]
+	path = aquila-7b-deploy
+	url = git@github.com:xiehust/aquila-7b.git
