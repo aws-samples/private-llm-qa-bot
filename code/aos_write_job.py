@@ -32,6 +32,11 @@ AOS_ENDPOINT = args['AOS_ENDPOINT']
 REGION = args['REGION']
 INDEX_NAME = 'chatbot-index'
 
+DOC_INDEX_TABLE= 'chatbot_doc_index'
+dynamodb = boto3.client('dynamodb')
+
+
+
 def get_embedding(smr_client, text_arrs, endpoint_name=EMB_MODEL_ENDPOINT):
     parameters = {
       #"early_stopping": True,
@@ -261,6 +266,86 @@ def load_content_json_from_s3(bucket, object_key, content_type, credentials):
         
         return json_content
 
+
+def put_idx_to_ddb(filename,username,index_name,embedding_model):
+    try:
+        dynamodb.put_item(
+            Item={
+                'filename':{
+                    'S':filename,
+                },
+                'username':{
+                    'S':username,
+                },
+                'index_name':{
+                    'S':index_name,
+                },
+                'embedding_model':{
+                    'S':embedding_model,
+                }
+            },
+            TableName = DOC_INDEX_TABLE,
+        )
+        print(f"Put filename:{filename} with embedding:{embedding_model} index_name:{index_name} by user:{username} to ddb success")
+        return True
+    except Exception as e:
+        print(f"There was an error put filename:{filename} with embedding:{embedding_model} index_name:{index_name} to ddb: {str(e)}")
+        return False 
+
+
+def query_idx_from_ddb(filename,username,embedding_model):
+    try:
+        response = dynamodb.query(
+            TableName=DOC_INDEX_TABLE,
+            ExpressionAttributeValues={
+                ':v1': {
+                    'S': filename,
+                },
+                ':v2': {
+                    'S': username,
+                },
+                ':v3': {
+                    'S': embedding_model,
+                },
+            },
+            KeyConditionExpression='filename = :v1 and username = :v2',
+            ExpressionAttributeNames={"#e":"embedding_model"},
+            FilterExpression='#e = :v3',
+            ProjectionExpression='index_name'
+        )
+        if len(response['Items']):
+            index_name = response['Items'][0]['index_name']['S'] 
+        else:
+            index_name = ''
+        print (f"query filename:{filename} with embedding:{embedding_model} index_name:{index_name} from ddb")
+        return index_name
+    
+    except Exception as e:
+        print(f"There was an error an error query filename:{filename} index from ddb: {str(e)}")
+        return ''
+
+def get_idx_from_ddb(filename,embedding_model):
+    try:
+        response = dynamodb.get_item(
+            Key={
+            'filename':{
+            'S':filename,
+            },
+            'embedding_model':{
+            'S':embedding_model,
+            },
+            },
+            TableName = DOC_INDEX_TABLE,
+        )
+        index_name = ''
+        if response.get('Item'):
+            index_name = response['Item']['index_name']['S']
+            print (f"Get filename:{filename} with index_name:{index_name} from ddb")
+        return index_name
+    except Exception as e:
+        print(f"There was an error get filename:{filename} with embedding:{embedding_model} index from ddb: {str(e)}")
+        return ''
+    
 def WriteVecIndexToAOS(bucket, object_key, content_type, smr_client, aos_endpoint=AOS_ENDPOINT, region=REGION, index_name=INDEX_NAME):
     """
     write paragraph to AOS for Knn indexing.
@@ -312,8 +397,17 @@ def process_s3_uploaded_file(bucket, object_key):
         content_type = 'pdf'
     else:
         raise "unsupport content type...(pdf, faq, txt are supported.)"
-        
+    
+    #check if it is already built
+    idx_name = get_idx_from_ddb(object_key,EMB_MODEL_ENDPOINT)
+    if len(idx_name) > 0:
+        print("doc file already exists")
+        return
+    
     WriteVecIndexToAOS(bucket, object_key, content_type, smr_client)
+    put_idx_to_ddb(filename=object_key,username='s3event',
+                    index_name=INDEX_NAME,
+                        embedding_model=EMB_MODEL_ENDPOINT)
             
 
 process_s3_uploaded_file(bucket, object_key)
