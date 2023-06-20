@@ -244,6 +244,23 @@ def parse_txt_to_json(file_content):
     json_content = json.dumps(results, ensure_ascii=False)
     return json_content
 
+def parse_html_to_json(html_docs):
+    text_splitter = RecursiveCharacterTextSplitter( 
+        chunk_size = arg_chunk_size,
+        chunk_overlap  = 0,
+    )
+
+    results = []
+    chunks = text_splitter.create_documents([ doc.page_content for doc in docs ] )
+    for chunk in chunks:
+        snippet_info = {
+            "heading" : [],
+            "content" : chunk.page_content
+        }
+        results.append(snippet_info)
+    json_content = json.dumps(results, ensure_ascii=False)
+    return json_content
+
 def load_content_json_from_s3(bucket, object_key, content_type, credentials):
     if content_type == 'pdf':
         pdf_path=os.path.basename(object_key)
@@ -261,6 +278,8 @@ def load_content_json_from_s3(bucket, object_key, content_type, credentials):
             json_content = parse_faq_to_json(file_content)
         elif content_type =='txt':
             json_content = parse_txt_to_json(file_content)
+        elif content_type =='json':
+            json_content = file_content
         else:
             raise "unsupport content type...(pdf, faq, txt are supported.)"
         
@@ -374,7 +393,7 @@ def WriteVecIndexToAOS(bucket, object_key, content_type, smr_client, aos_endpoin
     gen_aos_record_func = None
     if content_type == "faq":
         gen_aos_record_func = iterate_QA(file_content, smr_client, index_name, EMB_MODEL_ENDPOINT)
-    elif content_type in ['txt', 'pdf']:
+    elif content_type in ['txt', 'pdf', 'json']:
         gen_aos_record_func = iterate_paragraph(file_content, smr_client, index_name, EMB_MODEL_ENDPOINT)
     else:
         raise RuntimeError('No Such Content type supported') 
@@ -395,6 +414,9 @@ def process_s3_uploaded_file(bucket, object_key):
     elif object_key.endswith(".pdf"):
         print("********** pre-processing pdf file")
         content_type = 'pdf'
+    elif object_key.endswith(".json"):
+        print("********** pre-processing json file")
+        content_type = 'json'
     else:
         raise "unsupport content type...(pdf, faq, txt are supported.)"
     
