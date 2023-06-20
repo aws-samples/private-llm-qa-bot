@@ -45,6 +45,7 @@ export class GlueStack extends NestedStack {
               '--AOS_ENDPOINT':props.opensearch_endpoint,
               '--REGION':props.region,
               '--EMB_MODEL_ENDPOINT':process.env.embedding_endpoint,
+              '--DOC_INDEX_TABLE':'chatbot_doc_index',
               '--additional-python-modules': 'pdfminer.six==20221105,gremlinpython==3.6.3,langchain==0.0.162,beautifulsoup4==4.12.2'
           }
       })
@@ -57,6 +58,7 @@ export class GlueStack extends NestedStack {
                 "s3:Put*",
                 "s3:Get*",
                 "es:*",
+                "dynamodb:*",
                 ],
               effect: iam.Effect.ALLOW,
               resources: ['*'],
