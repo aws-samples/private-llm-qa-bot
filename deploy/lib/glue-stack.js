@@ -44,7 +44,8 @@ export class GlueStack extends NestedStack {
           defaultArguments:{
               '--AOS_ENDPOINT':props.opensearch_endpoint,
               '--REGION':props.region,
-              '--EMB_MODEL_ENDPOINT':process.env.embedding_endpoint
+              '--EMB_MODEL_ENDPOINT':process.env.embedding_endpoint,
+              '--additional-python-modules': 'pdfminer.six==20221105,gremlinpython==3.6.3,langchain==0.0.162,beautifulsoup4==4.12.2'
           }
       })
       job.role.addToPrincipalPolicy(
