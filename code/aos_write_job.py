@@ -366,40 +366,36 @@ def get_idx_from_ddb(filename,embedding_model):
         return ''
     
 def WriteVecIndexToAOS(bucket, object_key, content_type, smr_client, aos_endpoint=AOS_ENDPOINT, region=REGION, index_name=INDEX_NAME):
-    """
-    write paragraph to AOS for Knn indexing.
-    :param paragraph_input : document content 
-    :param aos_endpoint : AOS endpoint
-    :param index_name : AOS index name
-    :return None
-    """
-    credentials = boto3.Session().get_credentials()
-    auth = AWSV4SignerAuth(credentials, region)
+    # credentials = boto3.Session().get_credentials()
+    # auth = AWSV4SignerAuth(credentials, region)
     # auth = ('xxxx', 'yyyy') master user/pwd
     # auth = (aos_master, aos_pwd)
-    
-    file_content = load_content_json_from_s3(bucket, object_key, content_type, credentials)
-    # print("file_content:")
-    # print(file_content)
+    try:
+        file_content = load_content_json_from_s3(bucket, object_key, content_type, credentials)
+        # print("file_content:")
+        # print(file_content)
 
-    client = OpenSearch(
-        hosts = [{'host': aos_endpoint, 'port': 443}],
-        http_auth = auth,
-        use_ssl = True,
-        verify_certs = True,
-        connection_class = RequestsHttpConnection
-    )
+        client = OpenSearch(
+            hosts = [{'host': aos_endpoint, 'port': 443}],
+            http_auth = auth,
+            use_ssl = True,
+            verify_certs = True,
+            connection_class = RequestsHttpConnection
+        )
 
-    gen_aos_record_func = None
-    if content_type == "faq":
-        gen_aos_record_func = iterate_QA(file_content, smr_client, index_name, EMB_MODEL_ENDPOINT)
-    elif content_type in ['txt', 'pdf', 'json']:
-        gen_aos_record_func = iterate_paragraph(file_content, smr_client, index_name, EMB_MODEL_ENDPOINT)
-    else:
-        raise RuntimeError('No Such Content type supported') 
+        gen_aos_record_func = None
+        if content_type == "faq":
+            gen_aos_record_func = iterate_QA(file_content, smr_client, index_name, EMB_MODEL_ENDPOINT)
+        elif content_type in ['txt', 'pdf', 'json']:
+            gen_aos_record_func = iterate_paragraph(file_content, smr_client, index_name, EMB_MODEL_ENDPOINT)
+        else:
+            raise RuntimeError('No Such Content type supported') 
 
-    response = helpers.bulk(client, gen_aos_record_func)
-    return response
+        response = helpers.bulk(client, gen_aos_record_func)
+        return response
+    except Exception as e:
+        print(f"There was an error when ingest:{object_key} to aos cluster, Exception: {str(e)}")
+        return ''    
 
 def process_s3_uploaded_file(bucket, object_key):
     print("********** object_key : " + object_key)
@@ -430,6 +426,6 @@ def process_s3_uploaded_file(bucket, object_key):
     put_idx_to_ddb(filename=object_key,username='s3event',
                     index_name=INDEX_NAME,
                         embedding_model=EMB_MODEL_ENDPOINT)
-            
 
-process_s3_uploaded_file(bucket, object_key)
+for s3_key in object_key.split(','):
+    process_s3_uploaded_file(bucket, s3_key)
