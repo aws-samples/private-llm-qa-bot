@@ -6,20 +6,21 @@
 .
 ├── code
 │   ├── main.py                          # lambda 部署主文件
-│   ├── aos_write_job                    # aos 倒排和knn索引构建脚本 (glue 部署)
+│   ├── aos_write_job.py                 # aos 倒排和knn索引构建脚本 (glue 部署)
+│   ├── batch_upload_docs.py             # 批量倒入知识的脚本实现
 │   ├── chatbot_logs_func.py             # 对Cloudwatch输出的日志解析，通过KDF同步到OpenSearch (lambda 脚本)
 │   ├── offline_trigger_lambda.py        # 调度 glue 的 lambda 脚本
-│   ├── chatbot_logs_func.py             # 详细日志的解析处理，用于构建Kinesis Firehose中的日志处理的Lambda
-│   ├── kendra_write_job.py              # kendra数据导入脚本 (glue 部署)
 │   ├── QA_auto_generator.py             # 基于文档自动生成FAQ知识库 (离线前置处理)
 │   └── build_and_push.sh                # 构建ECR Image 供部署后台主服务
 ├── deploy
 │   ├── lib/                             # cdk 部署脚本目录
 │   └── gen_env.sh                       # 自动生成部署变量的脚本(for workshop)
 ├── docs
-│   ├── aws_cleanroom_faq.txt            # 知识库文件
-│   ├── aws_msk_faq.txt                  # 知识库文件
-│   └── aws_emr_faq.txt                  # 知识库文件
+│   ├── aws_cleanroom.faq                # faq 知识库文件
+│   ├── aws_msk.faq                      # faq 知识库文件
+│   ├── aws_emr.faq                      # faq 知识库文件
+│   ├── aws-overview.pdf                 # pdf 知识库文件
+│   └── PMC10004510.txt                  # txt 纯文本文件
 ├── AWS_DOC_POC.ipynb                    # AWS文档-本地效果测试 notebook
 ├── document_segment.ipynb               # 文档切分调优 开发notebook
 ├── lanchain_demo.ipynb                  # lanchain 开发notebook
@@ -28,7 +29,8 @@
 ├── bloomz_LLM_deploy.ipynb              # bloomz-7B LLM Model 部署notebook
 ├── llama_deepspeed_deploy.ipynb         # llama-7B LLM Model 部署notebook
 ├── paraphrase-multilingual-deploy.ipynb # Sentence2Embedding Model 部署notebook
-├── text2vec_embedding_test.ipynb        # text2vec Model 部署notebook
+├── text2vec-base-chinese-deploy.ipynb   # text2vec base Model 部署notebook
+├── text2vec-large-chinese-deploy.ipynb   # text2vec large Model 部署notebook
 ├── Local_SentenceEmb.ipynb              # Studio 模型部署调试 notebook
 └── SentenceEmbedding_deploy.ipynb       # GPT-6J Embedding Modeljumpstart部署 notebook
 ```
