@@ -366,8 +366,8 @@ def get_idx_from_ddb(filename,embedding_model):
         return ''
     
 def WriteVecIndexToAOS(bucket, object_key, content_type, smr_client, aos_endpoint=AOS_ENDPOINT, region=REGION, index_name=INDEX_NAME):
-    # credentials = boto3.Session().get_credentials()
-    # auth = AWSV4SignerAuth(credentials, region)
+    credentials = boto3.Session().get_credentials()
+    auth = AWSV4SignerAuth(credentials, region)
     # auth = ('xxxx', 'yyyy') master user/pwd
     # auth = (aos_master, aos_pwd)
     try:
