@@ -48,6 +48,7 @@ Fewshot_prefix_Q="问题"
 Fewshot_prefix_A="回答"
 RESET = '/rs'
 
+
 class ContentHandler(EmbeddingsContentHandler):
     parameters = {
         "max_new_tokens": 50,
@@ -815,7 +816,59 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
 
     return answer
 
-  
+def delete_doc_index(obj_key,embedding_model,index_name):
+    def delete_aos_index(obj_key,index_name,size=50):
+        aos_endpoint = os.environ.get("aos_endpoint", "")
+        client = OpenSearch(
+                    hosts=[{'host':aos_endpoint, 'port': 443}],
+                    http_auth = awsauth,
+                    use_ssl=True,
+                    verify_certs=True,
+                    connection_class=RequestsHttpConnection
+                )
+        query =  {
+                "size":size,
+                "query" : {
+                    "match_phrase":{
+                        "doc_title": obj_key
+                    }
+                }
+            }
+        response = client.search(
+            body=query,
+            index=index_name
+        )
+        doc_ids = [hit["_id"] for hit in response["hits"]["hits"]]
+        should_continue = False
+        for doc_id in doc_ids:
+            should_continue = True
+            try:
+                client.delete(index=index_name, id=doc_id)
+                logger.info(f"delete:{doc_id}")
+            except Exception as e:
+                logger.info(f"delete:{doc_id}")
+                continue
+
+        return should_continue
+    
+    ##删除ddb里的索引
+    # dynamodb = boto3.client('dynamodb')
+    # try:
+    #     dynamodb.delete_item(
+    #         TableName=DOC_INDEX_TABLE,
+    #         Key={
+    #             'filename': {'S': obj_key},
+    #             'embedding_model': {'S': embedding_model}
+    #         }
+    #     )
+    # except Exception as e:
+    #     logger.info(str(e))
+
+    ##删除aos里的索引
+    should_continue = True
+    while should_continue:
+        should_continue = delete_aos_index(obj_key,index_name)
+    
 
 @handle_error
 def lambda_handler(event, context):
@@ -825,6 +878,12 @@ def lambda_handler(event, context):
     # "max_tokens": 2048
     # "temperature": 0.9
     logger.info(f"event:{event}")
+    delete_obj_key = event.get('delete_obj_key')
+    ##如果是删除doc index的操作
+    if delete_obj_key:
+        delete_doc_index(delete_obj_key,os.environ.get("aos_index", ""))
+        return {'statusCode': 200}
+
     # input_json = json.loads(event['body'])
     session_id = event['chat_name']
     question = event['prompt']
