@@ -25,9 +25,8 @@ from langchain import PromptTemplate, SagemakerEndpoint
 from langchain.chains import LLMChain,ConversationalRetrievalChain,ConversationChain
 from langchain.schema import BaseRetriever
 from langchain.schema import Document
+from langchain.llms.bedrock import Bedrock
 from pydantic import BaseModel
-
-
 
 
 credentials = boto3.Session().get_credentials()
@@ -693,6 +692,27 @@ def create_chat_prompt_templete(lang='zh'):
         )
     return PROMPT
 
+def get_bedrock_secret(secret_name='chatbot_bedrock', region_name = "us-west-2"):
+    # Create a Secrets Manager client
+    session = boto3.session.Session()
+    client = session.client(
+        service_name='secretsmanager',
+        region_name=region_name
+    )
+
+    try:
+        get_secret_value_response = client.get_secret_value(
+            SecretId=secret_name
+        )
+    except ClientError as e:
+        # For a list of exceptions thrown, see
+        # https://docs.aws.amazon.com/secretsmanager/latest/apireference/API_GetSecretValue.html
+        raise e
+
+    # Decrypts secret using the associated KMS key.
+    secret = json.loads(get_secret_value_response['SecretString'])
+    return secret['BEDROCK_SECRET_KEY']
+
 def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str, llm_model_endpoint:str, llm_model_name:str, aos_endpoint:str, aos_index:str, aos_knn_field:str, aos_result_num:int, kendra_index_id:str, kendra_result_num:int,use_qa:bool):
     """
     Entry point for the Lambda function.
@@ -734,13 +754,30 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         logger.info(json_obj_str)
         return answer
     
-    llmcontent_handler = llmContentHandler()
-    llm=SagemakerEndpoint(
-            endpoint_name=llm_model_endpoint, 
-            region_name=region, 
-            model_kwargs={'parameters':llmcontent_handler.parameters},
-            content_handler=llmcontent_handler
+    print("llm_model_name : {}".format(llm_model_name))
+    llm = None
+    if llm_model_name == 'claude':
+        ACCESS_KEY='AKIA2EEYKWL2VR6DKVEI'
+        SECRET_KEY=get_bedrock_secret()
+
+        boto3_bedrock = boto3.client(
+            service_name="bedrock",
+            region_name="us-east-1",
+            endpoint_url="https://bedrock.us-east-1.amazonaws.com",
+            aws_access_key_id=ACCESS_KEY,
+            aws_secret_access_key=SECRET_KEY
         )
+        llm = Bedrock(model_id="anthropic.claude-v1", client=boto3_bedrock)
+        # print("llm is anthropic.claude-v1")
+    else:
+        llmcontent_handler = llmContentHandler()
+        llm=SagemakerEndpoint(
+                endpoint_name=llm_model_endpoint, 
+                region_name=region, 
+                model_kwargs={'parameters':llmcontent_handler.parameters},
+                content_handler=llmcontent_handler
+            )
+    
     # sm_client = boto3.client("sagemaker-runtime")
     
     # 1. get_session

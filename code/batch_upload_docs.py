@@ -31,17 +31,17 @@ def list_s3_objects(s3_client,bucket_name, prefix=''):
             page_iterator = paginator.paginate(Bucket=bucket_name, Prefix=prefix,
                                                 ContinuationToken=page['NextContinuationToken'])
 
-def start_job(glue_client, job_name, key_path):
+def start_job(glue_client, job_name, key_path, aos_endpoint, emb_model_endpoint, bucket, region_name):
     print('start job for {}'.format(key_path))    
     response = glue.start_job_run(
         JobName=job_name,
         Arguments={
             '--additional-python-modules': 'pdfminer.six==20221105,gremlinpython==3.6.3,langchain==0.0.162,beautifulsoup4==4.12.2',
             '--object_key': key_path,
-            '--REGION': 'us-west-2',
-            '--AOS_ENDPOINT': 'vpc-domain66ac69e0-nc8rzhegbk2b-qrle2hshwnbenn7kh4lvhtbyea.us-west-2.es.amazonaws.com',
-            '--bucket' : '106839800180-23-06-07-05-29-20-bucket',
-            '--EMB_MODEL_ENDPOINT': 'st-paraphrase-mpnet-base-v2-2023-06-12-10-42-37-917-endpoint'
+            '--REGION': region_name,
+            '--AOS_ENDPOINT': aos_endpoint,
+            '--bucket' : bucket,
+            '--EMB_MODEL_ENDPOINT': emb_model_endpoint
             })  
     return response['JobRunId']
 
@@ -86,6 +86,6 @@ if __name__ == '__main__':
             running_job_id_set = update_running_job_set(job_name, running_job_id_set)
             print('concurrent_running: {}'.format(running_job_id_set))
             
-        running_job_id=start_job(glue, job_name, key_list_str)
+        running_job_id=start_job(glue, job_name, key_list_str, aos_endpoint, emb_model_endpoint, bucket, region)
         running_job_id_set.add(running_job_id)
         time.sleep(1)
