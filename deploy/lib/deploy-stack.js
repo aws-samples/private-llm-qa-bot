@@ -134,6 +134,7 @@ export class DeployStack extends Stack {
           "s3:Put*",
           "s3:Get*",
           "es:*",
+          "dynamodb:*",
           ],
         effect: iam.Effect.ALLOW,
         resources: ['*'],
