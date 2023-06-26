@@ -715,7 +715,7 @@ def create_chat_prompt_templete(lang='zh'):
         )
     return PROMPT
 
-def get_bedrock_secret(secret_name='chatbot_bedrock', region_name = "us-west-2"):
+def get_bedrock_aksk(secret_name='chatbot_bedrock', region_name = "us-west-2"):
     # Create a Secrets Manager client
     session = boto3.session.Session()
     client = session.client(
@@ -734,7 +734,7 @@ def get_bedrock_secret(secret_name='chatbot_bedrock', region_name = "us-west-2")
 
     # Decrypts secret using the associated KMS key.
     secret = json.loads(get_secret_value_response['SecretString'])
-    return secret['BEDROCK_SECRET_KEY']
+    return secret['BEDROCK_ACCESS_KEY'],secret['BEDROCK_SECRET_KEY']
 
 def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str, llm_model_endpoint:str, llm_model_name:str, aos_endpoint:str, aos_index:str, aos_knn_field:str,
                     aos_result_num:int, kendra_index_id:str, kendra_result_num:int,use_qa:bool,wsclient=None,msgid=''):
@@ -782,8 +782,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
     print("llm_model_name : {}".format(llm_model_name))
     llm = None
     if llm_model_name == 'claude':
-        ACCESS_KEY='AKIA2EEYKWL2VR6DKVEI'
-        SECRET_KEY=get_bedrock_secret()
+        ACCESS_KEY, SECRET_KEY=get_bedrock_aksk()
 
         boto3_bedrock = boto3.client(
             service_name="bedrock",
@@ -792,7 +791,15 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
             aws_access_key_id=ACCESS_KEY,
             aws_secret_access_key=SECRET_KEY
         )
-        llm = Bedrock(model_id="anthropic.claude-v1", client=boto3_bedrock)
+
+        parameters = {
+            "max_tokens_to_sample": 1024,
+            # "stop_sequences":STOP,
+            # "temperature":0,
+            # "top_p":0.9
+        }
+        
+        llm = Bedrock(model_id="anthropic.claude-v1", client=boto3_bedrock, model_kwargs=parameters)
         # print("llm is anthropic.claude-v1")
     elif llm_model_name.startswith('gpt-3.5-turbo'):
         global openai_api_key
