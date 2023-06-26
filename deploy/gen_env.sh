@@ -39,4 +39,4 @@ echo "llm_alpaca_endpoint=${llm_alpaca_endpoint}" >> .env
 echo "llm_vicuna_endpoint=${llm_vicuna_endpoint}" >> .env
 echo "UPLOAD_BUCKET=${bucket}" >> .env
 echo "UPLOAD_OBJ_PREFIX=ai-content/" >> .env
-echo "wss_resourceArn=${wss_resourceArn}" >> .env"
+echo "wss_resourceArn=${wss_resourceArn}" >> .env
