@@ -17,6 +17,7 @@ from opensearchpy import OpenSearch, RequestsHttpConnection
 from requests_aws4auth import AWS4Auth
 from langchain.chains.question_answering import load_qa_chain
 from langchain.chains import LLMChain
+from langchain.chat_models import ChatOpenAI
 from typing import Dict, List
 from langchain.embeddings import SagemakerEndpointEmbeddings
 from langchain.embeddings.sagemaker_endpoint import EmbeddingsContentHandler
@@ -27,7 +28,58 @@ from langchain.schema import BaseRetriever
 from langchain.schema import Document
 from langchain.llms.bedrock import Bedrock
 from pydantic import BaseModel
+import openai
+from langchain.callbacks.base import BaseCallbackHandler
+import sys
+from typing import Any, Dict, List, Union
+from langchain.schema import LLMResult
 
+
+
+
+class CustomStreamingOutCallbackHandler(BaseCallbackHandler):
+    """Callback handler for streaming. Only works with LLMs that support streaming."""
+    def __init__(self,wsclient:str,msgid:str,connectionId:str , **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self.wsclient = wsclient
+        self.connectionId = connectionId
+        self.msgid = msgid
+
+    def postMessage(self,data):
+        try:
+            self.wsclient.post_to_connection(Data = data.encode('utf-8'),  ConnectionId=self.connectionId)
+        except Exception as e:
+            print (f'post {json.dumps(data)} to_wsconnection error:{str(e)}')
+
+    def message_format(self,messages):
+        """Format messages as ChatGPT who only accepts roles of ['system', 'assistant', 'user']"""
+        return [
+            {'role': 'assistant', 'content': msg['content']}
+            if msg['role'] == 'AI'
+            else {'role': 'user', 'content': msg['content']}
+            for msg in messages
+        ]
+    
+    def on_llm_start(
+        self, serialized: Dict[str, Any], prompts: List[str], **kwargs: Any
+    ) -> None:
+        """Run when LLM starts running."""
+
+    def on_llm_new_token(self, token: str, **kwargs: Any) -> None:
+        """Run on new LLM token. Only available when streaming is enabled."""
+        data = json.dumps({ 'msgid':self.msgid, 'role': "AI", 'text': {'content':token} })
+        self.postMessage(data)
+
+    def on_llm_end(self, response: LLMResult, **kwargs: Any) -> None:
+        """Run when LLM ends running."""
+        data = json.dumps({ 'msgid':self.msgid, 'role': "AI", 'text': {'content':'[DONE]'} })
+        self.postMessage(data)
+
+    def on_chain_error(
+        self, error: Union[Exception, KeyboardInterrupt], **kwargs: Any
+    ) -> None:
+        data = json.dumps({ 'msgid':self.msgid, 'role': "AI", 'text': {'content':str(error[0])+'[DONE]'} })
+        self.postMessage(data)
 
 credentials = boto3.Session().get_credentials()
 region = boto3.Session().region_name
@@ -684,7 +736,8 @@ def get_bedrock_secret(secret_name='chatbot_bedrock', region_name = "us-west-2")
     secret = json.loads(get_secret_value_response['SecretString'])
     return secret['BEDROCK_SECRET_KEY']
 
-def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str, llm_model_endpoint:str, llm_model_name:str, aos_endpoint:str, aos_index:str, aos_knn_field:str, aos_result_num:int, kendra_index_id:str, kendra_result_num:int,use_qa:bool):
+def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str, llm_model_endpoint:str, llm_model_name:str, aos_endpoint:str, aos_index:str, aos_knn_field:str,
+                    aos_result_num:int, kendra_index_id:str, kendra_result_num:int,use_qa:bool,wsclient=None,msgid=''):
     """
     Entry point for the Lambda function.
 
@@ -702,6 +755,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
 
     return: answer(str)
     """
+    use_stream = False
     #如果是reset命令，则清空历史聊天
     if query_input == RESET:
         delete_session(session_id)
@@ -740,6 +794,14 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         )
         llm = Bedrock(model_id="anthropic.claude-v1", client=boto3_bedrock)
         # print("llm is anthropic.claude-v1")
+    elif llm_model_name.startswith('gpt-3.5-turbo'):
+        global openai_api_key
+        llm=ChatOpenAI(model = llm_model_name,
+                       openai_api_key = openai_api_key,
+                       streaming = True,
+                       callbacks=[CustomStreamingOutCallbackHandler(wsclient,msgid, session_id,)],
+                       temperature = 0.01)
+        use_stream = True
     else:
         llmcontent_handler = llmContentHandler()
         llm=SagemakerEndpoint(
@@ -851,7 +913,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
     logger.info(f'runing time of update_session : {elpase_time}s seconds')
     logger.info(f'runing time of all  : {elpase_time1}s seconds')
 
-    return answer
+    return answer,use_stream
 
 def delete_doc_index(obj_key,embedding_model,index_name):
     def delete_aos_index(obj_key,index_name,size=50):
@@ -907,6 +969,7 @@ def delete_doc_index(obj_key,embedding_model,index_name):
         should_continue = delete_aos_index(obj_key,index_name)
     
 
+
 @handle_error
 def lambda_handler(event, context):
     # "model": 模型的名称
@@ -922,11 +985,20 @@ def lambda_handler(event, context):
         return {'statusCode': 200}
 
     # input_json = json.loads(event['body'])
+    ws_endpoint = event.get('ws_endpoint')
+    if ws_endpoint:
+        wsclient = boto3.client('apigatewaymanagementapi', endpoint_url=ws_endpoint)
+    else:
+        wsclient = None
+    global openai_api_key
+    openai_api_key = event.get('OPENAI_API_KEY') 
+    
     session_id = event['chat_name']
     question = event['prompt']
     model_name = event['model'] if event.get('model') else event.get('model_name','')
     embedding_endpoint = event['embedding_model'] 
     use_qa = event.get('use_qa',True)
+    msgid = event.get('msgid')
 
     ##获取前端给的系统设定，如果没有，则使用lambda里的默认值
     global B_Role,SYSTEM_ROLE_PROMPT
@@ -984,8 +1056,8 @@ def lambda_handler(event, context):
     logger.info(f'Kendra_result_num : {Kendra_result_num}')
     
     main_entry_start = time.time()  # 或者使用 time.time_ns() 获取纳秒级别的时间戳
-    answer = main_entry_new(session_id, question, embedding_endpoint, llm_endpoint, model_name, aos_endpoint, aos_index, aos_knn_field, aos_result_num,
-                       Kendra_index_id, Kendra_result_num,use_qa)
+    answer,use_stream = main_entry_new(session_id, question, embedding_endpoint, llm_endpoint, model_name, aos_endpoint, aos_index, aos_knn_field, aos_result_num,
+                       Kendra_index_id, Kendra_result_num,use_qa,wsclient,msgid)
     main_entry_elpase = time.time() - main_entry_start  # 或者使用 time.time_ns() 获取纳秒级别的时间戳
     logger.info(f'runing time of main_entry : {main_entry_elpase}s seconds')
     # 2. return rusult
@@ -1003,6 +1075,7 @@ def lambda_handler(event, context):
         'statusCode': 200,
         'headers': {'Content-Type': 'application/json'},
         'body': [{"id": str(uuid.uuid4()),
+                  "use_stream":use_stream,
                              "created": request_timestamp,
                              "useTime": time.time() - request_timestamp,
                              "model": "main_brain",
