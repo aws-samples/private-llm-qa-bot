@@ -98,7 +98,7 @@ SYSTEM_ROLE_PROMPT = '你是云服务AWS的智能客服机器人AWSBot'
 Fewshot_prefix_Q="问题"
 Fewshot_prefix_A="回答"
 RESET = '/rs'
-
+openai_api_key = None
 
 class ContentHandler(EmbeddingsContentHandler):
     parameters = {
