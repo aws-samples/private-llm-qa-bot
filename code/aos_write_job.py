@@ -244,6 +244,23 @@ def parse_txt_to_json(file_content):
     json_content = json.dumps(results, ensure_ascii=False)
     return json_content
 
+def parse_html_to_json(html_docs):
+    text_splitter = RecursiveCharacterTextSplitter( 
+        chunk_size = arg_chunk_size,
+        chunk_overlap  = 0,
+    )
+
+    results = []
+    chunks = text_splitter.create_documents([ doc.page_content for doc in docs ] )
+    for chunk in chunks:
+        snippet_info = {
+            "heading" : [],
+            "content" : chunk.page_content
+        }
+        results.append(snippet_info)
+    json_content = json.dumps(results, ensure_ascii=False)
+    return json_content
+
 def load_content_json_from_s3(bucket, object_key, content_type, credentials):
     if content_type == 'pdf':
         pdf_path=os.path.basename(object_key)
@@ -261,6 +278,8 @@ def load_content_json_from_s3(bucket, object_key, content_type, credentials):
             json_content = parse_faq_to_json(file_content)
         elif content_type =='txt':
             json_content = parse_txt_to_json(file_content)
+        elif content_type =='json':
+            json_content = file_content
         else:
             raise "unsupport content type...(pdf, faq, txt are supported.)"
         
@@ -347,40 +366,36 @@ def get_idx_from_ddb(filename,embedding_model):
         return ''
     
 def WriteVecIndexToAOS(bucket, object_key, content_type, smr_client, aos_endpoint=AOS_ENDPOINT, region=REGION, index_name=INDEX_NAME):
-    """
-    write paragraph to AOS for Knn indexing.
-    :param paragraph_input : document content 
-    :param aos_endpoint : AOS endpoint
-    :param index_name : AOS index name
-    :return None
-    """
     credentials = boto3.Session().get_credentials()
     auth = AWSV4SignerAuth(credentials, region)
     # auth = ('xxxx', 'yyyy') master user/pwd
     # auth = (aos_master, aos_pwd)
-    
-    file_content = load_content_json_from_s3(bucket, object_key, content_type, credentials)
-    # print("file_content:")
-    # print(file_content)
+    try:
+        file_content = load_content_json_from_s3(bucket, object_key, content_type, credentials)
+        # print("file_content:")
+        # print(file_content)
 
-    client = OpenSearch(
-        hosts = [{'host': aos_endpoint, 'port': 443}],
-        http_auth = auth,
-        use_ssl = True,
-        verify_certs = True,
-        connection_class = RequestsHttpConnection
-    )
+        client = OpenSearch(
+            hosts = [{'host': aos_endpoint, 'port': 443}],
+            http_auth = auth,
+            use_ssl = True,
+            verify_certs = True,
+            connection_class = RequestsHttpConnection
+        )
 
-    gen_aos_record_func = None
-    if content_type == "faq":
-        gen_aos_record_func = iterate_QA(file_content, smr_client, index_name, EMB_MODEL_ENDPOINT)
-    elif content_type in ['txt', 'pdf']:
-        gen_aos_record_func = iterate_paragraph(file_content, smr_client, index_name, EMB_MODEL_ENDPOINT)
-    else:
-        raise RuntimeError('No Such Content type supported') 
+        gen_aos_record_func = None
+        if content_type == "faq":
+            gen_aos_record_func = iterate_QA(file_content, smr_client, index_name, EMB_MODEL_ENDPOINT)
+        elif content_type in ['txt', 'pdf', 'json']:
+            gen_aos_record_func = iterate_paragraph(file_content, smr_client, index_name, EMB_MODEL_ENDPOINT)
+        else:
+            raise RuntimeError('No Such Content type supported') 
 
-    response = helpers.bulk(client, gen_aos_record_func)
-    return response
+        response = helpers.bulk(client, gen_aos_record_func)
+        return response
+    except Exception as e:
+        print(f"There was an error when ingest:{object_key} to aos cluster, Exception: {str(e)}")
+        return ''    
 
 def process_s3_uploaded_file(bucket, object_key):
     print("********** object_key : " + object_key)
@@ -395,6 +410,9 @@ def process_s3_uploaded_file(bucket, object_key):
     elif object_key.endswith(".pdf"):
         print("********** pre-processing pdf file")
         content_type = 'pdf'
+    elif object_key.endswith(".json"):
+        print("********** pre-processing json file")
+        content_type = 'json'
     else:
         raise "unsupport content type...(pdf, faq, txt are supported.)"
     
@@ -408,6 +426,6 @@ def process_s3_uploaded_file(bucket, object_key):
     put_idx_to_ddb(filename=object_key,username='s3event',
                     index_name=INDEX_NAME,
                         embedding_model=EMB_MODEL_ENDPOINT)
-            
 
-process_s3_uploaded_file(bucket, object_key)
+for s3_key in object_key.split(','):
+    process_s3_uploaded_file(bucket, s3_key)
