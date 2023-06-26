@@ -16,7 +16,6 @@ import { Ec2Stack } from "./ec2-stack.js";
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as s3n from 'aws-cdk-lib/aws-s3-notifications';
 import * as dotenv from "dotenv";
-import * as ec2 from "aws-cdk-lib/aws-ec2";
 
 dotenv.config();
 
@@ -143,8 +142,16 @@ export class DeployStack extends Stack {
       
     chat_session_table.grantReadWriteData(lambda_main_brain);
     new CfnOutput(this,'lambda roleName',{value:lambda_main_brain.role.roleName});
-
-
+    
+    //add permission for chatbotFE wss 
+    lambda_main_brain.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['execute-api:ManageConnections'],
+        effect: iam.Effect.ALLOW,
+        resources: [process.env.wss_resourceArn  ]
+      })
+    );
+    
     //glue job
     const gluestack = new GlueStack(this,'glue-stack',{opensearch_endpoint,region,vpc,subnets,securityGroups});
     new CfnOutput(this, `Glue Job name`,{value:`${gluestack.jobName}`});
