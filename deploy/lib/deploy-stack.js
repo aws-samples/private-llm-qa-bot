@@ -119,6 +119,7 @@ export class DeployStack extends Stack {
         llm_default_endpoint:process.env.llm_default_endpoint,
         llm_bloomz_endpoint:process.env.llm_bloomz_endpoint,
         llm_chatglm_endpoint:process.env.llm_chatglm_endpoint,
+        llm_chatglm_stream_endpoint:process.env.llm_chatglm_stream_endpoint,
         chat_session_table:chat_session_table.tableName,
       },
     });
