@@ -33,7 +33,7 @@ from langchain.callbacks.base import BaseCallbackHandler
 import sys
 from typing import Any, Dict, List, Union
 from langchain.schema import LLMResult
-
+import io
 
 
 
@@ -100,6 +100,50 @@ Fewshot_prefix_A="回答"
 RESET = '/rs'
 openai_api_key = None
 
+class StreamScanner:
+    """
+    A helper class for parsing the InvokeEndpointWithResponseStream event stream. 
+    
+    The output of the model will be in the following format:
+    ```
+    b'{"outputs": [" a"]}\n'
+    b'{"outputs": [" challenging"]}\n'
+    b'{"outputs": [" problem"]}\n'
+    ...
+    ```
+    
+    While usually each PayloadPart event from the event stream will contain a byte array 
+    with a full json, this is not guaranteed and some of the json objects may be split across
+    PayloadPart events. For example:
+    ```
+    {'PayloadPart': {'Bytes': b'{"outputs": '}}
+    {'PayloadPart': {'Bytes': b'[" problem"]}\n'}}
+    ```
+    
+    This class accounts for this by concatenating bytes written via the 'write' function
+    and then exposing a method which will return lines (ending with a '\n' character) within
+    the buffer via the 'readlines' function. It maintains the position of the last read 
+    position to ensure that previous bytes are not exposed again. 
+    """
+    
+    def __init__(self):
+        self.buff = io.BytesIO()
+        self.read_pos = 0
+        
+    def write(self, content):
+        self.buff.seek(0, io.SEEK_END)
+        self.buff.write(content)
+        
+    def readlines(self):
+        self.buff.seek(self.read_pos)
+        for line in self.buff.readlines():
+            if line[-1] != b'\n':
+                self.read_pos += len(line)
+                yield line[:-1]
+                
+    def reset(self):
+        self.read_pos = 0
+        
 class ContentHandler(EmbeddingsContentHandler):
     parameters = {
         "max_new_tokens": 50,
