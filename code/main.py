@@ -816,14 +816,16 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         llm = Bedrock(model_id="anthropic.claude-v1", client=boto3_bedrock, model_kwargs=parameters)
         # print("llm is anthropic.claude-v1")
     elif llm_model_name.startswith('gpt-3.5-turbo'):
+        use_stream = True
         global openai_api_key
         llm=ChatOpenAI(model = llm_model_name,
                        openai_api_key = openai_api_key,
                        streaming = True,
                        callbacks=[CustomStreamingOutCallbackHandler(wsclient,msgid, session_id,)],
                        temperature = 0.01)
-        use_stream = True
+        
     elif llm_model_name.endswith('stream'):
+        use_stream = True
         parameters = {
                 "max_length": 2048,
                 "temperature": 0.01,
@@ -832,7 +834,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         llmcontent_handler = SagemakerStreamContentHandler(
             callbacks=CustomStreamingOutCallbackHandler(wsclient,msgid, session_id)
             )
-        llm = SagemakerStreamEndpoint(endpoint_name='chatglm-stream-2023-06-25-07-34-15-297-endpoint', 
+        llm = SagemakerStreamEndpoint(endpoint_name=llm_model_endpoint, 
                 region_name=region, 
                 model_kwargs={'parameters':parameters},
                 content_handler=llmcontent_handler)
@@ -863,6 +865,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
     query_type = None
     free_chat_coversions = []
     verbose = False
+    logger.info(f'use QA: {use_qa}')
     if not use_qa:##如果不使用QA
         query_type = QueryType.Conversation
         free_chat_coversions = [ (item[0],item[1]) for item in session_history if item[2] == QueryType.Conversation]
@@ -1050,6 +1053,8 @@ def lambda_handler(event, context):
     elif model_name == 'alpaca':
         llm_endpoint =  os.environ.get('llm_{}_endpoint'.format(model_name))
         pass
+    elif model_name == 'chatglm-stream':
+        llm_endpoint = os.environ.get('llm_chatglm_stream_endpoint')
     else:
         llm_endpoint = os.environ.get('llm_default_endpoint')
         pass
@@ -1058,7 +1063,7 @@ def lambda_handler(event, context):
     request_timestamp = time.time()  # 或者使用 time.time_ns() 获取纳秒级别的时间戳
     logger.info(f'request_timestamp :{request_timestamp}')
     logger.info(f"event:{event}")
-    logger.info(f"context:{context}")
+    # logger.info(f"context:{context}")
 
     # 创建日志组和日志流
     log_group_name = '/aws/lambda/{}'.format(context.function_name)
