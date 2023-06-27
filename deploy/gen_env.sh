@@ -18,6 +18,7 @@ llm_chatglm_endpoint="${unique_tag}-llm-chatglm-endpoint"
 llm_llama_endpoint="${unique_tag}-llm-llama-endpoint"
 llm_alpaca_endpoint="${unique_tag}-llm-alpaca-endpoint"
 llm_vicuna_endpoint="${unique_tag}-llm-vicuna-endpoint"
+llm_chatglm_stream_endpoint="${unique_tag}-llm-chatglm-stream-endpoint"
 bucket="${unique_tag}-bucket"
 wss_resourceArn=arn:aws:execute-api:us-east-2:946277762357:3g36ob2mc2/*/*/@connections/*
 
@@ -37,6 +38,7 @@ echo "llm_chatglm_endpoint=${llm_chatglm_endpoint}" >> .env
 echo "llm_llama_endpoint=${llm_llama_endpoint}" >> .env
 echo "llm_alpaca_endpoint=${llm_alpaca_endpoint}" >> .env
 echo "llm_vicuna_endpoint=${llm_vicuna_endpoint}" >> .env
+echo "llm_chatglm_stream_endpoint=${llm_chatglm_stream_endpoint}" >> .env
 echo "UPLOAD_BUCKET=${bucket}" >> .env
 echo "UPLOAD_OBJ_PREFIX=ai-content/" >> .env
 echo "wss_resourceArn=${wss_resourceArn}" >> .env
