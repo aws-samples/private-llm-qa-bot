@@ -12,13 +12,10 @@ import requests
 import uuid
 # from transformers import AutoTokenizer
 from enum import Enum
-from typing import List
 from opensearchpy import OpenSearch, RequestsHttpConnection
 from requests_aws4auth import AWS4Auth
 from langchain.chains.question_answering import load_qa_chain
-from langchain.chains import LLMChain
 from langchain.chat_models import ChatOpenAI
-from typing import Dict, List
 from langchain.embeddings import SagemakerEndpointEmbeddings
 from langchain.embeddings.sagemaker_endpoint import EmbeddingsContentHandler
 from langchain.llms.sagemaker_endpoint import LLMContentHandler
@@ -27,15 +24,53 @@ from langchain.chains import LLMChain,ConversationalRetrievalChain,ConversationC
 from langchain.schema import BaseRetriever
 from langchain.schema import Document
 from langchain.llms.bedrock import Bedrock
-from pydantic import BaseModel
+from pydantic import BaseModel,Extra,root_validator
 import openai
 from langchain.callbacks.base import BaseCallbackHandler
-import sys
-from typing import Any, Dict, List, Union
+from langchain.callbacks.manager import CallbackManagerForLLMRun
+from typing import Any, Dict, List, Union,Mapping, Optional, TypeVar, Union
 from langchain.schema import LLMResult
+from langchain.llms.base import LLM
 import io
 
 
+credentials = boto3.Session().get_credentials()
+region = boto3.Session().region_name
+awsauth = AWS4Auth(credentials.access_key, credentials.secret_key, region, 'es', session_token=credentials.token)
+
+
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+sm_client = boto3.client("sagemaker-runtime")
+# llm_endpoint = 'bloomz-7b1-mt-2023-04-19-09-41-24-189-endpoint'
+chat_session_table = os.environ.get('chat_session_table')
+QA_SEP = "=>"
+A_Role="用户"
+B_Role="AWSBot"
+SYSTEM_ROLE_PROMPT = '你是云服务AWS的智能客服机器人AWSBot'
+Fewshot_prefix_Q="问题"
+Fewshot_prefix_A="回答"
+RESET = '/rs'
+openai_api_key = None
+
+class StreamScanner:    
+    def __init__(self):
+        self.buff = io.BytesIO()
+        self.read_pos = 0
+        
+    def write(self, content):
+        self.buff.seek(0, io.SEEK_END)
+        self.buff.write(content)
+        
+    def readlines(self):
+        self.buff.seek(self.read_pos)
+        for line in self.buff.readlines():
+            if line[-1] != b'\n':
+                self.read_pos += len(line)
+                yield line[:-1]
+                
+    def reset(self):
+        self.read_pos = 0
 
 class CustomStreamingOutCallbackHandler(BaseCallbackHandler):
     """Callback handler for streaming. Only works with LLMs that support streaming."""
@@ -81,69 +116,109 @@ class CustomStreamingOutCallbackHandler(BaseCallbackHandler):
         data = json.dumps({ 'msgid':self.msgid, 'role': "AI", 'text': {'content':str(error[0])+'[DONE]'} })
         self.postMessage(data)
 
-credentials = boto3.Session().get_credentials()
-region = boto3.Session().region_name
-awsauth = AWS4Auth(credentials.access_key, credentials.secret_key, region, 'es', session_token=credentials.token)
+class SagemakerStreamContentHandler(LLMContentHandler):
+    content_type: Optional[str] = "application/json"
+    accepts: Optional[str] = "application/json"
+    callbacks:BaseCallbackHandler
+    class Config:
+        """Configuration for this pydantic object."""
+        extra = Extra.forbid
+    
+    def __init__(self,callbacks:BaseCallbackHandler,**kwargs) -> None:
+        super().__init__(**kwargs)
+        self.callbacks = callbacks
+ 
+    def transform_input(self, prompt: str, model_kwargs: Dict) -> bytes:
+        input_str = json.dumps({'inputs': prompt,'history':[],**model_kwargs})
+        return input_str.encode('utf-8')
+    
+    def transform_output(self, event_stream: Any) -> str:
+        scanner = StreamScanner()
+        text = ''
+        for event in event_stream:
+            scanner.write(event['PayloadPart']['Bytes'])
+            for line in scanner.readlines():
+                try:
+                    resp = json.loads(line)
+                    token = resp.get("outputs")['outputs']
+                    text += token
+                    self.callbacks.on_llm_new_token(token)
+                    # print(token, end='')
+                except Exception as e:
+                    # print(line)
+                    continue
+        self.callbacks.on_llm_end(None)
+        return text
+    
+class SagemakerStreamEndpoint(LLM):
+    endpoint_name: str = ""
+    region_name: str = ""
+    content_handler: LLMContentHandler
+    model_kwargs: Optional[Dict] = None
+    endpoint_kwargs: Optional[Dict] = None
+    class Config:
+        """Configuration for this pydantic object."""
+        extra = Extra.forbid
+    
+    @root_validator()
+    def validate_environment(cls, values: Dict) -> Dict:
+        """Validate that AWS credentials to and python package exists in environment."""
+        try:
+            session = boto3.Session()
+            values["client"] = session.client(
+                "sagemaker-runtime", region_name=values["region_name"]
+            )
+        except Exception as e:
+            raise ValueError(
+                "Could not load credentials to authenticate with AWS client. "
+                "Please check that credentials in the specified "
+                "profile name are valid."
+            ) from e
+        return values
+    
+    @property
+    def _identifying_params(self) -> Mapping[str, Any]:
+        """Get the identifying parameters."""
+        _model_kwargs = self.model_kwargs or {}
+        return {
+            **{"endpoint_name": self.endpoint_name},
+            **{"model_kwargs": _model_kwargs},
+        }
 
+    @property
+    def _llm_type(self) -> str:
+        """Return type of llm."""
+        return "sagemaker_stream_endpoint"
+    
+    def _call(
+        self,
+        prompt: str,
+        stop: Optional[List[str]] = None,
+        run_manager: Optional[CallbackManagerForLLMRun] = None,
+        **kwargs: Any,
+    ) -> str:
+        _model_kwargs = self.model_kwargs or {}
+        _model_kwargs = {**_model_kwargs, **kwargs}
+        _endpoint_kwargs = self.endpoint_kwargs or {}
 
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
-sm_client = boto3.client("sagemaker-runtime")
-# llm_endpoint = 'bloomz-7b1-mt-2023-04-19-09-41-24-189-endpoint'
-chat_session_table = os.environ.get('chat_session_table')
-QA_SEP = "=>"
-A_Role="用户"
-B_Role="AWSBot"
-SYSTEM_ROLE_PROMPT = '你是云服务AWS的智能客服机器人AWSBot'
-Fewshot_prefix_Q="问题"
-Fewshot_prefix_A="回答"
-RESET = '/rs'
-openai_api_key = None
+        body = self.content_handler.transform_input(prompt, _model_kwargs)
+        content_type = self.content_handler.content_type
+        accepts = self.content_handler.accepts
 
-class StreamScanner:
-    """
-    A helper class for parsing the InvokeEndpointWithResponseStream event stream. 
-    
-    The output of the model will be in the following format:
-    ```
-    b'{"outputs": [" a"]}\n'
-    b'{"outputs": [" challenging"]}\n'
-    b'{"outputs": [" problem"]}\n'
-    ...
-    ```
-    
-    While usually each PayloadPart event from the event stream will contain a byte array 
-    with a full json, this is not guaranteed and some of the json objects may be split across
-    PayloadPart events. For example:
-    ```
-    {'PayloadPart': {'Bytes': b'{"outputs": '}}
-    {'PayloadPart': {'Bytes': b'[" problem"]}\n'}}
-    ```
-    
-    This class accounts for this by concatenating bytes written via the 'write' function
-    and then exposing a method which will return lines (ending with a '\n' character) within
-    the buffer via the 'readlines' function. It maintains the position of the last read 
-    position to ensure that previous bytes are not exposed again. 
-    """
-    
-    def __init__(self):
-        self.buff = io.BytesIO()
-        self.read_pos = 0
-        
-    def write(self, content):
-        self.buff.seek(0, io.SEEK_END)
-        self.buff.write(content)
-        
-    def readlines(self):
-        self.buff.seek(self.read_pos)
-        for line in self.buff.readlines():
-            if line[-1] != b'\n':
-                self.read_pos += len(line)
-                yield line[:-1]
-                
-    def reset(self):
-        self.read_pos = 0
-        
+        # send request
+        try:
+            response = self.client.invoke_endpoint_with_response_stream(
+                EndpointName=self.endpoint_name,
+                Body=body,
+                ContentType=content_type,
+                Accept=accepts,
+                **_endpoint_kwargs,
+            )
+        except Exception as e:
+            raise ValueError(f"Error raised by inference endpoint: {e}")
+        text = self.content_handler.transform_output(response["Body"])
+        return text
+       
 class ContentHandler(EmbeddingsContentHandler):
     parameters = {
         "max_new_tokens": 50,
@@ -396,44 +471,6 @@ def get_vector_by_sm_endpoint(questions, sm_client, endpoint_name):
     return embeddings
 
 def search_using_aos_knn(client, q_embedding, index, size=10):
-    # awsauth = (username, passwd)
-    # print(type(q_embedding))
-    # logger.info(f"q_embedding:")
-    # logger.info(q_embedding)
-    headers = {"Content-Type": "application/json"}
-    # query = {
-    #     "size": size,
-    #     "query": {
-    #         "bool": {
-    #             "must":[ {"term": { "doc_type": "P" }} ],
-    #             "should": [ { "knn": { "embedding": { "vector": q_embedding, "k": size }}} ]
-    #         }
-    #     },
-    #     "sort": [
-    #         {
-    #             "_score": {
-    #                 "order": "asc"
-    #             }
-    #         }
-    #     ]
-    # }
-
-    # reference: https://opensearch.org/docs/latest/search-plugins/knn/filter-search-knn/#boolean-filter-with-ann-search
-    # query =  {
-    #     "bool": {
-    #         "filter": {
-    #             "bool": {
-    #                 "must": [{ "term": {"doc_type": "P" }}]
-    #             }
-    #         },
-    #         "must": [
-    #             {
-    #                 "knn": {"embedding": { "vector": q_embedding, "k": size }}
-    #             } 
-    #         ]
-    #     }
-    # }
-
 
     #Note: 查询时无需指定排序方式，最临近的向量分数越高，做过归一化(0.0~1.0)
     query = {
@@ -454,16 +491,6 @@ def search_using_aos_knn(client, q_embedding, index, size=10):
     )
     opensearch_knn_respose = [{'id':item['_id'],'doc':"{}{}{}".format(item['_source']['doc'], QA_SEP, item['_source']['content']),"doc_type":item["_source"]["doc_type"],"score":item["_score"]}  for item in query_response["hits"]["hits"]]
     return opensearch_knn_respose
-    # try:
-    #     r = requests.post("https://"+hostname + "/" + index +
-    #                     '/_search', headers=headers, json=query)
-    #     results = json.loads(r.text)["hits"]["hits"]
-    #     for item in results:
-    #         opensearch_knn_respose.append( {'id':item['_id'],'doc':"{}{}{}".format(item['_source']['doc'], QA_SEP, item['_source']['answer']),"doc_type":item["_source"]["doc_type"],"score":item["_score"]} )
-    #     return opensearch_knn_respose
-    # except Exception as e:
-    #     print(f'knn query exception:{str(e)}')
-    #     return []
     
 
 
@@ -569,17 +596,20 @@ def get_session(session_id):
     # table name
     table = dynamodb.Table(table_name)
     operation_result = ""
-
-    response = table.get_item(Key={'session-id': session_id})
-
-    if "Item" in response.keys():
+    try:
+        response = table.get_item(Key={'session-id': session_id})
+        if "Item" in response.keys():
         # print("****** " + response["Item"]["content"])
-        operation_result = json.loads(response["Item"]["content"])
-    else:
-        # print("****** No result")
-        operation_result = ""
+            operation_result = json.loads(response["Item"]["content"])
+        else:
+            # print("****** No result")
+            operation_result = ""
+        return operation_result
+    except Exception as e:
+        logger.info(f"get session failed {str(e)}")
+        return ""
 
-    return operation_result
+
 
 
 # param:    session_id
@@ -633,62 +663,6 @@ def enforce_stop_tokens(text: str, stop: List[str]) -> str:
     
     return re.split("|".join(stop), text)[0]
 
-def Generate(smr_client, llm_endpoint, prompt, llm_name, stop=None, history=[]):
-    answer = None
-    if llm_name == "chatglm":
-        logger.info("call chatglm...")
-        parameters = {
-        "max_length": 2048,
-        "temperature": 0.01,
-        "num_beams": 1, # >1可能会报错，"probability tensor contains either `inf`, `nan` or element < 0"； 即使remove_invalid_values=True也不能解决
-        "do_sample": False,
-        "top_p": 0.7,
-        "logits_processor" : None,
-        # "remove_invalid_values" : True
-        }
-        response_model = smr_client.invoke_endpoint(
-            EndpointName=llm_endpoint,
-            Body=json.dumps(
-            {
-                "inputs": prompt,
-                "parameters": parameters,
-                "history" : history
-            }
-            ),
-            ContentType="application/json",
-        )
-
-        json_ret = json.loads(response_model['Body'].read().decode('utf8'))
-
-        answer = json_ret['outputs']
-    elif llm_name == "bloomz":
-        logger.info("call bloomz...")
-        parameters = {
-            # "early_stopping": True,
-            "length_penalty": 1.0,
-            "max_new_tokens": 200,
-            "temperature": 0,
-            "min_length": 20,
-            "no_repeat_ngram_size": 200,
-            # "eos_token_id": ['\n']
-        }
-
-        response_model = smr_client.invoke_endpoint(
-            EndpointName=llm_endpoint,
-            Body=json.dumps(
-                {
-                    "inputs": prompt,
-                    "parameters": parameters
-                }
-            ),
-            ContentType="application/json",
-        )
-        
-        json_ret = json.loads(response_model['Body'].read().decode('utf8'))
-        answer = json_ret['outputs'][len(prompt):]
-
-    return enforce_stop_tokens(answer, stop)
-
 
 class QueryType(Enum):
     KeywordQuery   = "KeywordQuery"       #用户仅仅输入了一些关键词（2 token)
@@ -696,11 +670,7 @@ class QueryType(Enum):
     Conversation   = "Conversation"       #用户输入的是跟知识库无关的问题
 
 
-# def intention_classify(post_text, prompt_template, few_shot_example):
-#     prompt = prompt_template.format(
-#         fewshot=few_shot_example, question=post_text)
-#     result = Generate(sm_client, llm_endpoint, prompt)
-#     return result
+
 
 
 def qa_knowledge_fewshot_build(recalls):
@@ -823,7 +793,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         logger.info(json_obj_str)
         return answer
     
-    print("llm_model_name : {}".format(llm_model_name))
+    logger.info("llm_model_name : {}".format(llm_model_name))
     llm = None
     if llm_model_name == 'claude':
         ACCESS_KEY, SECRET_KEY=get_bedrock_aksk()
@@ -853,6 +823,19 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
                        callbacks=[CustomStreamingOutCallbackHandler(wsclient,msgid, session_id,)],
                        temperature = 0.01)
         use_stream = True
+    elif llm_model_name.endswith('stream'):
+        parameters = {
+                "max_length": 2048,
+                "temperature": 0.01,
+                "top_p":1
+                }
+        llmcontent_handler = SagemakerStreamContentHandler(
+            callbacks=CustomStreamingOutCallbackHandler(wsclient,msgid, session_id)
+            )
+        llm = SagemakerStreamEndpoint(endpoint_name='chatglm-stream-2023-06-25-07-34-15-297-endpoint', 
+                region_name=region, 
+                model_kwargs={'parameters':parameters},
+                content_handler=llmcontent_handler)
     else:
         llmcontent_handler = llmContentHandler()
         llm=SagemakerEndpoint(
