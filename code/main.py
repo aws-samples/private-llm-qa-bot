@@ -235,13 +235,6 @@ class ContentHandler(EmbeddingsContentHandler):
         return response_json["sentence_embeddings"]
 
 class llmContentHandler(LLMContentHandler):
-    parameters = {
-        "max_length": 2048,
-        "temperature": 0.01,
-        "num_beams": 1, # >1可能会报错，"probability tensor contains either `inf`, `nan` or element < 0"； 即使remove_invalid_values=True也不能解决
-        "do_sample": False,
-        "top_p": 0.7,
-    }
     def transform_input(self, prompt: str, model_kwargs: Dict) -> bytes:
         input_str = json.dumps({'inputs': prompt,'history':[],**model_kwargs})
         return input_str.encode('utf-8')
@@ -751,7 +744,7 @@ def get_bedrock_aksk(secret_name='chatbot_bedrock', region_name = "us-west-2"):
     return secret['BEDROCK_ACCESS_KEY'],secret['BEDROCK_SECRET_KEY']
 
 def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str, llm_model_endpoint:str, llm_model_name:str, aos_endpoint:str, aos_index:str, aos_knn_field:str,
-                    aos_result_num:int, kendra_index_id:str, kendra_result_num:int,use_qa:bool,wsclient=None,msgid=''):
+                    aos_result_num:int, kendra_index_id:str, kendra_result_num:int,use_qa:bool,wsclient=None,msgid:str='',max_tokens:int = 2048,temperature:float = 0.01):
     """
     Entry point for the Lambda function.
 
@@ -791,7 +784,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         json_obj['log_type'] = "all"
         json_obj_str = json.dumps(json_obj, ensure_ascii=False)
         logger.info(json_obj_str)
-        return answer
+        return answer,use_stream
     
     logger.info("llm_model_name : {}".format(llm_model_name))
     llm = None
@@ -807,9 +800,9 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         )
 
         parameters = {
-            "max_tokens_to_sample": 1024,
+            "max_tokens_to_sample": max_tokens,
             # "stop_sequences":STOP,
-            # "temperature":0,
+            "temperature":temperature,
             # "top_p":0.9
         }
         
@@ -822,13 +815,13 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
                        openai_api_key = openai_api_key,
                        streaming = True,
                        callbacks=[CustomStreamingOutCallbackHandler(wsclient,msgid, session_id,)],
-                       temperature = 0.01)
+                       temperature = temperature)
         
     elif llm_model_name.endswith('stream'):
         use_stream = True
         parameters = {
-                "max_length": 2048,
-                "temperature": 0.01,
+                "max_length": max_tokens,
+                "temperature": temperature,
                 "top_p":1
                 }
         llmcontent_handler = SagemakerStreamContentHandler(
@@ -839,11 +832,18 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
                 model_kwargs={'parameters':parameters},
                 content_handler=llmcontent_handler)
     else:
+        parameters = {
+            "max_length": max_tokens,
+            "temperature": temperature,
+        # "num_beams": 1, # >1可能会报错，"probability tensor contains either `inf`, `nan` or element < 0"； 即使remove_invalid_values=True也不能解决
+        # "do_sample": False,
+        # "top_p": 1,
+        }
         llmcontent_handler = llmContentHandler()
         llm=SagemakerEndpoint(
                 endpoint_name=llm_model_endpoint, 
                 region_name=region, 
-                model_kwargs={'parameters':llmcontent_handler.parameters},
+                model_kwargs={'parameters':parameters},
                 content_handler=llmcontent_handler
             )
     
@@ -855,9 +855,6 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
 
     chat_coversions = [ (item[0],item[1]) for item in session_history]
 
-
-
-
     elpase_time = time.time() - start1
     logger.info(f'runing time of get_session : {elpase_time}s seconds')
     
@@ -868,7 +865,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
     logger.info(f'use QA: {use_qa}')
     if not use_qa:##如果不使用QA
         query_type = QueryType.Conversation
-        free_chat_coversions = [ (item[0],item[1]) for item in session_history if item[2] == QueryType.Conversation]
+        free_chat_coversions = [ (item[0],item[1]) for item in session_history if item[2] == str(query_type)]
         chat_history= get_chat_history(free_chat_coversions[-2:])
         prompt_template = create_chat_prompt_templete(lang='zh')
         llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
@@ -912,7 +909,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
             # print(answer)
         else:
             query_type = QueryType.Conversation
-            free_chat_coversions = [ (item[0],item[1]) for item in session_history if item[2] == QueryType.Conversation ]
+            free_chat_coversions = [ (item[0],item[1]) for item in session_history if item[2] == str(query_type)]
             # free_chat_coversions = [ (item[0],item[1]) for item in session_history ]
             chat_history= get_chat_history(free_chat_coversions[-2:])
             prompt_template = create_chat_prompt_templete(lang='zh')
@@ -1036,6 +1033,8 @@ def lambda_handler(event, context):
     embedding_endpoint = event['embedding_model'] 
     use_qa = event.get('use_qa',True)
     msgid = event.get('msgid')
+    max_tokens = event.get('max_tokens',2048)
+    temperature =  event.get('temperature',0.01)
 
     ##获取前端给的系统设定，如果没有，则使用lambda里的默认值
     global B_Role,SYSTEM_ROLE_PROMPT
@@ -1096,7 +1095,7 @@ def lambda_handler(event, context):
     
     main_entry_start = time.time()  # 或者使用 time.time_ns() 获取纳秒级别的时间戳
     answer,use_stream = main_entry_new(session_id, question, embedding_endpoint, llm_endpoint, model_name, aos_endpoint, aos_index, aos_knn_field, aos_result_num,
-                       Kendra_index_id, Kendra_result_num,use_qa,wsclient,msgid)
+                       Kendra_index_id, Kendra_result_num,use_qa,wsclient,msgid,max_tokens,temperature)
     main_entry_elpase = time.time() - main_entry_start  # 或者使用 time.time_ns() 获取纳秒级别的时间戳
     logger.info(f'runing time of main_entry : {main_entry_elpase}s seconds')
     # 2. return rusult
