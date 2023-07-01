@@ -32,6 +32,7 @@ from typing import Any, Dict, List, Union,Mapping, Optional, TypeVar, Union
 from langchain.schema import LLMResult
 from langchain.llms.base import LLM
 import io
+import math
 
 
 credentials = boto3.Session().get_credentials()
@@ -309,10 +310,12 @@ class CustomDocRetriever(BaseRetriever,BaseModel):
                 opensearch_knn_nodup.sort(key=lambda x: x[1])
                 opensearch_bm25_nodup.sort(key=lambda x: x[1])
 
-                kg_combine_result = [ { "doc": item[0], "score": item[1], "doc_type": doc_type } for item in opensearch_knn_nodup[-1*topk:]]
-                knn_kept_doc = [ item[0] for item in opensearch_knn_nodup[-1*topk:] ]
+                half_topk = math.ceil(topk/2) 
+    
+                kg_combine_result = [ { "doc": item[0], "score": item[1], "doc_type": doc_type } for item in opensearch_knn_nodup[-1*half_topk:]]
+                knn_kept_doc = [ item[0] for item in opensearch_knn_nodup[-1*half_topk:] ]
 
-                count = 0
+                count = len(kg_combine_result)
                 for item in opensearch_bm25_nodup[::-1]:
                     if item[0] not in knn_kept_doc:
                         kg_combine_result.append({ "doc": item[0], "score": item[1], "doc_type": doc_type })
@@ -324,18 +327,18 @@ class CustomDocRetriever(BaseRetriever,BaseModel):
 
 
             knn_threshold = 0.2
-            inverted_theshold = 5.0
+            inverted_theshold = 2.0
             filter_knn_result = [ item for item in opensearch_knn_respose if item['doc_type'] in ['Paragraph','Sentence'] and item['score'] > knn_threshold ]
             filter_inverted_result = [ item for item in opensearch_query_response if item['doc_type'] in ['Paragraph','Sentence'] and item['score'] > inverted_theshold ]
             
             paragraph_content = get_topk_items(filter_knn_result, filter_inverted_result, "Paragraph", 2)
 
             knn_threshold = 0.2
-            inverted_theshold = 5.0
+            inverted_theshold = 2.0
             filter_knn_result = [ item for item in opensearch_knn_respose if item['doc_type'] == 'Question' and item['score'] > knn_threshold ]
-            filter_inverted_result = [ item for item in opensearch_knn_respose if item['doc_type'] == 'Question' and item['score'] > inverted_theshold ]
+            filter_inverted_result = [ item for item in opensearch_query_response if item['doc_type'] == 'Question' and item['score'] > inverted_theshold ]
 
-            qa_content = get_topk_items(filter_knn_result, filter_inverted_result, "Question", 2)
+            qa_content = get_topk_items(filter_knn_result, filter_inverted_result, "Question", 4 - len(paragraph_content))
 
             ret_content = paragraph_content + qa_content
             return ret_content
@@ -509,7 +512,10 @@ def aos_search(client, index_name, field, query_term, exactly_match=False, size=
         query =  {
             "query" : {
                 "match_phrase":{
-                    "doc": query_term
+                    "doc": {
+                        "query": query_term,
+                        "analyzer": "ik_smart"
+                      }
                 }
             }
         }
