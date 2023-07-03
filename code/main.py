@@ -1124,7 +1124,7 @@ def lambda_handler(event, context):
                              "useTime": time.time() - request_timestamp,
                              "model": "main_brain",
                              "choices":
-                             [{"text": answer}],
+                             [{"text": "{}[{}]".format(answer, model_name)}],
                              "usage": {"prompt_tokens": 58, "completion_tokens": 15, "total_tokens": 73}},
                             # {"id": uuid.uuid4(),
                             #  "created": request_timestamp,
