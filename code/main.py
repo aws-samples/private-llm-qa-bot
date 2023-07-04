@@ -309,7 +309,7 @@ class CustomDocRetriever(BaseRetriever,BaseModel):
 
                 opensearch_knn_nodup.sort(key=lambda x: x[1])
                 opensearch_bm25_nodup.sort(key=lambda x: x[1])
-
+                
                 half_topk = math.ceil(topk/2) 
     
                 kg_combine_result = [ { "doc": item[0], "score": item[1], "doc_type": doc_type } for item in opensearch_knn_nodup[-1*half_topk:]]
@@ -324,7 +324,6 @@ class CustomDocRetriever(BaseRetriever,BaseModel):
                         break
 
                 return kg_combine_result
-
 
             knn_threshold = 0.2
             inverted_theshold = 1.0
@@ -342,6 +341,9 @@ class CustomDocRetriever(BaseRetriever,BaseModel):
 
             ret_content = paragraph_content + qa_content
             return ret_content
+        
+        recall_knowledge = combine_recalls(opensearch_knn_respose, opensearch_query_response)
+        return recall_knowledge,opensearch_knn_respose,opensearch_query_response
     
 class ErrorCode:
     DUPLICATED_INDEX_PREFIX = "DuplicatedIndexPrefix"
