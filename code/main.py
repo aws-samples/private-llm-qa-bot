@@ -327,14 +327,14 @@ class CustomDocRetriever(BaseRetriever,BaseModel):
 
 
             knn_threshold = 0.2
-            inverted_theshold = 2.0
+            inverted_theshold = 1.0
             filter_knn_result = [ item for item in opensearch_knn_respose if item['doc_type'] in ['Paragraph','Sentence'] and item['score'] > knn_threshold ]
             filter_inverted_result = [ item for item in opensearch_query_response if item['doc_type'] in ['Paragraph','Sentence'] and item['score'] > inverted_theshold ]
             
             paragraph_content = get_topk_items(filter_knn_result, filter_inverted_result, "Paragraph", 2)
 
             knn_threshold = 0.2
-            inverted_theshold = 2.0
+            inverted_theshold = 1.0
             filter_knn_result = [ item for item in opensearch_knn_respose if item['doc_type'] == 'Question' and item['score'] > knn_threshold ]
             filter_inverted_result = [ item for item in opensearch_query_response if item['doc_type'] == 'Question' and item['score'] > inverted_theshold ]
 
@@ -342,24 +342,6 @@ class CustomDocRetriever(BaseRetriever,BaseModel):
 
             ret_content = paragraph_content + qa_content
             return ret_content
-        
-        def combine_union_recalls(opensearch_knn_respose, opensearch_query_response):
-            '''
-            filter knn_result if the result don't appear in filter_inverted_result
-            '''
-            knn_threshold = 0.2
-            inverted_theshold = 5.0
-            filter_knn_result = { item["id"] :( item["doc"],item["score"]) for item in opensearch_knn_respose if item["score"]> knn_threshold }
-            filter_inverted_result = { item["id"] :( item["doc"],item["score"]) for item in opensearch_query_response if item["score"]> inverted_theshold }
-
-            combine_result = []
-            
-            for key, items in (filter_knn_result|filter_inverted_result).items():
-                combine_result.append({ "doc" : items[0], "score" : items[1] })
-            return combine_result
-        
-        recall_knowledge = combine_recalls(opensearch_knn_respose, opensearch_query_response)
-        return recall_knowledge,opensearch_knn_respose,opensearch_query_response
     
 class ErrorCode:
     DUPLICATED_INDEX_PREFIX = "DuplicatedIndexPrefix"
