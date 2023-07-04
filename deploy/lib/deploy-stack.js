@@ -169,13 +169,13 @@ export class DeployStack extends Stack {
       }]
     });
 
-    const layer = new lambda.LayerVersion(this, 'ChatbotLayer', {
-      code: lambda.Code.fromAsset(path.join(__dirname,'../../code/layer_asset')),
-      description: 'ChatbotLayer Python helper utility',
-      compatibleRuntimes: [lambda.Runtime.PYTHON_3_9],
-      removalPolicy: RemovalPolicy.DESTROY,
-      layerVersionName:'AwsAuthLayer',
-    });
+    // const layer = new lambda.LayerVersion(this, 'ChatbotLayer', {
+    //   code: lambda.Code.fromAsset(path.join(__dirname,'../../code/layer_asset')),
+    //   description: 'ChatbotLayer Python helper utility',
+    //   compatibleRuntimes: [lambda.Runtime.PYTHON_3_9],
+    //   removalPolicy: RemovalPolicy.DESTROY,
+    //   layerVersionName:'AwsAuthLayer',
+    // });
 
     const plugins_table = new Table(this, "plugins_info", {
       partitionKey: {
@@ -189,7 +189,7 @@ export class DeployStack extends Stack {
         environment: {
           
         },
-        layers:[layer],
+        // layers:[layer],
         runtime: lambda.Runtime.PYTHON_3_9,
         timeout: Duration.minutes(1),
         memorySize: 256,
