@@ -768,6 +768,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
 
     return: answer(str)
     """
+    STOP=[f"\n{A_Role}", f"\n{B_Role}"]
     use_stream = False
     #如果是reset命令，则清空历史聊天
     if query_input == RESET:
@@ -807,7 +808,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
 
         parameters = {
             "max_tokens_to_sample": max_tokens,
-            # "stop_sequences":STOP,
+            "stop_sequences":STOP,
             "temperature":temperature,
             # "top_p":0.9
         }
@@ -925,7 +926,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
             ##最终的prompt日志
             final_prompt = prompt_template.format(question=query_input,role_bot=B_Role,role_user=A_Role,chat_history=chat_history)
 
-    STOP=[f"\n{A_Role}", f"\n{B_Role}"]
+    
     answer = enforce_stop_tokens(answer, STOP)
 
     json_obj = {
