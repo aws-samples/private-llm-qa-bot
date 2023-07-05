@@ -53,6 +53,7 @@ Fewshot_prefix_Q="问题"
 Fewshot_prefix_A="回答"
 RESET = '/rs'
 openai_api_key = None
+STOP=[f"\n{A_Role}", f"\n{B_Role}"]
 
 class StreamScanner:    
     def __init__(self):
@@ -143,6 +144,11 @@ class SagemakerStreamContentHandler(LLMContentHandler):
                     resp = json.loads(line)
                     token = resp.get("outputs")['outputs']
                     text += token
+                    for stop in STOP: ##如果碰到STOP截断
+                        if text.endswith(stop):
+                            self.callbacks.on_llm_end(None)
+                            text = text.rstrip(stop)
+                            return text
                     self.callbacks.on_llm_new_token(token)
                     # print(token, end='')
                 except Exception as e:
@@ -752,7 +758,8 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
 
     return: answer(str)
     """
-    STOP=[f"\n{A_Role}", f"\n{B_Role}"]
+    # STOP=[f"\n{A_Role}", f"\n{B_Role}"]
+    global STOP
     use_stream = False
     #如果是reset命令，则清空历史聊天
     if query_input == RESET:
@@ -884,6 +891,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
             query_type = QueryType.KeywordQuery
             answer = exactly_match_result[0]["doc"]
             final_prompt = ''
+            use_stream = False ##如果是直接匹配则不需要走流
         elif recall_knowledge:      
             # chat_history= get_chat_history(chat_coversions[-2:]) ##chatglm模型质量不高，暂时屏蔽历史对话
             chat_history = ''
