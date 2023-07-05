@@ -64,9 +64,10 @@ def get_embedding(smr_client, text_arrs, endpoint_name=EMB_MODEL_ENDPOINT):
     
     return embeddings
 
-def iterate_paragraph(file_content, smr_client, index_name, endpoint_name):
+def iterate_paragraph(file_content, object_key,smr_client, index_name, endpoint_name):
     json_arr = json.loads(file_content)
     publish_date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    doc_title = object_key.split('/')[-1]
 
     for idx, json_item in enumerate(json_arr):
         header = ""
@@ -80,7 +81,7 @@ def iterate_paragraph(file_content, smr_client, index_name, endpoint_name):
 
         #whole paragraph embedding
         whole_paragraph_emb = get_embedding(smr_client, [paragraph_content,], endpoint_name)
-        document = { "publish_date": publish_date, "idx":idx, "doc" : paragraph_content, "doc_type" : "Paragraph", "content" : paragraph_content, "doc_title": header, "doc_category": "", "embedding" : whole_paragraph_emb[0]}
+        document = { "publish_date": publish_date, "idx":idx, "doc" : paragraph_content, "doc_type" : "Paragraph", "content" : paragraph_content, "doc_title": doc_title, "doc_category": "", "embedding" : whole_paragraph_emb[0]}
         yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document).encode('utf-8')).hexdigest()}
         
         # for every sentence
@@ -95,14 +96,14 @@ def iterate_paragraph(file_content, smr_client, index_name, endpoint_name):
             start += 20
             embeddings = get_embedding(smr_client, sentence_slices, endpoint_name)
             for sent_id, sent in enumerate(sentence_slices):
-                document = { "publish_date": publish_date, "idx":idx, "doc" : sent, "doc_type" : "Sentence", "content" : paragraph_content, "doc_title": header, "doc_category": "", "embedding" : embeddings[sent_id]}
+                document = { "publish_date": publish_date, "idx":idx, "doc" : sent, "doc_type" : "Sentence", "content" : paragraph_content, "doc_title": doc_title, "doc_category": "", "embedding" : embeddings[sent_id]}
                 yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document).encode('utf-8')).hexdigest()}
 
-def iterate_QA(file_content, smr_client, index_name, endpoint_name):
+def iterate_QA(file_content, object_key,smr_client, index_name, endpoint_name):
     json_content = json.loads(file_content)
     json_arr = json_content["qa_list"]
 
-    doc_title = json_content["doc_title"]
+    doc_title = object_key.split('/')[-1]
     doc_category = json_content["doc_category"]
     questions = [ json_item['Question'] for json_item in json_arr ]
     answers = [ json_item['Answer'] for json_item in json_arr ]
@@ -385,9 +386,9 @@ def WriteVecIndexToAOS(bucket, object_key, content_type, smr_client, aos_endpoin
 
         gen_aos_record_func = None
         if content_type == "faq":
-            gen_aos_record_func = iterate_QA(file_content, smr_client, index_name, EMB_MODEL_ENDPOINT)
+            gen_aos_record_func = iterate_QA(file_content, object_key,smr_client, index_name, EMB_MODEL_ENDPOINT)
         elif content_type in ['txt', 'pdf', 'json']:
-            gen_aos_record_func = iterate_paragraph(file_content, smr_client, index_name, EMB_MODEL_ENDPOINT)
+            gen_aos_record_func = iterate_paragraph(file_content,object_key, smr_client, index_name, EMB_MODEL_ENDPOINT)
         else:
             raise RuntimeError('No Such Content type supported') 
 
