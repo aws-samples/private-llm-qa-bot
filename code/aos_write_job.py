@@ -67,7 +67,7 @@ def get_embedding(smr_client, text_arrs, endpoint_name=EMB_MODEL_ENDPOINT):
 def iterate_paragraph(file_content, object_key,smr_client, index_name, endpoint_name):
     json_arr = json.loads(file_content)
     publish_date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    doc_title = object_key.split('/')[-1]
+    doc_title = object_key
 
     for idx, json_item in enumerate(json_arr):
         header = ""
@@ -103,7 +103,7 @@ def iterate_QA(file_content, object_key,smr_client, index_name, endpoint_name):
     json_content = json.loads(file_content)
     json_arr = json_content["qa_list"]
 
-    doc_title = object_key.split('/')[-1]
+    doc_title = object_key
     doc_category = json_content["doc_category"]
     questions = [ json_item['Question'] for json_item in json_arr ]
     answers = [ json_item['Answer'] for json_item in json_arr ]
