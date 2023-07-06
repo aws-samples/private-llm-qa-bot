@@ -87,6 +87,19 @@ export class DeployStack extends Stack {
     // const albstack = new ALBStack(this,'ALBstack',{vpc:vpc,instanceId:ec2stack.instanceId});
     // new CfnOutput(this,'ALB dnsname',{value:albstack.dnsName});
 
+    const doc_index_table = new Table(this, "doc_index", {
+      partitionKey: {
+        name: "filename",
+        type: AttributeType.STRING,
+      },
+      sortKey: {
+        name: "embedding_model",
+        type: AttributeType.STRING,
+      },
+      tableName:'chatbot_doc_index',
+      removalPolicy: RemovalPolicy.DESTROY, // NOT recommended for production code
+    });
+
 
 
     const chat_session_table = new Table(this, "chatbot_session_info", {
@@ -142,6 +155,7 @@ export class DeployStack extends Stack {
         }))
       
     chat_session_table.grantReadWriteData(lambda_main_brain);
+    doc_index_table.grantReadWriteData(lambda_main_brain);
     new CfnOutput(this,'lambda roleName',{value:lambda_main_brain.role.roleName});
     
     //add permission for chatbotFE wss 

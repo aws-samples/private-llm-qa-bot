@@ -39,7 +39,7 @@ credentials = boto3.Session().get_credentials()
 region = boto3.Session().region_name
 awsauth = AWS4Auth(credentials.access_key, credentials.secret_key, region, 'es', session_token=credentials.token)
 
-
+DOC_INDEX_TABLE= 'chatbot_doc_index'
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 sm_client = boto3.client("sagemaker-runtime")
@@ -984,24 +984,35 @@ def delete_doc_index(obj_key,embedding_model,index_name):
         return should_continue
     
     ##删除ddb里的索引
-    # dynamodb = boto3.client('dynamodb')
-    # try:
-    #     dynamodb.delete_item(
-    #         TableName=DOC_INDEX_TABLE,
-    #         Key={
-    #             'filename': {'S': obj_key},
-    #             'embedding_model': {'S': embedding_model}
-    #         }
-    #     )
-    # except Exception as e:
-    #     logger.info(str(e))
+    dynamodb = boto3.client('dynamodb')
+    try:
+        dynamodb.delete_item(
+            TableName=DOC_INDEX_TABLE,
+            Key={
+                'filename': {'S': obj_key},
+                'embedding_model': {'S': embedding_model}
+            }
+        )
+    except Exception as e:
+        logger.info(str(e))
 
     ##删除aos里的索引
     should_continue = True
     while should_continue:
         should_continue = delete_aos_index(obj_key,index_name)
     
-
+def list_doc_index ():
+    dynamodb = boto3.client('dynamodb')
+    scan_params = {
+        'TableName': DOC_INDEX_TABLE,
+        'Select': 'ALL_ATTRIBUTES',  # Return all attributes
+    }
+    try:
+        response = dynamodb.scan(**scan_params)
+        return response['Items']
+    except Exception as e:
+        logger.info(str(e))
+        return []
 
 @handle_error
 def lambda_handler(event, context):
@@ -1011,11 +1022,17 @@ def lambda_handler(event, context):
     # "max_tokens": 2048
     # "temperature": 0.9
     logger.info(f"event:{event}")
-    delete_obj_key = event.get('delete_obj_key')
+    method = event.get('method')
     ##如果是删除doc index的操作
-    if delete_obj_key:
-        delete_doc_index(delete_obj_key,os.environ.get("aos_index", ""))
+    if method == 'delete':
+        logger.info(f"delete doc index of:{event.get('filename')}/{event.get('embedding_model')}/{event.get('index_name')}")
+        delete_doc_index(event.get('filename'),event.get('embedding_model'),event.get('index_name'))
         return {'statusCode': 200}
+    ## 如果是get doc index操作
+    if method == 'get':
+        results = list_doc_index()
+        return {'statusCode': 200,'body':results }
+
 
     # input_json = json.loads(event['body'])
     ws_endpoint = event.get('ws_endpoint')
