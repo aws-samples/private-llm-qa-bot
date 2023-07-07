@@ -7,6 +7,12 @@
   
   ![console](./console.png)
   
+- 部署方式
+  参考 [workshop](https://catalog.us-east-1.prod.workshops.aws/workshops/158a2497-7cbe-4ba4-8bee-2307cb01c08a/zh-CN)
+  注意事项:
+  + OpenSearch index的创建方法需要参见下文，不能用workshop中的代码
+  + 不要使用workshop中的前端链接，请使用[网页](http://chatbotfe-1170248869.us-west-2.elb.amazonaws.com/chat#)
+
 - 代码介绍
 
   ```python
