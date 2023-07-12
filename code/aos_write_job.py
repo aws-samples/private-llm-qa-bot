@@ -11,6 +11,7 @@ import hashlib
 import datetime
 import re
 import os
+import itertools
 from bs4 import BeautifulSoup
 from langchain.document_loaders import PDFMinerPDFasHTMLLoader
 from langchain.docstore.document import Document
@@ -21,6 +22,7 @@ s3 = boto3.resource('s3')
 bucket = args['bucket']
 object_key = args['object_key']
 QA_SEP = '=====' # args['qa_sep'] # 
+EXAMPLE_SEP = '\n\n'
 arg_chunk_size = 384
 
 # EMB_MODEL_ENDPOINT = "st-paraphrase-mpnet-base-v2-2023-04-19-04-14-31-658-endpoint"
@@ -31,6 +33,7 @@ smr_client = boto3.client("sagemaker-runtime")
 AOS_ENDPOINT = args['AOS_ENDPOINT']
 REGION = args['REGION']
 INDEX_NAME = 'chatbot-index'
+EXAMPLE_INDEX_NAME = 'chatbot-example-index'
 
 DOC_INDEX_TABLE= 'chatbot_doc_index'
 dynamodb = boto3.client('dynamodb')
@@ -63,6 +66,13 @@ def get_embedding(smr_client, text_arrs, endpoint_name=EMB_MODEL_ENDPOINT):
     embeddings = json_obj["sentence_embeddings"]
     
     return embeddings
+
+def batch_generator(generator, batch_size):
+    while True:
+        batch = list(itertools.islice(generator, batch_size))
+        if not batch:
+            break
+        yield batch
 
 def iterate_paragraph(file_content, object_key,smr_client, index_name, endpoint_name):
     json_arr = json.loads(file_content)
@@ -115,6 +125,26 @@ def iterate_QA(file_content, object_key,smr_client, index_name, endpoint_name):
         document = { "publish_date": publish_date, "doc" : questions[i], "doc_type" : "Question", "content" : answers[i], "doc_title": doc_title, "doc_category": doc_category, "embedding" : embeddings[i]}
         yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document).encode('utf-8')).hexdigest()}
 
+def iterate_examples(file_content, object_key, smr_client, index_name, endpoint_name):
+    json_arr = json.loads(file_content)
+
+    it = iter(json_arr)
+    example_batches = batch_generator(it, batch_size=3)
+    publish_date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    for idx, batch in enumerate(example_batches):
+
+        queries = [ item['query'] for item in batch ]
+        intentions = [ item['intention'] for item in batch ]
+        replies = [ item['reply'] for item in batch ]
+
+        embeddings = get_embedding(smr_client, queries, endpoint_name)
+        for i, query in enumerate(queries):
+            print("query:")
+            print(query)
+            document = { "publish_date": publish_date, "intention" : intentions[i], "query" : queries[i], "reply" : replies[i], "embedding" : embeddings[i]}
+            yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document).encode('utf-8')).hexdigest()}
+            
 def link_header(semantic_snippets):
     heading_fonts_arr = [ item.metadata['heading_font'] for item in semantic_snippets ]
     heading_arr = [ item.metadata['heading'] for item in semantic_snippets ]
@@ -245,6 +275,24 @@ def parse_txt_to_json(file_content):
     json_content = json.dumps(results, ensure_ascii=False)
     return json_content
 
+def parse_example_to_json(file_content):
+    arr = file_content.split(EXAMPLE_SEP)
+    json_arr = []
+
+    for item in arr:
+        elements = item.strip().split("\n")
+        print("elements:")
+        print(elements)
+        obj = { element.split(":")[0] : element.split(":")[1] for element in elements }
+        json_arr.append(obj)
+
+    qa_content = {
+        "example_list" : json_arr
+    }
+    
+    json_content = json.dumps(qa_content, ensure_ascii=False)
+    return json_content
+
 def parse_html_to_json(html_docs):
     text_splitter = RecursiveCharacterTextSplitter( 
         chunk_size = arg_chunk_size,
@@ -280,6 +328,8 @@ def load_content_json_from_s3(bucket, object_key, content_type, credentials):
         elif content_type =='txt':
             json_content = parse_txt_to_json(file_content)
         elif content_type =='json':
+            json_content = file_content
+        elif content_type == 'example':
             json_content = file_content
         else:
             raise "unsupport content type...(pdf, faq, txt are supported.)"
@@ -389,6 +439,8 @@ def WriteVecIndexToAOS(bucket, object_key, content_type, smr_client, aos_endpoin
             gen_aos_record_func = iterate_QA(file_content, object_key,smr_client, index_name, EMB_MODEL_ENDPOINT)
         elif content_type in ['txt', 'pdf', 'json']:
             gen_aos_record_func = iterate_paragraph(file_content,object_key, smr_client, index_name, EMB_MODEL_ENDPOINT)
+        elif content_type in ['example']:
+            gen_aos_record_func = iterate_examples(file_content,object_key, smr_client, index_name, EMB_MODEL_ENDPOINT)
         else:
             raise RuntimeError('No Such Content type supported') 
 
@@ -402,6 +454,7 @@ def process_s3_uploaded_file(bucket, object_key):
     print("********** object_key : " + object_key)
 
     content_type = None
+    index_name = INDEX_NAME
     if object_key.endswith(".faq"):
         print("********** pre-processing faq file")
         content_type = 'faq'
@@ -414,6 +467,10 @@ def process_s3_uploaded_file(bucket, object_key):
     elif object_key.endswith(".json"):
         print("********** pre-processing json file")
         content_type = 'json'
+    elif object_key.endswith(".example"):
+        print("********** pre-processing example file")
+        content_type = 'example'
+        index_name = EXAMPLE_INDEX_NAME
     else:
         raise "unsupport content type...(pdf, faq, txt are supported.)"
     
@@ -423,9 +480,12 @@ def process_s3_uploaded_file(bucket, object_key):
         print("doc file already exists")
         return
     
-    WriteVecIndexToAOS(bucket, object_key, content_type, smr_client)
+    response = WriteVecIndexToAOS(bucket, object_key, content_type, smr_client, index_name=index_name)
+    print("response:")
+    print(response)
+    print("ingest {} chunk to AOS".format(response[0]))
     put_idx_to_ddb(filename=object_key,username='s3event',
-                    index_name=INDEX_NAME,
+                    index_name=index_name,
                         embedding_model=EMB_MODEL_ENDPOINT)
 
 for s3_key in object_key.split(','):
