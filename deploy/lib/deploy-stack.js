@@ -154,6 +154,43 @@ export class DeployStack extends Stack {
         resources: ['*'],
         }))
       
+    const lambda_intention = new DockerImageFunction(this,
+      "lambda_intention", {
+      code: DockerImageCode.fromImageAsset(join(__dirname, "../lambda/intention")),
+      timeout: Duration.minutes(15),
+      memorySize: 1024,
+      runtime: 'python3.9',
+      // functionName: 'Main_brain',
+      vpc:vpc,
+      vpcSubnets:subnets,
+      securityGroups:securityGroups,
+      architecture: Architecture.X86_64,
+      environment: {
+        aos_endpoint:opensearch_endpoint,
+        aos_index:process.env.aos_index ,
+        aos_knn_field:process.env.aos_knn_field,
+        embedding_endpoint:process.env.embedding_endpoint,
+        llm_model_endpoint:process.env.llm_chatglm_endpoint
+      },
+    });
+
+    // Grant the Lambda function can invoke sagemaker
+    lambda_intention.addToRolePolicy(new iam.PolicyStatement({
+      // principals: [new iam.AnyPrincipal()],
+        actions: [ 
+          "sagemaker:InvokeEndpointAsync",
+          "sagemaker:InvokeEndpoint",
+          "s3:List*",
+          "s3:Put*",
+          "s3:Get*",
+          "es:*",
+          "dynamodb:*",
+          "secretsmanager:GetSecretValue",
+          ],
+        effect: iam.Effect.ALLOW,
+        resources: ['*'],
+        }))
+      
     chat_session_table.grantReadWriteData(lambda_main_brain);
     doc_index_table.grantReadWriteData(lambda_main_brain);
     new CfnOutput(this,'lambda roleName',{value:lambda_main_brain.role.roleName});
