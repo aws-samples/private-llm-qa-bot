@@ -53,7 +53,7 @@ Fewshot_prefix_Q="问题"
 Fewshot_prefix_A="回答"
 RESET = '/rs'
 openai_api_key = None
-STOP=[f"\n{A_Role}", f"\n{B_Role}"]
+STOP=[f"\n{A_Role}", f"\n{B_Role}", f"\n{Fewshot_prefix_Q}"]
 
 class StreamScanner:    
     def __init__(self):
