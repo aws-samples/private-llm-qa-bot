@@ -157,5 +157,8 @@ def lambda_handler(event, context):
     log_dict = { "prompt" : prompt, "answer" : answer , "examples": docs_simple }
     log_dict_str = json.dumps(log_dict, ensure_ascii=False)
     logger.info(log_dict_str)
+
+    if answer not in options:
+        answer = 'unknown'
     
     return answer
