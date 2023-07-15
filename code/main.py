@@ -928,7 +928,8 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         "kendra_doc": [],
         "knowledges" : recall_knowledge,
         "detect_query_type": str(query_type),
-        "LLM_input": final_prompt
+        "LLM_input": final_prompt,
+        "LLM_model_name": llm_model_name
     }
 
     json_obj['session_id'] = session_id

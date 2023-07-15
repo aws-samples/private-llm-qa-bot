@@ -34,6 +34,8 @@ AOS_ENDPOINT = args['AOS_ENDPOINT']
 REGION = args['REGION']
 INDEX_NAME = 'chatbot-index'
 EXAMPLE_INDEX_NAME = 'chatbot-example-index'
+EMB_BATCH_SIZE=20
+Sentence_Len_Threshold=10
 
 DOC_INDEX_TABLE= 'chatbot_doc_index'
 dynamodb = boto3.client('dynamodb')
@@ -79,34 +81,31 @@ def iterate_paragraph(file_content, object_key,smr_client, index_name, endpoint_
     publish_date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     doc_title = object_key
 
-    for idx, json_item in enumerate(json_arr):
-        header = ""
-        if len(json_item['heading']) > 0:
-            header = json_item['heading'][0]['heading']
-            
-        paragraph_content = json_item['content']
+    def chunk_generator(json_arr):
+        for idx, json_item in enumerate(json_arr):
+            header = ""
+            if len(json_item['heading']) > 0:
+                header = json_item['heading'][0]['heading']
 
-        if len(paragraph_content) > 1024:
-            continue
+            paragraph_content = json_item['content']
+            if len(paragraph_content) > 1024 and len(paragraph_content) < Sentence_Len_Threshold:
+                continue
 
-        #whole paragraph embedding
-        whole_paragraph_emb = get_embedding(smr_client, [paragraph_content,], endpoint_name)
-        document = { "publish_date": publish_date, "idx":idx, "doc" : paragraph_content, "doc_type" : "Paragraph", "content" : paragraph_content, "doc_title": doc_title, "doc_category": "", "embedding" : whole_paragraph_emb[0]}
-        yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document).encode('utf-8')).hexdigest()}
-        
-        # for every sentence
-        sentences = re.split('[。？?.！!]', paragraph_content)
-        sentences = [ sent for sent in sentences if len(sent) > 2 ]
-        sentences_count = len(sentences)
-        print("Process {} sentences in one batch".format(sentences_count))
-        start = 0 
-        while start < sentences_count:
-            sentence_slices = sentences[start:start+20]
-            print("Process {}-{} sentences in one micro-batch".format(start, start+20))
-            start += 20
-            embeddings = get_embedding(smr_client, sentence_slices, endpoint_name)
-            for sent_id, sent in enumerate(sentence_slices):
-                document = { "publish_date": publish_date, "idx":idx, "doc" : sent, "doc_type" : "Sentence", "content" : paragraph_content, "doc_title": doc_title, "doc_category": "", "embedding" : embeddings[sent_id]}
+            yield (idx, paragraph_content, 'Paragraph', paragraph_content)
+
+            sentences = re.split('[。？?.！!]', paragraph_content)
+            for sent in (sent for sent in sentences if len(sent) > Sentence_Len_Threshold): 
+                yield (idx, sent, 'Sentence', paragraph_content)
+
+    generator = chunk_generator(json_arr)
+    batches = batch_generator(generator, batch_size=EMB_BATCH_SIZE)
+    for batch in batches:
+        if batch is not None:
+            emb_src_texts = [item[1] for item in batch]
+            print("len of emb_src_texts :{}".format(len(emb_src_texts)))
+            embeddings = get_embedding(smr_client, emb_src_texts, endpoint_name)
+            for i, emb in enumerate(embeddings):
+                document = { "publish_date": publish_date, "idx": batch[i][0], "doc" : batch[i][1], "doc_type" : batch[i][2], "content" : batch[i][3], "doc_title": doc_title, "doc_category": "", "embedding" : emb}
                 yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document).encode('utf-8')).hexdigest()}
 
 def iterate_QA(file_content, object_key,smr_client, index_name, endpoint_name):
@@ -240,6 +239,7 @@ def parse_faq_to_json(file_content):
     arr = file_content.split(QA_SEP)
     json_arr = []
     for item in arr:
+        print(item)
         question, answer = item.strip().split("\n", 1)
         question = question.replace("Question: ", "")
         answer = answer.replace("Answer: ", "")
@@ -489,4 +489,5 @@ def process_s3_uploaded_file(bucket, object_key):
                         embedding_model=EMB_MODEL_ENDPOINT)
 
 for s3_key in object_key.split(','):
+    print("processing {}".format(s3_key))
     process_s3_uploaded_file(bucket, s3_key)
