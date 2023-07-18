@@ -1,1 +1,297 @@
-[{"query": "g4dn的价格是多少", "intention": "价格咨询", "reply": "-"}, {"query": "Athena查询的单价是多少？", "intention": "价格咨询", "reply": "-"}, {"query": "Athena是如何计费的？", "intention": "价格咨询", "reply": "-"}, {"query": "AWS Glue的 DPU Hour价格是多少？ ", "intention": "价格咨询", "reply": "-"}, {"query": "AWS Glue的交互式会话的计算单价是多少？ ", "intention": "价格咨询", "reply": "-"}, {"query": "Aurora的 I/O 费率是多少 ", "intention": "价格咨询", "reply": "-"},  {"query": "Aurora备份存储怎么收费？", "intention": "价格咨询", "reply": "-"},  {"query": "Lex的输入请求的单价是多少", "intention": "价格咨询", "reply": "-"},  {"query": "SageMaker中ml.t3.large的notebook怎么收费？", "intention": "价格咨询", "reply": "-"}, {"query": "AWS的计费方式有哪些？", "intention": "价格咨询", "reply": "-"},{"query": "如何计算AWS服务的成本？", "intention": "价格咨询", "reply": "-"},{"query": "EC2实例的定价是如何确定的？", "intention": "价格咨询", "reply": "-"},{"query": "S3存储服务的价格是如何计算的？", "intention": "价格咨询", "reply": "-"},{"query": "RDS数据库服务的定价如何确定？", "intention": "价格咨询", "reply": "-"},{"query": "Lambda函数的定价是怎样的？", "intention": "价格咨询", "reply": "-"},{"query": "如何比较不同AWS区域之间的定价差异？", "intention": "价格咨询", "reply": "-"},{"query": "在AWS上运行实例的小时成本如何计算？", "intention": "价格咨询", "reply": "-"},{"query": "如何估算使用AWS的数据传输费用？", "intention": "价格咨询", "reply": "-"},{"query": "DynamoDB数据库服务的定价是怎样的？", "intention": "价格咨询", "reply": "-"},{"query": "EBS块存储的价格如何计算？", "intention": "价格咨询", "reply": "-"},{"query": "ELB负载均衡器的定价是怎样的？", "intention": "价格咨询", "reply": "-"},{"query": "如何计算使用CloudFront内容分发网络的费用？", "intention": "价格咨询", "reply": "-"},{"query": "AWS的机器学习服务（如Amazon SageMaker）的价格如何确定？", "intention": "价格咨询", "reply": "-"},{"query": "在AWS上存储Glacier冷存储数据的成本如何计算？", "intention": "价格咨询", "reply": "-"},{"query": "Amazon Redshift数据仓库服务的定价是怎样的？", "intention": "价格咨询", "reply": "-"},{"query": "如何计算使用AWS的消息队列服务（如Amazon SQS）的费用？", "intention": "价格咨询", "reply": "-"},{"query": "AWS的数据库迁移服务的价格如何确定？", "intention": "价格咨询", "reply": "-"},{"query": "使用AWS的域名系统服务（如Amazon Route 53）的成本如何计算？", "intention": "价格咨询", "reply": "-"},{"query": "如何计算使用AWS的虚拟专用网络（VPC）的费用？", "intention": "价格咨询", "reply": "-"},{"query": "AWS的机密管理服务（AWS Secrets Manager）的定价是怎样的？", "intention": "价格咨询", "reply": "-"},{"query": "如何估算使用AWS的数据分析服务（如Amazon Athena）的费用？", "intention": "价格咨询", "reply": "-"},{"query": "使用AWS的服务器迁移服务（如AWS Server Migration Service）的成本如何计算？", "intention": "价格咨询", "reply": "-"},{"query": "AWS的机器学习推理服务（如Amazon Elastic Inference）的价格是怎样的？", "intention": "价格咨询", "reply": "-"},{"query": "使用AWS的容器服务（如Amazon ECS）的费用如何计算？", "intention": "价格咨询", "reply": "-"},{"query": "如何计算使用AWS的文件存储服务（如Amazon EFS）的成本？", "intention": "价格咨询", "reply": "-"},{"query": "AWS的安全审计和合规性服务（如AWS Config）的定价如何确定？", "intention": "价格咨询", "reply": "-"},{"query": "使用AWS的实时数据处理服务（如Amazon Kinesis）的费用如何计算？", "intention": "价格咨询", "reply": "-"},{"query": "如何估算使用AWS的消息推送服务（如Amazon SNS）的成本？", "intention": "价格咨询", "reply": "-"},{"query": "使用AWS的服务器备份服务（如AWS Backup）的价格是怎样的？", "intention": "价格咨询", "reply": "-"},{"query": "AWS的容器注册表服务（Amazon ECR）的定价如何确定？", "intention": "价格咨询", "reply": "-"},{"query": "如何计算使用AWS的资源自动扩展服务（如AWS Auto Scaling）的费用？", "intention": "价格咨询", "reply": "-"},{"query": "使用AWS的日志管理服务（如Amazon CloudWatch Logs）的成本如何计算？", "intention": "价格咨询", "reply": "-"},{"query": "AWS的弹性负载均衡器（ELB）的定价是怎样的？", "intention": "价格咨询", "reply": "-"},{"query": "如何估算使用AWS的数据库分析服务（如Amazon Redshift Spectrum）的费用？", "intention": "价格咨询", "reply": "-"},{"query": "使用AWS的开发者工具（如AWS CodeCommit）的价格如何计算？", "intention": "价格咨询", "reply": "-"},{"query": "如何计算使用AWS的身份和访问管理服务（IAM）的成本？", "intention": "价格咨询", "reply": "-"},{"query": "AWS的数据管道服务（Amazon Data Pipeline）的定价是怎样的？", "intention": "价格咨询", "reply": "-"},{"query": "如何估算使用AWS的容器编排服务（如Amazon ECS）的费用？", "intention": "价格咨询", "reply": "-"},{"query": "使用AWS的服务器监控服务（如Amazon CloudWatch）的成本如何计算？", "intention": "价格咨询", "reply": "-"},{"query": "AWS的机器学习预测服务（如Amazon Forecast）的价格是怎样的？", "intention": "价格咨询", "reply": "-"},{"query": "如何计算使用AWS的存储网关服务（如AWS Storage Gateway）的费用？", "intention": "价格咨询", "reply": "-"},{"query": "使用AWS的应用程序自动化服务（如AWS Step Functions）的定价如何确定？", "intention": "价格咨询", "reply": "-"},{"query": "如何估算使用AWS的机器学习部署服务（如Amazon SageMaker Neo）的成本？", "intention": "价格咨询", "reply": "-"},{"query": "AWS的数据库备份服务（Amazon RDS Backup）的价格是怎样的？", "intention": "价格咨询", "reply": "-"},{"query": "如何计算使用AWS的边缘计算服务（如AWS IoT Greengrass）的费用？", "intention": "价格咨询", "reply": "-"},{"query": "使用AWS的工作流程编排服务（如Amazon SWF）的成本如何计算？", "intention": "价格咨询", "reply": "-"},{"query": "AWS的人工智能推理服务（如Amazon Lex）的定价是怎样的？", "intention": "价格咨询", "reply": "-"},{"query": "如何估算使用AWS的安全令牌服务（如AWS Secrets Manager）的费用？", "intention": "价格咨询", "reply": "-"},{"query": "使用AWS的全球加速器服务（AWS Global Accelerator）的价格如何计算？", "intention": "价格咨询", "reply": "-"}]
+[
+    {
+        "query":"g4dn的价格是多少",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"Athena查询的单价是多少？",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"Athena是如何计费的？",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"AWS Glue的 DPU Hour价格是多少？ ",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"AWS Glue的交互式会话的计算单价是多少？ ",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"Aurora的 I/O 费率是多少 ",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"Aurora备份存储怎么收费？",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"Lex的输入请求的单价是多少",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"SageMaker中ml.t3.large的notebook怎么收费？",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"AWS的计费方式有哪些？",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"如何计算AWS服务的成本？",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"EC2实例的定价是如何确定的？",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"S3存储服务的价格是如何计算的？",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"RDS数据库服务的定价如何确定？",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"Lambda函数的定价是怎样的？",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"如何比较不同AWS区域之间的定价差异？",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"在AWS上运行实例的小时成本如何计算？",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"如何估算使用AWS的数据传输费用？",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"DynamoDB数据库服务的定价是怎样的？",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"EBS块存储的价格如何计算？",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"ELB负载均衡器的定价是怎样的？",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"如何计算使用CloudFront内容分发网络的费用？",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"AWS的机器学习服务（如Amazon SageMaker）的价格如何确定？",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"在AWS上存储Glacier冷存储数据的成本如何计算？",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"Amazon Redshift数据仓库服务的定价是怎样的？",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"如何计算使用AWS的消息队列服务（如Amazon SQS）的费用？",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"AWS的数据库迁移服务的价格如何确定？",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"使用AWS的域名系统服务（如Amazon Route 53）的成本如何计算？",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"如何计算使用AWS的虚拟专用网络（VPC）的费用？",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"AWS的机密管理服务（AWS Secrets Manager）的定价是怎样的？",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"如何估算使用AWS的数据分析服务（如Amazon Athena）的费用？",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"使用AWS的服务器迁移服务（如AWS Server Migration Service）的成本如何计算？",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"AWS的机器学习推理服务（如Amazon Elastic Inference）的价格是怎样的？",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"使用AWS的容器服务（如Amazon ECS）的费用如何计算？",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"如何计算使用AWS的文件存储服务（如Amazon EFS）的成本？",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"AWS的安全审计和合规性服务（如AWS Config）的定价如何确定？",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"使用AWS的实时数据处理服务（如Amazon Kinesis）的费用如何计算？",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"如何估算使用AWS的消息推送服务（如Amazon SNS）的成本？",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"使用AWS的服务器备份服务（如AWS Backup）的价格是怎样的？",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"AWS的容器注册表服务（Amazon ECR）的定价如何确定？",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"如何计算使用AWS的资源自动扩展服务（如AWS Auto Scaling）的费用？",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"使用AWS的日志管理服务（如Amazon CloudWatch Logs）的成本如何计算？",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"AWS的弹性负载均衡器（ELB）的定价是怎样的？",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"如何估算使用AWS的数据库分析服务（如Amazon Redshift Spectrum）的费用？",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"使用AWS的开发者工具（如AWS CodeCommit）的价格如何计算？",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"如何计算使用AWS的身份和访问管理服务（IAM）的成本？",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"AWS的数据管道服务（Amazon Data Pipeline）的定价是怎样的？",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"如何估算使用AWS的容器编排服务（如Amazon ECS）的费用？",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"使用AWS的服务器监控服务（如Amazon CloudWatch）的成本如何计算？",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"AWS的机器学习预测服务（如Amazon Forecast）的价格是怎样的？",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"如何计算使用AWS的存储网关服务（如AWS Storage Gateway）的费用？",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"使用AWS的应用程序自动化服务（如AWS Step Functions）的定价如何确定？",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"如何估算使用AWS的机器学习部署服务（如Amazon SageMaker Neo）的成本？",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"AWS的数据库备份服务（Amazon RDS Backup）的价格是怎样的？",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"如何计算使用AWS的边缘计算服务（如AWS IoT Greengrass）的费用？",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"使用AWS的工作流程编排服务（如Amazon SWF）的成本如何计算？",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"AWS的人工智能推理服务（如Amazon Lex）的定价是怎样的？",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"如何估算使用AWS的安全令牌服务（如AWS Secrets Manager）的费用？",
+        "intention":"价格咨询",
+        "reply":"-"
+    },
+    {
+        "query":"使用AWS的全球加速器服务（AWS Global Accelerator）的价格如何计算？",
+        "intention":"价格咨询",
+        "reply":"-"
+    }
+]
