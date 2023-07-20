@@ -696,6 +696,19 @@ def get_chat_history(inputs) -> str:
         res.append(f"{A_Role}:{human}\n{B_Role}:{ai}")
     return "\n".join(res)
 
+def create_baichuan_prompt_template(lang='zh'):
+    #template_1 = '以下context内的文本内容为背景知识：\n<context>\n{context}\n</context>\n请根据背景知识, 回答这个问题：{question}'
+    #template_2 = '这是原始问题: {question}\n已有的回答: {existing_answer}\n\n现在context内的还有一些文本内容，（如果有需要）你可以根据它们完善现有的回答。\n<context>\n{context}\n</context>\n请根据新的文段，进一步完善你的回答。'
+    if lang == 'zh':
+        prompt_template_zh = """{system_role_prompt}，以下context内的文本内容为背景知识：\n<context>\n{context}\n</context>\n请根据背景知识, 回答这个问题：{question}"""
+
+        PROMPT = PromptTemplate(
+            template=prompt_template_zh,
+            partial_variables={'system_role_prompt':SYSTEM_ROLE_PROMPT},
+            input_variables=["context",'question']
+        )
+    return PROMPT
+
 def create_qa_prompt_templete(lang='zh'):
     if lang == 'zh':
         prompt_template_zh = """{system_role_prompt}，请严格根据反括号中的资料提取相关信息，回答{role_user}的各种问题\n```\n{chat_history}{context}\n```\n\n{role_user}: {question}\n{role_bot}: """
@@ -896,14 +909,14 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
             # chat_history= get_chat_history(chat_coversions[-2:]) ##chatglm模型质量不高，暂时屏蔽历史对话
             chat_history = ''
             query_type = QueryType.KnowledgeQuery
-            prompt_template = create_qa_prompt_templete(lang='zh')
+            prompt_template = create_baichuan_prompt_template(lang='zh') if llm_model_name.startswith('baichuan-finetune') else create_qa_prompt_templete(lang='zh') 
             llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
             # context = "\n".join([doc['doc'] for doc in recall_knowledge])
             context = qa_knowledge_fewshot_build(recall_knowledge)
             ##最终的answer
-            answer = llmchain.run({'question':query_input,'context':context,'chat_history':chat_history,'role_bot':B_Role,'role_user':A_Role})
+            answer = llmchain.run({'question':query_input,'context':context,'chat_history':chat_history,'role_bot':B_Role,'role_user':A_Role })
             ##最终的prompt日志
-            final_prompt = prompt_template.format(question=query_input,role_bot=B_Role,role_user=A_Role,context=context,chat_history=chat_history)
+            final_prompt = prompt_template.format(question=query_input,context=context) if llm_model_name.startswith('baichuan-finetune') else prompt_template.format(question=query_input,role_bot=B_Role,role_user=A_Role,context=context,chat_history=chat_history)
             # print(final_prompt)
             # print(answer)
         else:
