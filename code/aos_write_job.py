@@ -17,7 +17,7 @@ from langchain.document_loaders import PDFMinerPDFasHTMLLoader
 from langchain.docstore.document import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter,CharacterTextSplitter
 
-args = getResolvedOptions(sys.argv, ['bucket', 'object_key','AOS_ENDPOINT','REGION','EMB_MODEL_ENDPOINT'])
+args = getResolvedOptions(sys.argv, ['bucket', 'object_key','AOS_ENDPOINT','REGION','EMB_MODEL_ENDPOINT','PUBLISH_DATE'])
 s3 = boto3.resource('s3')
 bucket = args['bucket']
 object_key = args['object_key']
@@ -32,6 +32,9 @@ smr_client = boto3.client("sagemaker-runtime")
 # AOS_ENDPOINT = 'vpc-chatbot-knn-3qe6mdpowjf3cklpj5c4q2blou.us-east-1.es.amazonaws.com'
 AOS_ENDPOINT = args['AOS_ENDPOINT']
 REGION = args['REGION']
+
+publish_date = args['PUBLISH_DATE'] if 'PUBLISH_DATE' in args.keys() else datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
 INDEX_NAME = 'chatbot-index'
 EXAMPLE_INDEX_NAME = 'chatbot-example-index'
 EMB_BATCH_SIZE=20
@@ -40,9 +43,14 @@ Sentence_Len_Threshold=10
 DOC_INDEX_TABLE= 'chatbot_doc_index'
 dynamodb = boto3.client('dynamodb')
 
-
+AOS_BENCHMARK_ENABLED=False
+import numpy as np
 
 def get_embedding(smr_client, text_arrs, endpoint_name=EMB_MODEL_ENDPOINT):
+    if AOS_BENCHMARK_ENABLED:
+        text_len = len(text_arrs)
+        return [ np.random.rand(768).tolist() for i in range(text_len) ]
+        
     parameters = {
       #"early_stopping": True,
       #"length_penalty": 2.0,
@@ -78,7 +86,6 @@ def batch_generator(generator, batch_size):
 
 def iterate_paragraph(file_content, object_key,smr_client, index_name, endpoint_name):
     json_arr = json.loads(file_content)
-    publish_date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     doc_title = object_key
 
     def chunk_generator(json_arr):
@@ -118,7 +125,6 @@ def iterate_QA(file_content, object_key,smr_client, index_name, endpoint_name):
     answers = [ json_item['Answer'] for json_item in json_arr ]
     embeddings = get_embedding(smr_client, questions, endpoint_name)
 
-    publish_date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     for i in range(len(embeddings)):
         document = { "publish_date": publish_date, "doc" : questions[i], "doc_type" : "Question", "content" : answers[i], "doc_title": doc_title, "doc_category": doc_category, "embedding" : embeddings[i]}
@@ -128,8 +134,7 @@ def iterate_examples(file_content, object_key, smr_client, index_name, endpoint_
     json_arr = json.loads(file_content)
 
     it = iter(json_arr)
-    example_batches = batch_generator(it, batch_size=3)
-    publish_date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    example_batches = batch_generator(it, batch_size=EMB_BATCH_SIZE)
 
     for idx, batch in enumerate(example_batches):
 
@@ -321,7 +326,7 @@ def load_content_json_from_s3(bucket, object_key, content_type, credentials):
         return json_content
     else:
         obj = s3.Object(bucket,object_key)
-        file_content = obj.get()['Body'].read().decode('utf-8').strip()
+        file_content = obj.get()['Body'].read().decode('utf-8', errors='ignore').strip()
         
         if content_type == 'faq':
             json_content = parse_faq_to_json(file_content)
@@ -431,7 +436,10 @@ def WriteVecIndexToAOS(bucket, object_key, content_type, smr_client, aos_endpoin
             http_auth = auth,
             use_ssl = True,
             verify_certs = True,
-            connection_class = RequestsHttpConnection
+            connection_class = RequestsHttpConnection,
+            timeout = 60, # 默认超时时间是10 秒，
+            max_retries=5, # 重试次数
+            retry_on_timeout=True
         )
 
         gen_aos_record_func = None
@@ -444,7 +452,11 @@ def WriteVecIndexToAOS(bucket, object_key, content_type, smr_client, aos_endpoin
         else:
             raise RuntimeError('No Such Content type supported') 
 
-        response = helpers.bulk(client, gen_aos_record_func)
+        # chunk_size 为文档数 默认值为500
+        # max_chunk_bytes 为写入的最大字节数，默认100M过大，可以改成10-15M
+        # max_retries 重试次数
+        # initial_backoff 为第一次重试时sleep的秒数，再次重试会翻倍
+        response = helpers.bulk(client, gen_aos_record_func, max_retries=4, max_chunk_bytes=10 * 1024 * 1024, initial_backoff=5)#, chunk_size=10000, request_timeout=60000) 
         return response
     except Exception as e:
         print(f"There was an error when ingest:{object_key} to aos cluster, Exception: {str(e)}")
