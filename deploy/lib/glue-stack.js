@@ -39,6 +39,7 @@ export class GlueStack extends NestedStack {
           }),
           // jobName:'chatbot-from-s3-to-aos',
           maxConcurrentRuns:200,
+          maxRetries:3,
           connections:[connection],
           maxCapacity:1,
           defaultArguments:{

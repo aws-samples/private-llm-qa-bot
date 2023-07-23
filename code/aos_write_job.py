@@ -118,17 +118,21 @@ def iterate_paragraph(file_content, object_key,smr_client, index_name, endpoint_
 def iterate_QA(file_content, object_key,smr_client, index_name, endpoint_name):
     json_content = json.loads(file_content)
     json_arr = json_content["qa_list"]
-
     doc_title = object_key
     doc_category = json_content["doc_category"]
-    questions = [ json_item['Question'] for json_item in json_arr ]
-    answers = [ json_item['Answer'] for json_item in json_arr ]
-    embeddings = get_embedding(smr_client, questions, endpoint_name)
 
+    it = iter(json_arr)
+    qa_batches = batch_generator(it, batch_size=EMB_BATCH_SIZE)
 
-    for i in range(len(embeddings)):
-        document = { "publish_date": publish_date, "doc" : questions[i], "doc_type" : "Question", "content" : answers[i], "doc_title": doc_title, "doc_category": doc_category, "embedding" : embeddings[i]}
-        yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document).encode('utf-8')).hexdigest()}
+    for idx, batch in enumerate(qa_batches):
+
+        questions = [ item['Question'] for item in batch ]
+        answers = [ item['Answer'] for item in batch ]
+        embeddings = get_embedding(smr_client, questions, endpoint_name)
+
+        for i in range(len(embeddings)):
+            document = { "publish_date": publish_date, "doc" : questions[i], "doc_type" : "Question", "content" : answers[i], "doc_title": doc_title, "doc_category": doc_category, "embedding" : embeddings[i]}
+            yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document).encode('utf-8')).hexdigest()}
 
 def iterate_examples(file_content, object_key, smr_client, index_name, endpoint_name):
     json_arr = json.loads(file_content)
