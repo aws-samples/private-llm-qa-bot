@@ -101,7 +101,7 @@
                     "search_analyzer": "ik_smart"
                 },
                 "doc_title": {
-                    "type": "text"
+                    "type": "keyword"
                 },
                 "doc_category": {
                     "type": "keyword"
