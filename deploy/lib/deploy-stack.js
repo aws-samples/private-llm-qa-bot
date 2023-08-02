@@ -101,6 +101,16 @@ export class DeployStack extends Stack {
     });
 
 
+    const prompt_template_table = new Table(this, "prompt_template", {
+      partitionKey: {
+        name: "id",
+        type: AttributeType.STRING,
+      },
+      // tableName:'prompt_template',
+      removalPolicy: RemovalPolicy.DESTROY, // NOT recommended for production code
+    });
+
+
 
     const chat_session_table = new Table(this, "chatbot_session_info", {
       partitionKey: {
@@ -134,6 +144,7 @@ export class DeployStack extends Stack {
         llm_chatglm_endpoint:process.env.llm_chatglm_endpoint,
         llm_chatglm_stream_endpoint:process.env.llm_chatglm_stream_endpoint,
         chat_session_table:chat_session_table.tableName,
+        prompt_template_table:prompt_template_table.tableName
       },
     });
 
@@ -193,6 +204,7 @@ export class DeployStack extends Stack {
       
     chat_session_table.grantReadWriteData(lambda_main_brain);
     doc_index_table.grantReadWriteData(lambda_main_brain);
+    prompt_template_table.grantReadWriteData(lambda_main_brain);
     new CfnOutput(this,'lambda roleName',{value:lambda_main_brain.role.roleName});
     
     //add permission for chatbotFE wss 

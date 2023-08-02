@@ -696,39 +696,42 @@ def get_chat_history(inputs) -> str:
         res.append(f"{A_Role}:{human}\n{B_Role}:{ai}")
     return "\n".join(res)
 
-def create_baichuan_prompt_template(lang='zh'):
+def create_baichuan_prompt_template(prompt_template):
     #template_1 = '以下context内的文本内容为背景知识：\n<context>\n{context}\n</context>\n请根据背景知识, 回答这个问题：{question}'
     #template_2 = '这是原始问题: {question}\n已有的回答: {existing_answer}\n\n现在context内的还有一些文本内容，（如果有需要）你可以根据它们完善现有的回答。\n<context>\n{context}\n</context>\n请根据新的文段，进一步完善你的回答。'
-    if lang == 'zh':
-        prompt_template_zh = """{system_role_prompt}，以下context内的文本内容为背景知识：\n<context>\n{context}\n</context>\n请根据背景知识, 回答这个问题：{question}"""
-
-        PROMPT = PromptTemplate(
-            template=prompt_template_zh,
-            partial_variables={'system_role_prompt':SYSTEM_ROLE_PROMPT},
-            input_variables=["context",'question']
-        )
+    if prompt_template == '':
+        prompt_template_zh = """{system_role_prompt} {role_bot}，以下context内的文本内容为背景知识：\n<context>\n{context}\n</context>\n请根据背景知识, 回答这个问题：{question}"""
+    else:
+        prompt_template_zh = prompt_template
+    PROMPT = PromptTemplate(
+        template=prompt_template_zh,
+        partial_variables={'system_role_prompt':SYSTEM_ROLE_PROMPT},
+        input_variables=["context",'question']
+    )
     return PROMPT
 
-def create_qa_prompt_templete(lang='zh'):
-    if lang == 'zh':
-        prompt_template_zh = """{system_role_prompt}，请严格根据反括号中的资料提取相关信息，回答{role_user}的各种问题\n```\n{chat_history}{context}\n```\n\n{role_user}: {question}\n{role_bot}: """
-
-        PROMPT = PromptTemplate(
-            template=prompt_template_zh,
-            partial_variables={'system_role_prompt':SYSTEM_ROLE_PROMPT},
-            input_variables=["context",'question','chat_history','role_bot','role_user']
-        )
+def create_qa_prompt_templete(prompt_template):
+    if prompt_template == '':
+        prompt_template_zh = """{system_role_prompt} {role_bot}，请严格根据反括号中的资料提取相关信息，回答用户的各种问题\n```\n{chat_history}{context}\n```\n\n用户: {question}\n{role_bot}: """
+    else:
+        prompt_template_zh = prompt_template
+    PROMPT = PromptTemplate(
+        template=prompt_template_zh,
+        partial_variables={'system_role_prompt':SYSTEM_ROLE_PROMPT},
+        input_variables=["context",'question','chat_history','role_bot']
+    )
     return PROMPT
 
-def create_chat_prompt_templete(lang='zh'):
-    if lang == 'zh':
-        prompt_template_zh = """{system_role_prompt}，能够回答{role_user}的各种问题以及陪{role_user}聊天,如:{chat_history}\n\n{role_user}: {question}\n{role_bot}:"""
-
-        PROMPT = PromptTemplate(
-            template=prompt_template_zh, 
-            partial_variables={'system_role_prompt':SYSTEM_ROLE_PROMPT},
-            input_variables=['question','chat_history','role_bot','role_user']
-        )
+def create_chat_prompt_templete(prompt_template):
+    if prompt_template == '':
+        prompt_template_zh = """{system_role_prompt} {role_bot}，能够回答用户的各种问题以及陪用户聊天,如:{chat_history}\n\n用户: {question}\n{role_bot}:"""
+    else:
+        prompt_template_zh = prompt_template.replace('{context}','') ##remove{context}
+    PROMPT = PromptTemplate(
+        template=prompt_template_zh, 
+        partial_variables={'system_role_prompt':SYSTEM_ROLE_PROMPT},
+        input_variables=['question','chat_history','role_bot']
+    )
     return PROMPT
 
 def get_bedrock_aksk(secret_name='chatbot_bedrock', region_name = "us-west-2"):
@@ -753,7 +756,7 @@ def get_bedrock_aksk(secret_name='chatbot_bedrock', region_name = "us-west-2"):
     return secret['BEDROCK_ACCESS_KEY'],secret['BEDROCK_SECRET_KEY']
 
 def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str, llm_model_endpoint:str, llm_model_name:str, aos_endpoint:str, aos_index:str, aos_knn_field:str,
-                    aos_result_num:int, kendra_index_id:str, kendra_result_num:int,use_qa:bool,wsclient=None,msgid:str='',max_tokens:int = 2048,temperature:float = 0.01):
+                    aos_result_num:int, kendra_index_id:str, kendra_result_num:int,use_qa:bool,wsclient=None,msgid:str='',max_tokens:int = 2048,temperature:float = 0.01,template:str = ''):
     """
     Entry point for the Lambda function.
 
@@ -878,12 +881,12 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         query_type = QueryType.Conversation
         free_chat_coversions = [ (item[0],item[1]) for item in session_history if item[2] == str(query_type)]
         chat_history= get_chat_history(free_chat_coversions[-2:])
-        prompt_template = create_chat_prompt_templete(lang='zh')
+        prompt_template = create_chat_prompt_templete(template)
         llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
         ##最终的answer
-        answer = llmchain.run({'question':query_input,'chat_history':chat_history,'role_bot':B_Role,'role_user':A_Role})
+        answer = llmchain.run({'question':query_input,'chat_history':chat_history,'role_bot':B_Role})
         ##最终的prompt日志
-        final_prompt = prompt_template.format(question=query_input,role_bot=B_Role,role_user=A_Role,chat_history=chat_history)
+        final_prompt = prompt_template.format(question=query_input,role_bot=B_Role,chat_history=chat_history)
         recall_knowledge,opensearch_knn_respose,opensearch_query_response = [],[],[]
     else: ##如果使用QA
         # 2. aos retriever
@@ -909,14 +912,14 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
             # chat_history= get_chat_history(chat_coversions[-2:]) ##chatglm模型质量不高，暂时屏蔽历史对话
             chat_history = ''
             query_type = QueryType.KnowledgeQuery
-            prompt_template = create_baichuan_prompt_template(lang='zh') if llm_model_name.startswith('baichuan-finetune') else create_qa_prompt_templete(lang='zh') 
+            prompt_template = create_baichuan_prompt_template(template) if llm_model_name.startswith('baichuan-finetune') else create_qa_prompt_templete(template) 
             llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
             # context = "\n".join([doc['doc'] for doc in recall_knowledge])
             context = qa_knowledge_fewshot_build(recall_knowledge)
             ##最终的answer
-            answer = llmchain.run({'question':query_input,'context':context,'chat_history':chat_history,'role_bot':B_Role,'role_user':A_Role })
+            answer = llmchain.run({'question':query_input,'context':context,'chat_history':chat_history,'role_bot':B_Role })
             ##最终的prompt日志
-            final_prompt = prompt_template.format(question=query_input,context=context) if llm_model_name.startswith('baichuan-finetune') else prompt_template.format(question=query_input,role_bot=B_Role,role_user=A_Role,context=context,chat_history=chat_history)
+            final_prompt = prompt_template.format(question=query_input,context=context) if llm_model_name.startswith('baichuan-finetune') else prompt_template.format(question=query_input,role_bot=B_Role,context=context,chat_history=chat_history)
             # print(final_prompt)
             # print(answer)
         else:
@@ -924,12 +927,12 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
             free_chat_coversions = [ (item[0],item[1]) for item in session_history if item[2] == str(query_type)]
             # free_chat_coversions = [ (item[0],item[1]) for item in session_history ]
             chat_history= get_chat_history(free_chat_coversions[-2:])
-            prompt_template = create_chat_prompt_templete(lang='zh')
+            prompt_template = create_chat_prompt_templete(template)
             llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
             ##最终的answer
-            answer = llmchain.run({'question':query_input,'chat_history':chat_history,'role_bot':B_Role,'role_user':A_Role})
+            answer = llmchain.run({'question':query_input,'chat_history':chat_history,'role_bot':B_Role})
             ##最终的prompt日志
-            final_prompt = prompt_template.format(question=query_input,role_bot=B_Role,role_user=A_Role,chat_history=chat_history)
+            final_prompt = prompt_template.format(question=query_input,role_bot=B_Role,chat_history=chat_history)
 
     
     answer = enforce_stop_tokens(answer, STOP)
@@ -1028,6 +1031,57 @@ def list_doc_index ():
         logger.info(str(e))
         return []
 
+def get_template(id):
+    dynamodb = boto3.client('dynamodb')
+    if id:
+        params = {
+            'TableName': os.environ.get('prompt_template_table'),
+            'Key': {'id': {'S': id}},  # Return all attributes
+        }
+        try:
+            response = dynamodb.get_item(**params)
+            return response['Item']
+        except Exception as e:
+            logger.info(str(e))
+            return {}   
+    else:
+        params = {
+            'TableName': os.environ.get('prompt_template_table'),
+            'Select': 'ALL_ATTRIBUTES',  # Return all attributes
+        }
+        try:
+            response = dynamodb.scan(**params)
+            return response['Items']
+        except Exception as e:
+            logger.info(str(e))
+            return []
+    
+def add_template(item):
+    dynamodb = boto3.client('dynamodb')
+    params = {
+        'TableName': os.environ.get('prompt_template_table'),
+        'Item': item,  
+    }
+    try:
+        dynamodb.put_item(**params)
+        return True
+    except Exception as e:
+        logger.info(str(e))
+        return False
+
+def delete_template(key):
+    dynamodb = boto3.client('dynamodb')
+    params = {
+        'TableName': os.environ.get('prompt_template_table'),
+        'Key': key,  
+    }
+    try:
+        dynamodb.delete_item(**params)
+        return True
+    except Exception as e:
+        logger.info(str(e))
+        return False
+    
 @handle_error
 def lambda_handler(event, context):
     # "model": 模型的名称
@@ -1037,16 +1091,41 @@ def lambda_handler(event, context):
     # "temperature": 0.9
     logger.info(f"event:{event}")
     method = event.get('method')
+    resource = event.get('resource')
     ##如果是删除doc index的操作
-    if method == 'delete':
+    if method == 'delete' and resource == 'docs':
         logger.info(f"delete doc index of:{event.get('filename')}/{event.get('embedding_model')}/{event.get('index_name')}")
         delete_doc_index(event.get('filename'),event.get('embedding_model'),event.get('index_name'))
         return {'statusCode': 200}
     ## 如果是get doc index操作
-    if method == 'get':
+    if method == 'get' and resource == 'docs':
         results = list_doc_index()
         return {'statusCode': 200,'body':results }
-
+    ## 如果是get template 操作
+    if method == 'get' and resource == 'template':
+        id = event.get('id')
+        results = get_template(id)
+        return {'statusCode': 200,'body':results }
+    ## 如果是add a template 操作
+    if method == 'post' and resource == 'template':
+        body = event.get('body')
+        item = {
+            'id': {'S': body.get('id')},
+            'template_name':{'S':body.get('template_name','')},
+            'template':{'S':body.get('template','')},
+            'comment':{'S':body.get('comment','')},
+            'username':{'S':body.get('username','')}
+        }
+        result = add_template(item)
+        return {'statusCode': 200 if result else 500,'body':results }
+     ## 如果是delete a template 操作
+    if method == 'delete' and resource == 'template':
+        body = event.get('body')
+        key = {
+            'id': {'S': body.get('id')}
+        }
+        result = delete_template(key)
+        return {'statusCode': 200 if result else 500,'body':results }
 
     # input_json = json.loads(event['body'])
     ws_endpoint = event.get('ws_endpoint')
@@ -1061,7 +1140,8 @@ def lambda_handler(event, context):
     question = event['prompt']
     model_name = event['model'] if event.get('model') else event.get('model_name','')
     embedding_endpoint = event['embedding_model'] 
-    use_qa = event.get('use_qa',True)
+    use_qa = event.get('use_qa',False)
+    template_id = event.get('template_id')
     msgid = event.get('msgid')
     max_tokens = event.get('max_tokens',2048)
     temperature =  event.get('temperature',0.01)
@@ -1112,7 +1192,14 @@ def lambda_handler(event, context):
     Kendra_index_id = os.environ.get("Kendra_index_id", "")
     Kendra_result_num = int(os.environ.get("Kendra_result_num", ""))
     # Opensearch_result_num = int(os.environ.get("Opensearch_result_num", ""))
+    prompt_template = ''
 
+    ##如果指定了prompt 模板
+    if template_id and template_id != 'default':
+        prompt_template = get_template(template_id)
+        prompt_template = prompt_template['template']['S']
+    logger.info(f'prompt_template_id : {template_id}')
+    logger.info(f'prompt_template : {prompt_template}')
     logger.info(f'model_name : {model_name}')
     logger.info(f'llm_endpoint : {llm_endpoint}')
     logger.info(f'embedding_endpoint : {embedding_endpoint}')
@@ -1125,7 +1212,7 @@ def lambda_handler(event, context):
     
     main_entry_start = time.time()  # 或者使用 time.time_ns() 获取纳秒级别的时间戳
     answer,use_stream = main_entry_new(session_id, question, embedding_endpoint, llm_endpoint, model_name, aos_endpoint, aos_index, aos_knn_field, aos_result_num,
-                       Kendra_index_id, Kendra_result_num,use_qa,wsclient,msgid,max_tokens,temperature)
+                       Kendra_index_id, Kendra_result_num,use_qa,wsclient,msgid,max_tokens,temperature,prompt_template)
     main_entry_elpase = time.time() - main_entry_start  # 或者使用 time.time_ns() 获取纳秒级别的时间戳
     logger.info(f'runing time of main_entry : {main_entry_elpase}s seconds')
     # 2. return rusult
