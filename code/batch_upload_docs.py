@@ -59,11 +59,11 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--region', type=str, default='us-west-2', help='region_name')
     parser.add_argument('--bucket', type=str, default='106839800180-23-07-17-15-02-02-bucket', help='output file')
-    parser.add_argument('--aos_endpoint', type=str, default='vpc-domain2644fe48c-x5jb7hpf4qmp-xswioh53fzrmqbhsyele3mozie.us-west-2.es.amazonaws.com', help='Opensearch domain endpoint')
-    parser.add_argument('--emb_model_endpoint', type=str, default='paraphrase-node10-g4dn-x-2023-07-17-02-53-30-943-endpoint', help='embedding model endpoint')
+    parser.add_argument('--aos_endpoint', type=str, default='vpc-domainc6g17c529-y8fodglwythm-5he24vsymfmfh5derkzrj4l4ry.us-west-2.es.amazonaws.com', help='Opensearch domain endpoint')
+    parser.add_argument('--emb_model_endpoint', type=str, default='st-paraphrase-mpnet-node10-2023-07-30-16-39-58-975-endpoint', help='embedding model endpoint')
     parser.add_argument('--path_prefix', type=str, default='ai-content/batch/', help='file path prefix')
-    parser.add_argument('--concurrent_runs_quota', type=int, default=20, help='quota of concurrent job runs')
-    parser.add_argument('--job_name', type=str, default='chatbotfroms3toaosF98BA633-r7YItorTyxqX', help='job name')
+    parser.add_argument('--concurrent_runs_quota', type=int, default=50, help='quota of concurrent job runs')
+    parser.add_argument('--job_name', type=str, default='chatbotfroms3toaosF98BA633-QxSQwoaGE1K9', help='job name')
     args = parser.parse_args()
     
     region = args.region
@@ -77,18 +77,20 @@ if __name__ == '__main__':
     running_job_id_set = set()
     
     file_generator = list_s3_objects(s3, bucket_name=bucket, prefix=path_prefix)
-    batch_size = 30
+    batch_size = 50
     batches = batch_generator(file_generator, batch_size)
     publish_date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S") 
 
-    for batch in batches:
+    for idx, batch in enumerate(batches):
         key_list_str = ','.join(batch)
         while len(running_job_id_set) >= concurrent_runs_quota:
             print('wait for previous running job done')
-            time.sleep(15)
+            time.sleep(100)
             running_job_id_set = update_running_job_set(job_name, running_job_id_set)
             print('concurrent_running: {}'.format(running_job_id_set))
             
         running_job_id=start_job(glue, job_name, key_list_str, aos_endpoint, emb_model_endpoint, bucket, region, publish_date)
         running_job_id_set.add(running_job_id)
-        time.sleep(1)
+        # sleep_seconds = len(running_job_id_set) * 2
+        print("[{}] running job count: {}".format(idx, len(running_job_id_set)))
+        time.sleep(15)
