@@ -1164,6 +1164,8 @@ def lambda_handler(event, context):
         pass
     elif model_name == 'chatglm-stream':
         llm_endpoint = os.environ.get('llm_chatglm_stream_endpoint')
+    elif model_name == 'other-stream':
+        llm_endpoint = os.environ.get('llm_other_stream_endpoint')
     else:
         llm_endpoint = os.environ.get('llm_default_endpoint')
         pass

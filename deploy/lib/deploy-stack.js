@@ -143,6 +143,7 @@ export class DeployStack extends Stack {
         llm_bloomz_endpoint:process.env.llm_bloomz_endpoint,
         llm_chatglm_endpoint:process.env.llm_chatglm_endpoint,
         llm_chatglm_stream_endpoint:process.env.llm_chatglm_stream_endpoint,
+        llm_other_stream_endpoint:process.env.llm_other_stream_endpoint,
         chat_session_table:chat_session_table.tableName,
         prompt_template_table:prompt_template_table.tableName
       },
@@ -278,7 +279,7 @@ export class DeployStack extends Stack {
             embedding_endpoint:process.env.embedding_endpoint
           },
           runtime: lambda.Runtime.PYTHON_3_9,
-          timeout: Duration.minutes(1),
+          timeout: Duration.minutes(2),
           handler: 'offline_trigger_lambda.lambda_handler',
           code: lambda.Code.fromAsset(path.join(__dirname,'../../code/lambda_offline_trigger')),
           vpc:vpc,
