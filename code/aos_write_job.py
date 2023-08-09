@@ -113,7 +113,7 @@ def iterate_paragraph(file_content, object_key,smr_client, index_name, endpoint_
             embeddings = get_embedding(smr_client, emb_src_texts, endpoint_name)
             for i, emb in enumerate(embeddings):
                 document = { "publish_date": publish_date, "idx": batch[i][0], "doc" : batch[i][1], "doc_type" : batch[i][2], "content" : batch[i][3], "doc_title": doc_title, "doc_category": "", "embedding" : emb}
-                yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document).encode('utf-8')).hexdigest()}
+                yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document['doc']).encode('utf-8')).hexdigest()}
 
 def iterate_QA(file_content, object_key,smr_client, index_name, endpoint_name):
     json_content = json.loads(file_content)
@@ -341,7 +341,7 @@ def load_content_json_from_s3(bucket, object_key, content_type, credentials):
         elif content_type == 'example':
             json_content = file_content
         else:
-            raise "unsupport content type...(pdf, faq, txt are supported.)"
+            raise RuntimeError("unsupport content type...(pdf, faq, txt are supported.)")
         
         return json_content
 
@@ -460,7 +460,7 @@ def WriteVecIndexToAOS(bucket, object_key, content_type, smr_client, aos_endpoin
         # max_chunk_bytes 为写入的最大字节数，默认100M过大，可以改成10-15M
         # max_retries 重试次数
         # initial_backoff 为第一次重试时sleep的秒数，再次重试会翻倍
-        response = helpers.bulk(client, gen_aos_record_func, max_retries=4, max_chunk_bytes=10 * 1024 * 1024, initial_backoff=5)#, chunk_size=10000, request_timeout=60000) 
+        response = helpers.bulk(client, gen_aos_record_func, max_retries=3, initial_backoff=200, max_backoff=801, max_chunk_bytes=10 * 1024 * 1024)#, chunk_size=10000, request_timeout=60000) 
         return response
     except Exception as e:
         print(f"There was an error when ingest:{object_key} to aos cluster, Exception: {str(e)}")
@@ -488,7 +488,7 @@ def process_s3_uploaded_file(bucket, object_key):
         content_type = 'example'
         index_name = EXAMPLE_INDEX_NAME
     else:
-        raise "unsupport content type...(pdf, faq, txt are supported.)"
+        raise RuntimeError("unsupport content type...(pdf, faq, txt are supported.)")
     
     #check if it is already built
     idx_name = get_idx_from_ddb(object_key,EMB_MODEL_ENDPOINT)
