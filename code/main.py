@@ -54,6 +54,8 @@ Fewshot_prefix_A="回答"
 RESET = '/rs'
 openai_api_key = None
 STOP=[f"\n{A_Role}", f"\n{B_Role}", f"\n{Fewshot_prefix_Q}"]
+KNN_THRESHOLD = float(os.environ.get('knn_threshold',0.2))
+INVERTED_HRESHOLD =float(os.environ.get('inverted_theshold',1.0))
 
 class StreamScanner:    
     def __init__(self):
@@ -81,6 +83,10 @@ class CustomStreamingOutCallbackHandler(BaseCallbackHandler):
         self.wsclient = wsclient
         self.connectionId = connectionId
         self.msgid = msgid
+        self.recall_knowledge = None
+
+    def add_recall_knowledge(self,recall_knowledge):
+        self.recall_knowledge = recall_knowledge
 
     def postMessage(self,data):
         try:
@@ -109,8 +115,14 @@ class CustomStreamingOutCallbackHandler(BaseCallbackHandler):
 
     def on_llm_end(self, response: LLMResult, **kwargs: Any) -> None:
         """Run when LLM ends running."""
-        data = json.dumps({ 'msgid':self.msgid, 'role': "AI", 'text': {'content':'[DONE]'} })
-        self.postMessage(data)
+        if self.recall_knowledge:
+            text = '\n```json\n#Reference\n'
+            for sn,item in enumerate(self.recall_knowledge):
+                text += f'Doc[{sn+1}]\n{json.dumps(item,ensure_ascii=False)}\n'
+            data = json.dumps({ 'msgid':self.msgid, 'role': "AI", 'text': {'content':f'{text}```'} })
+            self.postMessage(data)
+
+        
 
     def on_chain_error(
         self, error: Union[Exception, KeyboardInterrupt], **kwargs: Any
@@ -331,15 +343,15 @@ class CustomDocRetriever(BaseRetriever,BaseModel):
 
                 return kg_combine_result
 
-            knn_threshold = 0.2
-            inverted_theshold = 1.0
+            knn_threshold = KNN_THRESHOLD
+            inverted_theshold = INVERTED_HRESHOLD
             filter_knn_result = [ item for item in opensearch_knn_respose if item['doc_type'] in ['Paragraph','Sentence'] and item['score'] > knn_threshold ]
             filter_inverted_result = [ item for item in opensearch_query_response if item['doc_type'] in ['Paragraph','Sentence'] and item['score'] > inverted_theshold ]
             
             paragraph_content = get_topk_items(filter_knn_result, filter_inverted_result, "Paragraph", 2)
 
-            knn_threshold = 0.2
-            inverted_theshold = 1.0
+            # knn_threshold = 0.2
+            # inverted_theshold = 1.0
             filter_knn_result = [ item for item in opensearch_knn_respose if item['doc_type'] == 'Question' and item['score'] > knn_threshold ]
             filter_inverted_result = [ item for item in opensearch_query_response if item['doc_type'] == 'Question' and item['score'] > inverted_theshold ]
 
@@ -802,6 +814,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
     
     logger.info("llm_model_name : {}".format(llm_model_name))
     llm = None
+    stream_callback = CustomStreamingOutCallbackHandler(wsclient,msgid, session_id)
     if llm_model_name == 'claude':
         ACCESS_KEY, SECRET_KEY=get_bedrock_aksk()
 
@@ -828,7 +841,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         llm=ChatOpenAI(model = llm_model_name,
                        openai_api_key = openai_api_key,
                        streaming = True,
-                       callbacks=[CustomStreamingOutCallbackHandler(wsclient,msgid, session_id,)],
+                       callbacks=[stream_callback],
                        temperature = temperature)
         
     elif llm_model_name.endswith('stream'):
@@ -839,7 +852,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
                 "top_p":1
                 }
         llmcontent_handler = SagemakerStreamContentHandler(
-            callbacks=CustomStreamingOutCallbackHandler(wsclient,msgid, session_id)
+            callbacks=stream_callback
             )
         llm = SagemakerStreamEndpoint(endpoint_name=llm_model_endpoint, 
                 region_name=region, 
@@ -910,6 +923,9 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
             use_stream = False ##如果是直接匹配则不需要走流
         elif recall_knowledge:      
             # chat_history= get_chat_history(chat_coversions[-2:]) ##chatglm模型质量不高，暂时屏蔽历史对话
+
+            ##添加召回引用
+            stream_callback.add_recall_knowledge(recall_knowledge)
             chat_history = ''
             query_type = QueryType.KnowledgeQuery
             prompt_template = create_baichuan_prompt_template(template) if llm_model_name.startswith('baichuan-finetune') else create_qa_prompt_templete(template) 
@@ -934,9 +950,14 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
             ##最终的prompt日志
             final_prompt = prompt_template.format(question=query_input,role_bot=B_Role,chat_history=chat_history)
 
-    
     answer = enforce_stop_tokens(answer, STOP)
 
+    if not use_stream and recall_knowledge:
+        text = '\n```json\n#Reference\n'
+        for sn,item in enumerate(recall_knowledge):
+            text += f'Doc[{sn+1}]\n{json.dumps(item,ensure_ascii=False)}\n'
+        answer+= f'{text}```'
+        
     json_obj = {
         "query": query_input,
         "opensearch_doc":  opensearch_query_response,

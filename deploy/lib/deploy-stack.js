@@ -145,7 +145,9 @@ export class DeployStack extends Stack {
         llm_chatglm_stream_endpoint:process.env.llm_chatglm_stream_endpoint,
         llm_other_stream_endpoint:process.env.llm_other_stream_endpoint,
         chat_session_table:chat_session_table.tableName,
-        prompt_template_table:prompt_template_table.tableName
+        prompt_template_table:prompt_template_table.tableName,
+        knn_threshold:process.env.knn_threshold,
+        inverted_theshold:process.env.inverted_theshold
       },
     });
 
@@ -314,6 +316,7 @@ export class DeployStack extends Stack {
           prefix: process.env.UPLOAD_OBJ_PREFIX,
       }
   )
+
 
        //create REST api
     const restapi = new ApiGatewayStack(this,'ChatBotRestApi',{lambda_fn:lambda_main_brain})
