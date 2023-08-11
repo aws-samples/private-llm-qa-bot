@@ -1195,7 +1195,7 @@ def lambda_handler(event, context):
     max_tokens = event.get('max_tokens',2048)
     temperature =  event.get('temperature',0.01)
     imgurl = event['imgurl']
-    image_path = None
+    image_path = ''
     if imgurl:
         bucket,imgobj = imgurl.split('/',1)
         image_path = generate_s3_image_url(bucket,imgobj)
