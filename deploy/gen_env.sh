@@ -39,6 +39,7 @@ echo "llm_llama_endpoint=${llm_llama_endpoint}" >> .env
 echo "llm_alpaca_endpoint=${llm_alpaca_endpoint}" >> .env
 echo "llm_vicuna_endpoint=${llm_vicuna_endpoint}" >> .env
 echo "llm_chatglm_stream_endpoint=${llm_chatglm_stream_endpoint}" >> .env
+echo "llm_visualglm_endpoint=" >> .env
 echo "llm_other_stream_endpoint=" >> .env
 echo "knn_threshold=" >> .env
 echo "inverted_theshold=" >> .env
