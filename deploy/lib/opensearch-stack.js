@@ -29,7 +29,7 @@ constructor(scope, id, props) {
         securityGroups: [props.securityGroup],
         capacity: {
             dataNodes: 2,
-            // dataNodeInstanceType:'r6g.large.search'
+            dataNodeInstanceType:'r6g.large.search'
           },
         ebs: {
         volumeSize: 300,

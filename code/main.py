@@ -54,6 +54,8 @@ Fewshot_prefix_A="回答"
 RESET = '/rs'
 openai_api_key = None
 STOP=[f"\n{A_Role}", f"\n{B_Role}", f"\n{Fewshot_prefix_Q}"]
+KNN_THRESHOLD = float(os.environ.get('knn_threshold',0.2))
+INVERTED_HRESHOLD =float(os.environ.get('inverted_theshold',1.0))
 
 class StreamScanner:    
     def __init__(self):
@@ -81,6 +83,10 @@ class CustomStreamingOutCallbackHandler(BaseCallbackHandler):
         self.wsclient = wsclient
         self.connectionId = connectionId
         self.msgid = msgid
+        self.recall_knowledge = None
+
+    def add_recall_knowledge(self,recall_knowledge):
+        self.recall_knowledge = recall_knowledge
 
     def postMessage(self,data):
         try:
@@ -109,8 +115,14 @@ class CustomStreamingOutCallbackHandler(BaseCallbackHandler):
 
     def on_llm_end(self, response: LLMResult, **kwargs: Any) -> None:
         """Run when LLM ends running."""
-        data = json.dumps({ 'msgid':self.msgid, 'role': "AI", 'text': {'content':'[DONE]'} })
-        self.postMessage(data)
+        if self.recall_knowledge:
+            text = '\n```json\n#Reference\n'
+            for sn,item in enumerate(self.recall_knowledge):
+                text += f'Doc[{sn+1}]\n{json.dumps(item,ensure_ascii=False)}\n'
+            data = json.dumps({ 'msgid':self.msgid, 'role': "AI", 'text': {'content':f'{text}```'} })
+            self.postMessage(data)
+
+        
 
     def on_chain_error(
         self, error: Union[Exception, KeyboardInterrupt], **kwargs: Any
@@ -131,7 +143,8 @@ class SagemakerStreamContentHandler(LLMContentHandler):
         self.callbacks = callbacks
  
     def transform_input(self, prompt: str, model_kwargs: Dict) -> bytes:
-        input_str = json.dumps({'inputs': prompt,'history':[],**model_kwargs})
+        input_str = json.dumps({'inputs': prompt,**model_kwargs})
+        # logger.info(f'transform_input:{input_str}')
         return input_str.encode('utf-8')
     
     def transform_output(self, event_stream: Any) -> str:
@@ -243,7 +256,7 @@ class ContentHandler(EmbeddingsContentHandler):
 
 class llmContentHandler(LLMContentHandler):
     def transform_input(self, prompt: str, model_kwargs: Dict) -> bytes:
-        input_str = json.dumps({'inputs': prompt,'history':[],**model_kwargs})
+        input_str = json.dumps({'inputs': prompt,**model_kwargs})
         return input_str.encode('utf-8')
     
     def transform_output(self, output: bytes) -> str:
@@ -331,15 +344,15 @@ class CustomDocRetriever(BaseRetriever,BaseModel):
 
                 return kg_combine_result
 
-            knn_threshold = 0.2
-            inverted_theshold = 1.0
+            knn_threshold = KNN_THRESHOLD
+            inverted_theshold = INVERTED_HRESHOLD
             filter_knn_result = [ item for item in opensearch_knn_respose if item['doc_type'] in ['Paragraph','Sentence'] and item['score'] > knn_threshold ]
             filter_inverted_result = [ item for item in opensearch_query_response if item['doc_type'] in ['Paragraph','Sentence'] and item['score'] > inverted_theshold ]
             
             paragraph_content = get_topk_items(filter_knn_result, filter_inverted_result, "Paragraph", 2)
 
-            knn_threshold = 0.2
-            inverted_theshold = 1.0
+            # knn_threshold = 0.2
+            # inverted_theshold = 1.0
             filter_knn_result = [ item for item in opensearch_knn_respose if item['doc_type'] == 'Question' and item['score'] > knn_threshold ]
             filter_inverted_result = [ item for item in opensearch_query_response if item['doc_type'] == 'Question' and item['score'] > inverted_theshold ]
 
@@ -387,6 +400,9 @@ def handle_error(func):
 # kendra
 
 
+
+
+
 def query_kendra(Kendra_index_id="", lang="zh", search_query_text="what is s3?", Kendra_result_num=3):
     # 连接到Kendra
     client = boto3.client('kendra')
@@ -428,6 +444,7 @@ def query_kendra(Kendra_index_id="", lang="zh", search_query_text="what is s3?",
 
     # 输出结果列表
     return results[:Kendra_result_num]
+
 
 
 # AOS
@@ -700,13 +717,13 @@ def create_baichuan_prompt_template(prompt_template):
     #template_1 = '以下context内的文本内容为背景知识：\n<context>\n{context}\n</context>\n请根据背景知识, 回答这个问题：{question}'
     #template_2 = '这是原始问题: {question}\n已有的回答: {existing_answer}\n\n现在context内的还有一些文本内容，（如果有需要）你可以根据它们完善现有的回答。\n<context>\n{context}\n</context>\n请根据新的文段，进一步完善你的回答。'
     if prompt_template == '':
-        prompt_template_zh = """{system_role_prompt} {role_bot}，以下context内的文本内容为背景知识：\n<context>\n{context}\n</context>\n请根据背景知识, 回答这个问题：{question}"""
+        prompt_template_zh = """{system_role_prompt} {role_bot}，以下context内的文本内容为背景知识：\n<context>\n{chat_history}{context}\n</context>\n请根据背景知识, 回答这个问题：{question}\n{role_bot}"""
     else:
         prompt_template_zh = prompt_template
     PROMPT = PromptTemplate(
         template=prompt_template_zh,
         partial_variables={'system_role_prompt':SYSTEM_ROLE_PROMPT},
-        input_variables=["context",'question']
+        input_variables=["context",'question','chat_history','role_bot']
     )
     return PROMPT
 
@@ -756,7 +773,7 @@ def get_bedrock_aksk(secret_name='chatbot_bedrock', region_name = "us-west-2"):
     return secret['BEDROCK_ACCESS_KEY'],secret['BEDROCK_SECRET_KEY']
 
 def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str, llm_model_endpoint:str, llm_model_name:str, aos_endpoint:str, aos_index:str, aos_knn_field:str,
-                    aos_result_num:int, kendra_index_id:str, kendra_result_num:int,use_qa:bool,wsclient=None,msgid:str='',max_tokens:int = 2048,temperature:float = 0.01,template:str = ''):
+                    aos_result_num:int, kendra_index_id:str, kendra_result_num:int,use_qa:bool,wsclient=None,msgid:str='',max_tokens:int = 2048,temperature:float = 0.01,template:str = '',imgurl:str = None):
     """
     Entry point for the Lambda function.
 
@@ -802,6 +819,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
     
     logger.info("llm_model_name : {}".format(llm_model_name))
     llm = None
+    stream_callback = CustomStreamingOutCallbackHandler(wsclient,msgid, session_id)
     if llm_model_name == 'claude':
         ACCESS_KEY, SECRET_KEY=get_bedrock_aksk()
 
@@ -817,7 +835,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
             "max_tokens_to_sample": max_tokens,
             "stop_sequences":STOP,
             "temperature":temperature,
-            # "top_p":0.9
+            "top_p":1
         }
         
         llm = Bedrock(model_id="anthropic.claude-v1", client=boto3_bedrock, model_kwargs=parameters)
@@ -828,7 +846,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         llm=ChatOpenAI(model = llm_model_name,
                        openai_api_key = openai_api_key,
                        streaming = True,
-                       callbacks=[CustomStreamingOutCallbackHandler(wsclient,msgid, session_id,)],
+                       callbacks=[stream_callback],
                        temperature = temperature)
         
     elif llm_model_name.endswith('stream'):
@@ -839,25 +857,29 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
                 "top_p":1
                 }
         llmcontent_handler = SagemakerStreamContentHandler(
-            callbacks=CustomStreamingOutCallbackHandler(wsclient,msgid, session_id)
+            callbacks=stream_callback
             )
+        # model_kwargs={'parameters':parameters,'history':[]}
+        # if imgurl:
+        model_kwargs={'parameters':parameters,'history':[],'image':imgurl}
         llm = SagemakerStreamEndpoint(endpoint_name=llm_model_endpoint, 
                 region_name=region, 
-                model_kwargs={'parameters':parameters},
+                model_kwargs=model_kwargs,
                 content_handler=llmcontent_handler)
     else:
         parameters = {
             "max_length": max_tokens,
             "temperature": temperature,
-        # "num_beams": 1, # >1可能会报错，"probability tensor contains either `inf`, `nan` or element < 0"； 即使remove_invalid_values=True也不能解决
-        # "do_sample": False,
-        # "top_p": 1,
+            "top_p":1
         }
+        # model_kwargs={'parameters':parameters,'history':[]}
+        # if imgurl:
+        model_kwargs={'parameters':parameters,'history':[],'image':imgurl}
         llmcontent_handler = llmContentHandler()
         llm=SagemakerEndpoint(
                 endpoint_name=llm_model_endpoint, 
                 region_name=region, 
-                model_kwargs={'parameters':parameters},
+                model_kwargs=model_kwargs,
                 content_handler=llmcontent_handler
             )
     
@@ -880,7 +902,11 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
     if not use_qa:##如果不使用QA
         query_type = QueryType.Conversation
         free_chat_coversions = [ (item[0],item[1]) for item in session_history if item[2] == str(query_type)]
-        chat_history= get_chat_history(free_chat_coversions[-2:])
+        # chat_history= get_chat_history(free_chat_coversions[-2:])
+        chat_history=''
+        ##add history parameter
+        llm.model_kwargs['history'] = free_chat_coversions[-4:]
+        
         prompt_template = create_chat_prompt_templete(template)
         llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
         ##最终的answer
@@ -910,6 +936,9 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
             use_stream = False ##如果是直接匹配则不需要走流
         elif recall_knowledge:      
             # chat_history= get_chat_history(chat_coversions[-2:]) ##chatglm模型质量不高，暂时屏蔽历史对话
+
+            ##添加召回引用
+            stream_callback.add_recall_knowledge(recall_knowledge)
             chat_history = ''
             query_type = QueryType.KnowledgeQuery
             prompt_template = create_baichuan_prompt_template(template) if llm_model_name.startswith('baichuan-finetune') else create_qa_prompt_templete(template) 
@@ -919,23 +948,33 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
             ##最终的answer
             answer = llmchain.run({'question':query_input,'context':context,'chat_history':chat_history,'role_bot':B_Role })
             ##最终的prompt日志
-            final_prompt = prompt_template.format(question=query_input,context=context) if llm_model_name.startswith('baichuan-finetune') else prompt_template.format(question=query_input,role_bot=B_Role,context=context,chat_history=chat_history)
+            final_prompt = prompt_template.format(question=query_input,role_bot=B_Role,context=context,chat_history=chat_history)
             # print(final_prompt)
             # print(answer)
         else:
             query_type = QueryType.Conversation
             free_chat_coversions = [ (item[0],item[1]) for item in session_history if item[2] == str(query_type)]
             # free_chat_coversions = [ (item[0],item[1]) for item in session_history ]
-            chat_history= get_chat_history(free_chat_coversions[-2:])
+            # chat_history= get_chat_history(free_chat_coversions[-2:])
+            chat_history = ''
             prompt_template = create_chat_prompt_templete(template)
+
+            ##add history parameter
+            # llm.model_kwargs['history'] = free_chat_coversions[-2:]
+
             llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
             ##最终的answer
             answer = llmchain.run({'question':query_input,'chat_history':chat_history,'role_bot':B_Role})
             ##最终的prompt日志
             final_prompt = prompt_template.format(question=query_input,role_bot=B_Role,chat_history=chat_history)
 
-    
     answer = enforce_stop_tokens(answer, STOP)
+
+    if not use_stream and recall_knowledge:
+        text = '\n```json\n#Reference\n'
+        for sn,item in enumerate(recall_knowledge):
+            text += f'Doc[{sn+1}]\n{json.dumps(item,ensure_ascii=False)}\n'
+        answer+= f'{text}```'
 
     json_obj = {
         "query": query_input,
@@ -1081,6 +1120,16 @@ def delete_template(key):
     except Exception as e:
         logger.info(str(e))
         return False
+
+def generate_s3_image_url(bucket_name, key, expiration=3600):
+    s3_client = boto3.client('s3')
+    url = s3_client.generate_presigned_url(
+        'get_object',
+         Params={'Bucket': bucket_name, 'Key': key},
+         ExpiresIn=expiration
+    )
+    return url
+
     
 @handle_error
 def lambda_handler(event, context):
@@ -1145,6 +1194,12 @@ def lambda_handler(event, context):
     msgid = event.get('msgid')
     max_tokens = event.get('max_tokens',2048)
     temperature =  event.get('temperature',0.01)
+    imgurl = event['imgurl']
+    image_path = ''
+    if imgurl:
+        bucket,imgobj = imgurl.split('/',1)
+        image_path = generate_s3_image_url(bucket,imgobj)
+        logger.info(f"image_path:{image_path}")
 
     ##获取前端给的系统设定，如果没有，则使用lambda里的默认值
     global B_Role,SYSTEM_ROLE_PROMPT
@@ -1164,6 +1219,10 @@ def lambda_handler(event, context):
         pass
     elif model_name == 'chatglm-stream':
         llm_endpoint = os.environ.get('llm_chatglm_stream_endpoint')
+    elif model_name == 'visualglm':
+        llm_endpoint = os.environ.get('llm_visualglm_endpoint')
+    elif model_name == 'visualglm-stream':
+        llm_endpoint = os.environ.get('llm_visualglm_stream_endpoint')
     elif model_name == 'other-stream':
         llm_endpoint = os.environ.get('llm_other_stream_endpoint')
     else:
@@ -1214,7 +1273,7 @@ def lambda_handler(event, context):
     
     main_entry_start = time.time()  # 或者使用 time.time_ns() 获取纳秒级别的时间戳
     answer,use_stream = main_entry_new(session_id, question, embedding_endpoint, llm_endpoint, model_name, aos_endpoint, aos_index, aos_knn_field, aos_result_num,
-                       Kendra_index_id, Kendra_result_num,use_qa,wsclient,msgid,max_tokens,temperature,prompt_template)
+                       Kendra_index_id, Kendra_result_num,use_qa,wsclient,msgid,max_tokens,temperature,prompt_template,image_path)
     main_entry_elpase = time.time() - main_entry_start  # 或者使用 time.time_ns() 获取纳秒级别的时间戳
     logger.info(f'runing time of main_entry : {main_entry_elpase}s seconds')
     # 2. return rusult
