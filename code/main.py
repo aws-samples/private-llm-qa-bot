@@ -717,13 +717,13 @@ def create_baichuan_prompt_template(prompt_template):
     #template_1 = '以下context内的文本内容为背景知识：\n<context>\n{context}\n</context>\n请根据背景知识, 回答这个问题：{question}'
     #template_2 = '这是原始问题: {question}\n已有的回答: {existing_answer}\n\n现在context内的还有一些文本内容，（如果有需要）你可以根据它们完善现有的回答。\n<context>\n{context}\n</context>\n请根据新的文段，进一步完善你的回答。'
     if prompt_template == '':
-        prompt_template_zh = """{system_role_prompt} {role_bot}，以下context内的文本内容为背景知识：\n<context>\n{context}\n</context>\n请根据背景知识, 回答这个问题：{question}"""
+        prompt_template_zh = """{system_role_prompt} {role_bot}，以下context内的文本内容为背景知识：\n<context>\n{context}\n</context>\n请根据背景知识, 回答这个问题：{question}\n{role_bot}"""
     else:
         prompt_template_zh = prompt_template
     PROMPT = PromptTemplate(
         template=prompt_template_zh,
         partial_variables={'system_role_prompt':SYSTEM_ROLE_PROMPT},
-        input_variables=["context",'question']
+        input_variables=["context",'question','role_bot']
     )
     return PROMPT
 
