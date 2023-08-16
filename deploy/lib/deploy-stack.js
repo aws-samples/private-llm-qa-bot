@@ -181,7 +181,7 @@ export class DeployStack extends Stack {
       architecture: Architecture.X86_64,
       environment: {
         aos_endpoint:opensearch_endpoint,
-        aos_index:process.env.aos_index ,
+        index_name:"chatbot-example-index" ,
         aos_knn_field:process.env.aos_knn_field,
         embedding_endpoint:process.env.embedding_endpoint,
         llm_model_endpoint:process.env.llm_chatglm_endpoint

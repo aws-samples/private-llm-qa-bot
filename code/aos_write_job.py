@@ -52,12 +52,6 @@ def get_embedding(smr_client, text_arrs, endpoint_name=EMB_MODEL_ENDPOINT):
         return [ np.random.rand(768).tolist() for i in range(text_len) ]
         
     parameters = {
-      #"early_stopping": True,
-      #"length_penalty": 2.0,
-      "max_new_tokens": 50,
-      "temperature": 0,
-      "min_length": 10,
-      "no_repeat_ngram_size": 2,
     }
 
     response_model = smr_client.invoke_endpoint(
@@ -65,7 +59,9 @@ def get_embedding(smr_client, text_arrs, endpoint_name=EMB_MODEL_ENDPOINT):
                 Body=json.dumps(
                 {
                     "inputs": text_arrs,
-                    "parameters": parameters
+                    "parameters": parameters,
+                    "is_query" : False,
+                    "instruction" :  None
                 }
                 ),
                 ContentType="application/json",

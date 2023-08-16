@@ -450,20 +450,19 @@ def query_kendra(Kendra_index_id="", lang="zh", search_query_text="what is s3?",
 # AOS
 def get_vector_by_sm_endpoint(questions, sm_client, endpoint_name):
     parameters = {
-        # "early_stopping": True,
-        # "length_penalty": 2.0,
-        "max_new_tokens": 50,
-        "temperature": 0,
-        "min_length": 10,
-        "no_repeat_ngram_size": 2,
     }
+
+    instruction_zh = "为这个句子生成表示以用于检索相关文章："
+    instruction_en = "Represent this sentence for searching relevant passages:"
 
     response_model = sm_client.invoke_endpoint(
         EndpointName=endpoint_name,
         Body=json.dumps(
             {
                 "inputs": questions,
-                "parameters": parameters
+                "parameters": parameters,
+                "is_query" : True,
+                "instruction" :  instruction_en
             }
         ),
         ContentType="application/json",
