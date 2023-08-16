@@ -62,6 +62,7 @@
 
 ```python
 # call this lambda from another lambda
+from boto3 import client as boto3_client
 lambda_client = boto3_client('lambda')
 
 def lambda_handler(event, context):

@@ -47,7 +47,9 @@ class ContentHandler(EmbeddingsContentHandler):
     accepts = "application/json"
 
     def transform_input(self, inputs: List[str], model_kwargs: Dict) -> bytes:
-        input_str = json.dumps({"inputs": inputs, "parameters":{}})
+        instruction_zh = "为这个句子生成表示以用于检索相关文章："
+        instruction_en = "Represent this sentence for searching relevant passages:"
+        input_str = json.dumps({"inputs": inputs, "parameters":{}, "is_query":False, "instruction":instruction_en})
         return input_str.encode('utf-8')
 
     def transform_output(self, output: bytes) -> List[List[float]]:
