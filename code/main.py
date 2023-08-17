@@ -865,7 +865,9 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         llm = SagemakerStreamEndpoint(endpoint_name=llm_model_endpoint, 
                 region_name=region, 
                 model_kwargs=model_kwargs,
-                content_handler=llmcontent_handler)
+                content_handler=llmcontent_handler,
+                endpoint_kwargs={'CustomAttributes':'accept_eula=true'} ##for llama2
+                )
     else:
         parameters = {
             "max_length": max_tokens,
@@ -880,7 +882,8 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
                 endpoint_name=llm_model_endpoint, 
                 region_name=region, 
                 model_kwargs=model_kwargs,
-                content_handler=llmcontent_handler
+                content_handler=llmcontent_handler,
+                endpoint_kwargs={'CustomAttributes':'accept_eula=true'} ##for llama2
             )
     
     # sm_client = boto3.client("sagemaker-runtime")
@@ -1197,8 +1200,11 @@ def lambda_handler(event, context):
     imgurl = event['imgurl']
     image_path = ''
     if imgurl:
-        bucket,imgobj = imgurl.split('/',1)
-        image_path = generate_s3_image_url(bucket,imgobj)
+        if imgurl.startswith('https://'):
+            image_path = imgurl
+        else:
+            bucket,imgobj = imgurl.split('/',1)
+            image_path = generate_s3_image_url(bucket,imgobj)
         logger.info(f"image_path:{image_path}")
 
     ##获取前端给的系统设定，如果没有，则使用lambda里的默认值

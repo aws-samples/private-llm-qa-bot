@@ -2,12 +2,13 @@ import { CfnOutput, NestedStack,RemovalPolicy }  from 'aws-cdk-lib';
 import {EngineVersion,Domain} from 'aws-cdk-lib/aws-opensearchservice';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as iam from "aws-cdk-lib/aws-iam";
-
+import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 
 export class OpenSearchStack extends NestedStack {
     domainEndpoint;
     domain;
     sg;
+    masterUserPassword;
 
 /**
    *
@@ -17,6 +18,16 @@ export class OpenSearchStack extends NestedStack {
    */
 constructor(scope, id, props) {
     super(scope, id, props);
+    const USERNAME = 'master-user';
+    const aosSecret = new secretsmanager.Secret(this, 'AosSecret', {
+      generateSecretString: {
+        secretStringTemplate: JSON.stringify({ username: USERNAME }),
+        generateStringKey: 'password',
+        excludeCharacters: '`\'/@"',
+        excludePunctuation: false,
+        passwordLength:10
+      },
+    });
 
 
     const devDomain = new Domain(this, 'Domain', {
@@ -29,12 +40,21 @@ constructor(scope, id, props) {
         securityGroups: [props.securityGroup],
         capacity: {
             dataNodes: 2,
-            dataNodeInstanceType:'r6g.large.search'
+            // dataNodeInstanceType:'r6g.large.search'
           },
         ebs: {
         volumeSize: 300,
         volumeType: ec2.EbsDeviceVolumeType.GENERAL_PURPOSE_SSD_GP3,
         },
+        fineGrainedAccessControl: {
+          masterUserName: USERNAME,
+          masterUserPassword:aosSecret.secretValue
+        },
+        nodeToNodeEncryption: true,
+        encryptionAtRest: {
+          enabled: true,
+        },
+        enforceHttps: true,
       });
 
       devDomain.addAccessPolicies(new iam.PolicyStatement({
@@ -48,6 +68,8 @@ constructor(scope, id, props) {
 
       this.domainEndpoint = devDomain.domainEndpoint;
       this.domain = devDomain;
+      this.masterName = USERNAME;
+      this.masterSecretName = aosSecret.secretName;
 
     
 

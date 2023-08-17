@@ -32,7 +32,7 @@ export class Ec2Stack extends NestedStack {
 //   });
   const securityGroup = props.securityGroup;
   securityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(22), 'Allow SSH Access')
-  // securityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'Allow HTTPS Access')
+  // securityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(443), 'Allow HTTPS Access') 
   securityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(8081), 'Allow HTTP 8081 port Access')
   securityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(80), 'Allow HTTP Access')
   securityGroup.addIngressRule(securityGroup, ec2.Port.allTraffic(), 'Allow Self Access')
