@@ -52,7 +52,7 @@ export class DeployStack extends Stack {
     
     if (!cn_region.includes(region)) {
       const ec2stack = new Ec2Stack(this,'Ec2Stack',{vpc:vpc,securityGroup:securityGroups[0]});
-      new CfnOutput(this, 'OpenSearch EC2 Proxy Address', { value: `http://${ec2stack.publicIP}:8081/_dashboards/`});
+      new CfnOutput(this, 'OpenSearch EC2 Proxy Address', { value: `http://${ec2stack.publicIP}/_dashboards/`});
       // new CfnOutput(this, 'Download Key Command', { value: 'aws secretsmanager get-secret-value --secret-id ec2-ssh-key/cdk-keypair/private --query SecretString --output text > cdk-key.pem && chmod 400 cdk-key.pem' })
       // new CfnOutput(this, 'ssh command', { value: 'ssh -i cdk-key.pem -o IdentitiesOnly=yes ec2-user@' + ec2stack.dnsName})
       ec2stack.addDependency(vpcStack);
@@ -185,7 +185,7 @@ export class DeployStack extends Stack {
       architecture: Architecture.X86_64,
       environment: {
         aos_endpoint:opensearch_endpoint,
-        aos_index:process.env.aos_index ,
+        index_name:"chatbot-example-index" ,
         aos_knn_field:process.env.aos_knn_field,
         embedding_endpoint:process.env.embedding_endpoint,
         llm_model_endpoint:process.env.llm_chatglm_endpoint
