@@ -29,23 +29,20 @@
   │   ├── lib/                             # cdk 部署脚本目录
   │   └── gen_env.sh                       # 自动生成部署变量的脚本(for workshop)
   ├── docs
+  │   ├── intentions/                      # 意图识别的示例标注文件
   │   ├── aws_cleanroom.faq                # faq 知识库文件
   │   ├── aws_msk.faq                      # faq 知识库文件
   │   ├── aws_emr.faq                      # faq 知识库文件
   │   ├── aws-overview.pdf                 # pdf 知识库文件
   │   └── PMC10004510.txt                  # txt 纯文本文件
-  ├── AWS_DOC_POC.ipynb                    # AWS文档-本地效果测试 notebook
-  ├── document_segment.ipynb               # 文档切分调优 开发notebook
-  ├── lanchain_demo.ipynb                  # lanchain 开发notebook
-  ├── langchain+basic.ipynb                # lanchain 开发notebook
-  ├── chatglm_deploy.ipynb                 # chatglm-6B LLM Model 部署notebook
-  ├── bloomz_LLM_deploy.ipynb              # bloomz-7B LLM Model 部署notebook
-  ├── llama_deepspeed_deploy.ipynb         # llama-7B LLM Model 部署notebook
-  ├── paraphrase-multilingual-deploy.ipynb # Sentence2Embedding Model 部署notebook
-  ├── text2vec-base-chinese-deploy.ipynb   # text2vec base Model 部署notebook
-  ├── text2vec-large-chinese-deploy.ipynb   # text2vec large Model 部署notebook
-  ├── Local_SentenceEmb.ipynb              # Studio 模型部署调试 notebook
-  └── SentenceEmbedding_deploy.ipynb       # GPT-6J Embedding Modeljumpstart部署 notebook
+  ├── doc_preprocess/                      # 原始文件处理脚本
+  │   ├── ...                              
+  │   └── ...                  
+  ├── notebook/                            # 各类notebook
+  │   ├── embedding                        # 部署embedding模型的notebook，包括bge, text2vec, paraphrase-multilingual, 以及finetune embedding模型的脚本    
+  │   ├── llm                              # 部署LLM模型的notebook，包括chatglm, chatglm2, qwen, buffer-instruct-baichuan-001
+  │   ├── mutilmodal                       # 部署多模态模型的notebook，包括VisualGLM                         
+  │   └── ...     
   ```
 
 - 流程介绍
