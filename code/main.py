@@ -311,7 +311,7 @@ class CustomDocRetriever(BaseRetriever,BaseModel):
                 "must": [
                     {
                     "terms": {
-                        "idx": [idx-NEIGHBORS,idx,idx+NEIGHBORS]
+                        "idx": [i for i in range(idx-NEIGHBORS,idx+NEIGHBORS+1)]
                     }
                     },
                     {
