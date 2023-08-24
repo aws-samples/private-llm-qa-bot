@@ -25,6 +25,9 @@ QA_SEP = '=====' # args['qa_sep'] #
 EXAMPLE_SEP = '\n\n'
 arg_chunk_size = 384
 
+CHUNK_SIZE=500
+CHUNK_OVERLAP=0
+
 # EMB_MODEL_ENDPOINT = "st-paraphrase-mpnet-base-v2-2023-04-19-04-14-31-658-endpoint"
 EMB_MODEL_ENDPOINT=args['EMB_MODEL_ENDPOINT']
 smr_client = boto3.client("sagemaker-runtime")
@@ -37,7 +40,7 @@ publish_date = args['PUBLISH_DATE'] if 'PUBLISH_DATE' in args.keys() else dateti
 
 INDEX_NAME = 'chatbot-index'
 EXAMPLE_INDEX_NAME = 'chatbot-example-index'
-EMB_BATCH_SIZE=20
+EMB_BATCH_SIZE=50
 Sentence_Len_Threshold=10
 
 DOC_INDEX_TABLE= 'chatbot_doc_index'
@@ -79,6 +82,38 @@ def batch_generator(generator, batch_size):
         if not batch:
             break
         yield batch
+
+
+def iterate_paragraph_wiki(content_json, object_key,smr_client, index_name, endpoint_name):
+    doc_title = object_key
+    text_splitter = RecursiveCharacterTextSplitter(        
+        chunk_size = CHUNK_SIZE,
+        chunk_overlap  = CHUNK_OVERLAP,
+        length_function = len,
+    )
+    def chunk_generator(json_arr):
+        for page in json_arr:
+            idx = 0
+            for url,p in page.items():
+                texts = []
+                if len(p):
+                    print(f'page:{url}, size: {len(p[0])}')
+                    texts = text_splitter.split_text(p[0])
+                for paragraph_content in texts:
+                    idx += 1
+                    yield (idx, paragraph_content, 'Paragraph', paragraph_content,url)
+
+    generator = chunk_generator(content_json)
+    batches = batch_generator(generator, batch_size=EMB_BATCH_SIZE)
+    for batch in batches:
+        if batch is not None:
+            emb_src_texts = [item[1] for item in batch] ##对content向量化
+            print("len of emb_src_texts :{}".format(len(emb_src_texts)))
+            embeddings = get_embedding(smr_client, emb_src_texts, endpoint_name)
+            for i, emb in enumerate(embeddings):
+                document = { "publish_date": publish_date, "idx": batch[i][0], "doc" : batch[i][1], "doc_type" : batch[i][2], "content" : batch[i][3], "doc_title": doc_title, "doc_category": batch[i][4], "embedding" : emb}
+                yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document['doc']).encode('utf-8')).hexdigest()}
+
 
 def iterate_paragraph(file_content, object_key,smr_client, index_name, endpoint_name):
     json_arr = json.loads(file_content)
@@ -336,8 +371,10 @@ def load_content_json_from_s3(bucket, object_key, content_type, credentials):
             json_content = file_content
         elif content_type == 'example':
             json_content = file_content
+        elif content_type =='wiki':
+            json_content = json.loads(file_content)
         else:
-            raise RuntimeError("unsupport content type...(pdf, faq, txt are supported.)")
+            raise RuntimeError("unsupport content type...(pdf, faq, txt,wiki,example are supported.)")
         
         return json_content
 
@@ -447,6 +484,8 @@ def WriteVecIndexToAOS(bucket, object_key, content_type, smr_client, aos_endpoin
             gen_aos_record_func = iterate_QA(file_content, object_key,smr_client, index_name, EMB_MODEL_ENDPOINT)
         elif content_type in ['txt', 'pdf', 'json']:
             gen_aos_record_func = iterate_paragraph(file_content,object_key, smr_client, index_name, EMB_MODEL_ENDPOINT)
+        elif content_type in ['wiki']:
+            gen_aos_record_func = iterate_paragraph_wiki(file_content,object_key, smr_client, index_name, EMB_MODEL_ENDPOINT)
         elif content_type in ['example']:
             gen_aos_record_func = iterate_examples(file_content,object_key, smr_client, index_name, EMB_MODEL_ENDPOINT)
         else:
@@ -473,6 +512,9 @@ def process_s3_uploaded_file(bucket, object_key):
     elif object_key.endswith(".txt"):
         print("********** pre-processing text file")
         content_type = 'txt'
+    elif object_key.endswith(".wiki"):
+        print("********** pre-processing wiki file")
+        content_type = 'wiki'
     elif object_key.endswith(".pdf"):
         print("********** pre-processing pdf file")
         content_type = 'pdf'

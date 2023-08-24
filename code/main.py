@@ -56,6 +56,7 @@ openai_api_key = None
 STOP=[f"\n{A_Role}", f"\n{B_Role}", f"\n{Fewshot_prefix_Q}"]
 KNN_THRESHOLD = float(os.environ.get('knn_threshold',0.2))
 INVERTED_HRESHOLD =float(os.environ.get('inverted_theshold',1.0))
+NEIGHBORS = int(os.environ.get('neighbors',1))
 
 class StreamScanner:    
     def __init__(self):
@@ -78,14 +79,16 @@ class StreamScanner:
 
 class CustomStreamingOutCallbackHandler(BaseCallbackHandler):
     """Callback handler for streaming. Only works with LLMs that support streaming."""
-    def __init__(self,wsclient:str,msgid:str,connectionId:str , **kwargs: Any) -> None:
+    def __init__(self,wsclient:str,msgid:str,connectionId:str ,model_name:str, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.wsclient = wsclient
         self.connectionId = connectionId
         self.msgid = msgid
+        self.model_name= model_name,
         self.recall_knowledge = None
 
     def add_recall_knowledge(self,recall_knowledge):
+
         self.recall_knowledge = recall_knowledge
 
     def postMessage(self,data):
@@ -115,13 +118,12 @@ class CustomStreamingOutCallbackHandler(BaseCallbackHandler):
 
     def on_llm_end(self, response: LLMResult, **kwargs: Any) -> None:
         """Run when LLM ends running."""
+        data = json.dumps({ 'msgid':self.msgid, 'role': "AI", 'text': {'content':f"[{self.model_name}]" } })
+        self.postMessage(data)
         if self.recall_knowledge:
-            text = '\n```json\n#Reference\n'
-            for sn,item in enumerate(self.recall_knowledge):
-                text += f'Doc[{sn+1}]\n{json.dumps(item,ensure_ascii=False)}\n'
+            text = format_reference(self.recall_knowledge)
             data = json.dumps({ 'msgid':self.msgid, 'role': "AI", 'text': {'content':f'{text}```'} })
             self.postMessage(data)
-
         
 
     def on_chain_error(
@@ -280,7 +282,7 @@ class CustomDocRetriever(BaseRetriever,BaseModel):
     
     #this is for standard langchain interface
     def get_relevant_documents(self, query_input: str) -> List[Document]:
-        recall_knowledge,_,_ = self.get_relevant_documents_custom(query_input)
+        recall_knowledge,_,_= self.get_relevant_documents_custom(query_input)
         top_k_results = []
         for item in recall_knowledge:
             top_k_results.append(Document(page_content=item.get('doc')))
@@ -289,6 +291,55 @@ class CustomDocRetriever(BaseRetriever,BaseModel):
 
     async def aget_relevant_documents(self, query: str) -> List[Document]:
         raise NotImplementedError
+    
+    
+    def add_neighbours_doc(self,client,opensearch_respose):
+        docs = []
+        for item in opensearch_respose:
+            if item['doc_type'] == 'Paragraph' and item['doc_title'].endswith('wiki'):
+                doc = self.search_paragraph_neighbours(client,item['idx'],item['doc_title'],item['doc_category'])
+                docs.append({ "doc": doc, "score": item['score'], "doc_title": item['doc_title'],"doc_type": item['doc_type'],'doc_category':item['doc_category']} )
+            else:
+                docs.append({ "doc": item['doc'], "score": item['score'], "doc_title": item['doc_title'],"doc_type": item['doc_type'] } )
+        
+        return docs
+
+    def search_paragraph_neighbours(self,client, idx, doc_title,doc_category):
+        query ={
+            "query":{
+                "bool": {
+                "must": [
+                    {
+                    "terms": {
+                        "idx": [idx-NEIGHBORS,idx,idx+NEIGHBORS]
+                    }
+                    },
+                    {
+                    "terms": {
+                        "doc_title": [doc_title]
+                    }
+                    },
+                    {
+                  "terms": {
+                    "doc_category": [doc_category]
+                    }
+                    },
+                    {
+                    "terms": {
+                        "doc_type": ['Paragraph']
+                    }
+                    }
+                ]
+                }
+            }
+        }
+        query_response = client.search(
+            body=query,
+            index=self.aos_index
+        )
+        doc = '\n'.join([item['_source']['doc'] for item in query_response["hits"]["hits"]])
+        return doc
+
     
     def get_relevant_documents_custom(self, query_input: str):
         start = time.time()
@@ -317,27 +368,33 @@ class CustomDocRetriever(BaseRetriever,BaseModel):
             filter knn_result if the result don't appear in filter_inverted_result
             '''
             def get_topk_items(opensearch_knn_respose, opensearch_query_response, doc_type, topk=1):
-                opensearch_knn_items = [ (item['doc'], item['score']) for item in opensearch_knn_respose ]
-                opensearch_bm25_items = [ (item['doc'], item['score']) for item in opensearch_query_response ]
 
-                opensearch_knn_items.sort(key=lambda x: x[1])
-                opensearch_bm25_items.sort(key=lambda x: x[1])
-
-                opensearch_knn_nodup = [(k,v) for k,v in dict(opensearch_knn_items).items()]
-                opensearch_bm25_nodup = [(k,v) for k,v in dict(opensearch_bm25_items).items()]
+                opensearch_knn_nodup = []
+                unique_ids = set()
+                for item in opensearch_knn_respose:
+                    if item['id'] not in unique_ids:
+                        opensearch_knn_nodup.append((item['doc'], item['score'],item['idx'], item['doc_title'], item['id'],item['doc_category']))
+                        unique_ids.add(item['id'])
+                
+                opensearch_bm25_nodup = []
+                unique_ids = set()
+                for item in opensearch_query_response:
+                    if item['id'] not in unique_ids:
+                        opensearch_bm25_nodup.append((item['doc'], item['score'], item['idx'], item['doc_title'],item['id'],item['doc_category']))
+                        unique_ids.add(item['id'])
 
                 opensearch_knn_nodup.sort(key=lambda x: x[1])
                 opensearch_bm25_nodup.sort(key=lambda x: x[1])
                 
                 half_topk = math.ceil(topk/2) 
     
-                kg_combine_result = [ { "doc": item[0], "score": item[1], "doc_type": doc_type } for item in opensearch_knn_nodup[-1*half_topk:]]
-                knn_kept_doc = [ item[0] for item in opensearch_knn_nodup[-1*half_topk:] ]
+                kg_combine_result = [ { "doc": item[0], "score": item[1],"idx":item[2],"doc_title":item[3], "doc_type": doc_type,"doc_category":item[5] } for item in opensearch_knn_nodup[-1*half_topk:]]
+                knn_kept_doc = [ item[4] for item in opensearch_knn_nodup[-1*half_topk:] ]
 
                 count = len(kg_combine_result)
                 for item in opensearch_bm25_nodup[::-1]:
-                    if item[0] not in knn_kept_doc:
-                        kg_combine_result.append({ "doc": item[0], "score": item[1], "doc_type": doc_type })
+                    if item[4] not in knn_kept_doc:
+                        kg_combine_result.append({ "doc": item[0], "score": item[1],"idx":item[2],"doc_title":item[3], "doc_type": doc_type ,"doc_category":item[5]})
                         count += 1
                     if count == topk:
                         break
@@ -362,6 +419,10 @@ class CustomDocRetriever(BaseRetriever,BaseModel):
             return ret_content
         
         recall_knowledge = combine_recalls(opensearch_knn_respose, opensearch_query_response)
+
+        ##如果是段落类型，添加临近doc
+        recall_knowledge = self.add_neighbours_doc(aos_client,recall_knowledge)
+
         return recall_knowledge,opensearch_knn_respose,opensearch_query_response
     
 class ErrorCode:
@@ -491,7 +552,7 @@ def search_using_aos_knn(client, q_embedding, index, size=10):
         body=query,
         index=index
     )
-    opensearch_knn_respose = [{'id':item['_id'],'doc':"{}{}{}".format(item['_source']['doc'], QA_SEP, item['_source']['content']),"doc_type":item["_source"]["doc_type"],"score":item["_score"]}  for item in query_response["hits"]["hits"]]
+    opensearch_knn_respose = [{'idx':item['_source'].get('idx',1),'doc_category':item['_source']['doc_category'],'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc':"{}{}{}".format(item['_source']['doc'], QA_SEP, item['_source']['content']),"doc_type":item["_source"]["doc_type"],"score":item["_score"]}  for item in query_response["hits"]["hits"]]
     return opensearch_knn_respose
     
 
@@ -575,9 +636,9 @@ def aos_search(client, index_name, field, query_term, exactly_match=False, size=
     )
 
     if exactly_match:
-        result_arr = [ {'id':item['_id'],'doc': item['_source']['content'], 'doc_type': item['_source']['doc_type'], 'score': item['_score']} for item in query_response["hits"]["hits"]]
+        result_arr = [ {'idx':item['_source'].get('idx',0),'doc_category':item['_source']['doc_category'],'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc': item['_source']['content'], 'doc_type': item['_source']['doc_type'], 'score': item['_score']} for item in query_response["hits"]["hits"]]
     else:
-        result_arr = [ {'id':item['_id'],'doc':"{}{}{}".format(item['_source']['doc'], QA_SEP, item['_source']['content']), 'doc_type': item['_source']['doc_type'], 'score': item['_score']} for item in query_response["hits"]["hits"]]
+        result_arr = [ {'idx':item['_source'].get('idx',0),'doc_category':item['_source']['doc_category'],'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc':"{}{}{}".format(item['_source']['doc'], QA_SEP, item['_source']['content']), 'doc_type': item['_source']['doc_type'], 'score': item['_score']} for item in query_response["hits"]["hits"]]
 
     return result_arr
 
@@ -686,9 +747,7 @@ def qa_knowledge_fewshot_build(recalls):
             qa_example = "{}: {}\n{}: {}".format(Fewshot_prefix_Q, q, Fewshot_prefix_A, a)
             ret_context.append(qa_example)
         elif recall['doc_type'] == 'Paragraph':
-            recall_doc, p = recall['doc'].split(QA_SEP)
-            p_example = "{}".format(p)
-            ret_context.append(p_example)
+            ret_context.append(recall['doc'])
 
     context_str = "\n\n".join(ret_context)
     return context_str
@@ -771,6 +830,16 @@ def get_bedrock_aksk(secret_name='chatbot_bedrock', region_name = "us-west-2"):
     secret = json.loads(get_secret_value_response['SecretString'])
     return secret['BEDROCK_ACCESS_KEY'],secret['BEDROCK_SECRET_KEY']
 
+def format_reference(recall_knowledge):
+    text = '\n```json\n#Reference\n'
+    for sn,item in enumerate(recall_knowledge):
+        if 'doc_category' in item:
+            displaydata = { "doc": item['doc'], "score": item['score'], "doc_title": item['doc_category']}
+        else:
+            displaydata = { "doc": item['doc'], "score": item['score'], "doc_title": item['doc_title']}
+        text += f'Doc[{sn+1}]\n{json.dumps(displaydata,ensure_ascii=False)}\n'
+    return text
+
 def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str, llm_model_endpoint:str, llm_model_name:str, aos_endpoint:str, aos_index:str, aos_knn_field:str,
                     aos_result_num:int, kendra_index_id:str, kendra_result_num:int,use_qa:bool,wsclient=None,msgid:str='',max_tokens:int = 2048,temperature:float = 0.01,template:str = '',imgurl:str = None):
     """
@@ -818,7 +887,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
     
     logger.info("llm_model_name : {}".format(llm_model_name))
     llm = None
-    stream_callback = CustomStreamingOutCallbackHandler(wsclient,msgid, session_id)
+    stream_callback = CustomStreamingOutCallbackHandler(wsclient,msgid, session_id,llm_model_name)
     if llm_model_name == 'claude':
         ACCESS_KEY, SECRET_KEY=get_bedrock_aksk()
 
@@ -898,16 +967,20 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
     
     answer = None
     query_type = None
-    free_chat_coversions = []
+    # free_chat_coversions = []
     verbose = False
     logger.info(f'use QA: {use_qa}')
     if not use_qa:##如果不使用QA
         query_type = QueryType.Conversation
-        free_chat_coversions = [ (item[0],item[1]) for item in session_history if item[2] == str(query_type)]
+        # free_chat_coversions = [ (item[0],item[1]) for item in session_history if item[2] == str(query_type)]
         # chat_history= get_chat_history(free_chat_coversions[-2:])
-        chat_history=''
+        chat_coversions = [ (item[0],item[1]) for item in session_history]
         ##add history parameter
-        llm.model_kwargs['history'] = free_chat_coversions[-4:]
+        if isinstance(llm,SagemakerStreamEndpoint) or isinstance(llm,SagemakerEndpoint):
+            chat_history=''
+            llm.model_kwargs['history'] = chat_coversions[-3:]
+        else:
+            chat_history= get_chat_history(chat_coversions[-3:])
         
         prompt_template = create_chat_prompt_templete(template)
         llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
@@ -922,7 +995,9 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
                                     aos_endpoint= aos_endpoint,
                                     aos_index=aos_index)
         # 3. check is it keyword search
-        exactly_match_result = aos_search(aos_endpoint, aos_index, "doc", query_input, exactly_match=True)
+        # exactly_match_result = aos_search(aos_endpoint, aos_index, "doc", query_input, exactly_match=True)
+        ## 精准匹配对paragraph类型文档不太适用，先屏蔽掉 
+        exactly_match_result = None
 
         start = time.time()
         ## 加上一轮的问题拼接来召回内容
@@ -930,18 +1005,23 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         recall_knowledge,opensearch_knn_respose,opensearch_query_response = doc_retriever.get_relevant_documents_custom(query_input) 
         elpase_time = time.time() - start
         logger.info(f'runing time of opensearch_query : {elpase_time}s seconds')
-
+        
+        chat_history=''
+        ##add history parameter
+        # if isinstance(llm,SagemakerStreamEndpoint) or isinstance(llm,SagemakerEndpoint):
+        #     chat_history=''
+        #     llm.model_kwargs['history'] = chat_coversions[-2:]
+        # else:
+        #     chat_history= get_chat_history(chat_coversions[-2:])
+            
         if exactly_match_result and recall_knowledge: 
             query_type = QueryType.KeywordQuery
             answer = exactly_match_result[0]["doc"]
             final_prompt = ''
             use_stream = False ##如果是直接匹配则不需要走流
-        elif recall_knowledge:      
-            # chat_history= get_chat_history(chat_coversions[-2:]) ##chatglm模型质量不高，暂时屏蔽历史对话
-
+        else:      
             ##添加召回引用
             stream_callback.add_recall_knowledge(recall_knowledge)
-            chat_history = ''
             query_type = QueryType.KnowledgeQuery
             prompt_template = create_baichuan_prompt_template(template) if llm_model_name.startswith('baichuan-finetune') else create_qa_prompt_templete(template) 
             llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
@@ -953,29 +1033,11 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
             final_prompt = prompt_template.format(question=query_input,role_bot=B_Role,context=context,chat_history=chat_history)
             # print(final_prompt)
             # print(answer)
-        else:
-            query_type = QueryType.Conversation
-            free_chat_coversions = [ (item[0],item[1]) for item in session_history if item[2] == str(query_type)]
-            # free_chat_coversions = [ (item[0],item[1]) for item in session_history ]
-            # chat_history= get_chat_history(free_chat_coversions[-2:])
-            chat_history = ''
-            prompt_template = create_chat_prompt_templete(template)
-
-            ##add history parameter
-            # llm.model_kwargs['history'] = free_chat_coversions[-2:]
-
-            llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
-            ##最终的answer
-            answer = llmchain.run({'question':query_input,'chat_history':chat_history,'role_bot':B_Role})
-            ##最终的prompt日志
-            final_prompt = prompt_template.format(question=query_input,role_bot=B_Role,chat_history=chat_history)
 
     answer = enforce_stop_tokens(answer, STOP)
 
     if not use_stream and recall_knowledge:
-        text = '\n```json\n#Reference\n'
-        for sn,item in enumerate(recall_knowledge):
-            text += f'Doc[{sn+1}]\n{json.dumps(item,ensure_ascii=False)}\n'
+        text = format_reference(recall_knowledge)
         answer+= f'{text}```'
 
     json_obj = {
@@ -991,7 +1053,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
 
     json_obj['session_id'] = session_id
     json_obj['chatbot_answer'] = answer
-    json_obj['conversations'] = free_chat_coversions
+    json_obj['conversations'] = chat_coversions
     json_obj['timestamp'] = int(time.time())
     json_obj['log_type'] = "all"
     json_obj_str = json.dumps(json_obj, ensure_ascii=False)
@@ -1190,7 +1252,7 @@ def lambda_handler(event, context):
     session_id = event['chat_name']
     question = event['prompt']
     model_name = event['model'] if event.get('model') else event.get('model_name','')
-    embedding_endpoint = event['embedding_model'] 
+    # embedding_endpoint = event['embedding_model'] 
     use_qa = event.get('use_qa',False)
     template_id = event.get('template_id')
     msgid = event.get('msgid')
@@ -1249,7 +1311,7 @@ def lambda_handler(event, context):
 
     # 1. 获取环境变量
 
-    # embedding_endpoint = os.environ.get("embedding_endpoint", "")
+    embedding_endpoint = os.environ.get("embedding_endpoint", "")
     aos_endpoint = os.environ.get("aos_endpoint", "")
     aos_index = os.environ.get("aos_index", "")
     aos_knn_field = os.environ.get("aos_knn_field", "")
