@@ -300,7 +300,7 @@ class CustomDocRetriever(BaseRetriever,BaseModel):
                 doc = self.search_paragraph_neighbours(client,item['idx'],item['doc_title'],item['doc_category'])
                 docs.append({ "doc": doc, "score": item['score'], "doc_title": item['doc_title'],"doc_type": item['doc_type'],'doc_category':item['doc_category']} )
             else:
-                docs.append({ "doc": item['doc'], "score": item['score'], "doc_title": item['doc_title'],"doc_type": item['doc_type'] } )
+                docs.append({ "doc": item['doc'], "score": item['score'], "doc_title": item['doc_title'],"doc_type": item['doc_type'],'doc_category':item['doc_category'] } )
         
         return docs
 
@@ -341,7 +341,7 @@ class CustomDocRetriever(BaseRetriever,BaseModel):
         return doc
 
     
-    def get_relevant_documents_custom(self, query_input: str):
+    def get_relevant_documents_custom_bak(self, query_input: str):
         start = time.time()
         query_embedding = get_vector_by_sm_endpoint(query_input, sm_client, self.embedding_model_endpoint)
         aos_client = OpenSearch(
@@ -424,7 +424,51 @@ class CustomDocRetriever(BaseRetriever,BaseModel):
         recall_knowledge = self.add_neighbours_doc(aos_client,recall_knowledge)
 
         return recall_knowledge,opensearch_knn_respose,opensearch_query_response
-    
+
+    def get_relevant_documents_custom_pure_knn(self, query_input: str):
+            start = time.time()
+            query_embedding = get_vector_by_sm_endpoint(query_input, sm_client, self.embedding_model_endpoint)
+            aos_client = OpenSearch(
+                    hosts=[{'host': self.aos_endpoint, 'port': 443}],
+                    http_auth = awsauth,
+                    use_ssl=True,
+                    verify_certs=True,
+                    connection_class=RequestsHttpConnection
+                )
+            opensearch_knn_respose = search_using_aos_knn(aos_client,query_embedding[0], self.aos_index)
+            elpase_time = time.time() - start
+            logger.info(f'runing time of opensearch_knn : {elpase_time}s seconds')
+        
+            # 5. combine these two opensearch_knn_respose and opensearch_query_response
+            def filter_recalls(opensearch_knn_respose,topk):
+                '''
+                filter knn_result if the result don't appear in filter_inverted_result
+                '''
+                def get_topk_items(opensearch_knn_respose, topk=2):
+
+                    opensearch_knn_nodup = []
+                    unique_ids = set()
+                    for item in opensearch_knn_respose:
+                        if item['id'] not in unique_ids:
+                            opensearch_knn_nodup.append((item['doc'], item['score'],item['idx'], item['doc_title'], item['id'],item['doc_category'],item['doc_type']))
+                            unique_ids.add(item['id'])
+                    opensearch_knn_nodup.sort(key=lambda x: x[1])
+                    kg_combine_result = [ { "doc": item[0], "score": item[1],"idx":item[2],"doc_title":item[3], "doc_category":item[5],"doc_type": item[6] } for item in opensearch_knn_nodup[-1*topk:]]
+                    return kg_combine_result
+
+                filter_knn_result = [ item for item in opensearch_knn_respose if item['score'] > KNN_THRESHOLD ]
+                
+                ret_content = get_topk_items(filter_knn_result, topk)
+
+                return ret_content
+            
+            recall_knowledge = filter_recalls(opensearch_knn_respose,3)
+
+            ##如果是段落类型，添加临近doc
+            recall_knowledge = self.add_neighbours_doc(aos_client,recall_knowledge)
+
+            return recall_knowledge,opensearch_knn_respose,[]
+
 class ErrorCode:
     DUPLICATED_INDEX_PREFIX = "DuplicatedIndexPrefix"
     DUPLICATED_WITH_INACTIVE_INDEX_PREFIX = "DuplicatedWithInactiveIndexPrefix"
@@ -833,15 +877,14 @@ def get_bedrock_aksk(secret_name='chatbot_bedrock', region_name = "us-west-2"):
 def format_reference(recall_knowledge):
     text = '\n```json\n#Reference\n'
     for sn,item in enumerate(recall_knowledge):
-        if 'doc_category' in item:
-            displaydata = { "doc": item['doc'], "score": item['score'], "doc_title": item['doc_category']}
-        else:
-            displaydata = { "doc": item['doc'], "score": item['score'], "doc_title": item['doc_title']}
-        text += f'Doc[{sn+1}]\n{json.dumps(displaydata,ensure_ascii=False)}\n'
+        displaydata = { "doc": item['doc'],"score": item['score']}
+        doc_category  = item['doc_category'] 
+        doc_title =  item['doc_title']
+        text += f'Doc[{sn+1}]:["{doc_title}"]-["{doc_category}"]\n{json.dumps(displaydata,ensure_ascii=False)}\n'
     return text
 
 def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str, llm_model_endpoint:str, llm_model_name:str, aos_endpoint:str, aos_index:str, aos_knn_field:str,
-                    aos_result_num:int, kendra_index_id:str, kendra_result_num:int,use_qa:bool,wsclient=None,msgid:str='',max_tokens:int = 2048,temperature:float = 0.01,template:str = '',imgurl:str = None):
+                    aos_result_num:int, kendra_index_id:str, kendra_result_num:int,use_qa:bool,wsclient=None,msgid:str='',max_tokens:int = 2048,temperature:float = 0.01,template:str = '',imgurl:str = None,multi_rounds:bool = False):
     """
     Entry point for the Lambda function.
 
@@ -975,12 +1018,15 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         # free_chat_coversions = [ (item[0],item[1]) for item in session_history if item[2] == str(query_type)]
         # chat_history= get_chat_history(free_chat_coversions[-2:])
         chat_coversions = [ (item[0],item[1]) for item in session_history]
-        ##add history parameter
-        if isinstance(llm,SagemakerStreamEndpoint) or isinstance(llm,SagemakerEndpoint):
-            chat_history=''
-            llm.model_kwargs['history'] = chat_coversions[-3:]
+        if multi_rounds:
+            ##add history parameter
+            if isinstance(llm,SagemakerStreamEndpoint) or isinstance(llm,SagemakerEndpoint):
+                chat_history=''
+                llm.model_kwargs['history'] = chat_coversions[-3:]
+            else:
+                chat_history= get_chat_history(chat_coversions[-3:])
         else:
-            chat_history= get_chat_history(chat_coversions[-3:])
+            chat_history=''
         
         prompt_template = create_chat_prompt_templete(template)
         llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
@@ -1002,17 +1048,19 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         start = time.time()
         ## 加上一轮的问题拼接来召回内容
         # query_with_history= get_question_history(chat_coversions[-2:])+query_input
-        recall_knowledge,opensearch_knn_respose,opensearch_query_response = doc_retriever.get_relevant_documents_custom(query_input) 
+        recall_knowledge,opensearch_knn_respose,opensearch_query_response = doc_retriever.get_relevant_documents_custom_pure_knn(query_input) 
         elpase_time = time.time() - start
         logger.info(f'runing time of opensearch_query : {elpase_time}s seconds')
         
-        chat_history=''
         ##add history parameter
-        # if isinstance(llm,SagemakerStreamEndpoint) or isinstance(llm,SagemakerEndpoint):
-        #     chat_history=''
-        #     llm.model_kwargs['history'] = chat_coversions[-2:]
-        # else:
-        #     chat_history= get_chat_history(chat_coversions[-2:])
+        if multi_rounds:
+            if isinstance(llm,SagemakerStreamEndpoint) or isinstance(llm,SagemakerEndpoint):
+                chat_history=''
+                llm.model_kwargs['history'] = chat_coversions[-3:]
+            else:
+                chat_history= get_chat_history(chat_coversions[-3:])
+        else:
+            chat_history=''
             
         if exactly_match_result and recall_knowledge: 
             query_type = QueryType.KeywordQuery
@@ -1053,7 +1101,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
 
     json_obj['session_id'] = session_id
     json_obj['chatbot_answer'] = answer
-    json_obj['conversations'] = chat_coversions
+    json_obj['conversations'] = chat_coversions[-3:]
     json_obj['timestamp'] = int(time.time())
     json_obj['log_type'] = "all"
     json_obj_str = json.dumps(json_obj, ensure_ascii=False)
@@ -1254,6 +1302,7 @@ def lambda_handler(event, context):
     model_name = event['model'] if event.get('model') else event.get('model_name','')
     # embedding_endpoint = event['embedding_model'] 
     use_qa = event.get('use_qa',False)
+    multi_rounds = event.get('multi_rounds',False)
     template_id = event.get('template_id')
     msgid = event.get('msgid')
     max_tokens = event.get('max_tokens',2048)
@@ -1270,9 +1319,10 @@ def lambda_handler(event, context):
 
     ##获取前端给的系统设定，如果没有，则使用lambda里的默认值
     global B_Role,SYSTEM_ROLE_PROMPT
-    B_Role = event.get('system_role') if event.get('system_role') else B_Role
-    SYSTEM_ROLE_PROMPT = event.get('system_role_prompt') if event.get('system_role_prompt') else SYSTEM_ROLE_PROMPT
-
+    B_Role = event.get('system_role',B_Role)
+    SYSTEM_ROLE_PROMPT = event.get('system_role_prompt',SYSTEM_ROLE_PROMPT)
+    
+    logger.info(f'system_role:{B_Role},system_role_prompt:{SYSTEM_ROLE_PROMPT}')
     llm_endpoint = None
     if model_name == 'chatglm':
         llm_endpoint = os.environ.get('llm_{}_endpoint'.format(model_name))
@@ -1337,10 +1387,11 @@ def lambda_handler(event, context):
     logger.info(f'aos_result_num : {aos_result_num}')
     logger.info(f'Kendra_index_id : {Kendra_index_id}')
     logger.info(f'Kendra_result_num : {Kendra_result_num}')
+    logger.info(f'use multiple rounds: {multi_rounds}')
     
     main_entry_start = time.time()  # 或者使用 time.time_ns() 获取纳秒级别的时间戳
     answer,use_stream = main_entry_new(session_id, question, embedding_endpoint, llm_endpoint, model_name, aos_endpoint, aos_index, aos_knn_field, aos_result_num,
-                       Kendra_index_id, Kendra_result_num,use_qa,wsclient,msgid,max_tokens,temperature,prompt_template,image_path)
+                       Kendra_index_id, Kendra_result_num,use_qa,wsclient,msgid,max_tokens,temperature,prompt_template,image_path,multi_rounds)
     main_entry_elpase = time.time() - main_entry_start  # 或者使用 time.time_ns() 获取纳秒级别的时间戳
     logger.info(f'runing time of main_entry : {main_entry_elpase}s seconds')
     # 2. return rusult
