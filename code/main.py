@@ -459,7 +459,7 @@ def get_vector_by_sm_endpoint(questions, sm_client, endpoint_name):
         EndpointName=endpoint_name,
         Body=json.dumps(
             {
-                "inputs": questions,
+                "inputs": questions, 
                 "parameters": parameters,
                 "is_query" : True,
                 "instruction" :  instruction_en
@@ -933,9 +933,8 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
             answer = exactly_match_result[0]["doc"]
             final_prompt = ''
             use_stream = False ##如果是直接匹配则不需要走流
-        elif recall_knowledge:      
+        else:      
             # chat_history= get_chat_history(chat_coversions[-2:]) ##chatglm模型质量不高，暂时屏蔽历史对话
-
             ##添加召回引用
             stream_callback.add_recall_knowledge(recall_knowledge)
             chat_history = ''
@@ -950,22 +949,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
             final_prompt = prompt_template.format(question=query_input,role_bot=B_Role,context=context,chat_history=chat_history)
             # print(final_prompt)
             # print(answer)
-        else:
-            query_type = QueryType.Conversation
-            free_chat_coversions = [ (item[0],item[1]) for item in session_history if item[2] == str(query_type)]
-            # free_chat_coversions = [ (item[0],item[1]) for item in session_history ]
-            # chat_history= get_chat_history(free_chat_coversions[-2:])
-            chat_history = ''
-            prompt_template = create_chat_prompt_templete(template)
 
-            ##add history parameter
-            # llm.model_kwargs['history'] = free_chat_coversions[-2:]
-
-            llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
-            ##最终的answer
-            answer = llmchain.run({'question':query_input,'chat_history':chat_history,'role_bot':B_Role})
-            ##最终的prompt日志
-            final_prompt = prompt_template.format(question=query_input,role_bot=B_Role,chat_history=chat_history)
 
     answer = enforce_stop_tokens(answer, STOP)
 
@@ -1187,7 +1171,7 @@ def lambda_handler(event, context):
     session_id = event['chat_name']
     question = event['prompt']
     model_name = event['model'] if event.get('model') else event.get('model_name','')
-    embedding_endpoint = event['embedding_model'] 
+    embedding_endpoint = event.get('embedding_model',os.environ.get("embedding_endpoint")) 
     use_qa = event.get('use_qa',False)
     template_id = event.get('template_id')
     msgid = event.get('msgid')
