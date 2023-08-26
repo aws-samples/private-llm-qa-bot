@@ -39,5 +39,5 @@
 - Usage
     ```shell
     # 指定 endpoint, 可以激活对长文本的摘要能力 --llm_endpoint ${llm_endpoint}
-    python doc_spliter.py --input_file ../docs/common-stock-fs.pdf --output_file ../docs/common-stock-fs.pdf.json
+    python pdf_spliter.py --input_file ../docs/common-stock-fs.pdf --output_file ../docs/common-stock-fs.pdf.json
     ```
