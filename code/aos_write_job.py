@@ -16,6 +16,7 @@ from bs4 import BeautifulSoup
 from langchain.document_loaders import PDFMinerPDFasHTMLLoader
 from langchain.docstore.document import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter,CharacterTextSplitter
+import logging
 
 args = getResolvedOptions(sys.argv, ['bucket', 'object_key','AOS_ENDPOINT','REGION','EMB_MODEL_ENDPOINT','PUBLISH_DATE'])
 s3 = boto3.resource('s3')
@@ -39,6 +40,7 @@ INDEX_NAME = 'chatbot-index'
 EXAMPLE_INDEX_NAME = 'chatbot-example-index'
 EMB_BATCH_SIZE=20
 Sentence_Len_Threshold=10
+Paragraph_Len_Threshold=20
 
 DOC_INDEX_TABLE= 'chatbot_doc_index'
 dynamodb = boto3.client('dynamodb')
@@ -80,7 +82,7 @@ def batch_generator(generator, batch_size):
             break
         yield batch
 
-def iterate_paragraph(file_content, object_key,smr_client, index_name, endpoint_name):
+def iterate_paragraph(file_content, object_key, smr_client, index_name, endpoint_name):
     json_arr = json.loads(file_content)
     doc_title = object_key
 
@@ -91,7 +93,7 @@ def iterate_paragraph(file_content, object_key,smr_client, index_name, endpoint_
                 header = json_item['heading'][0]['heading']
 
             paragraph_content = json_item['content']
-            if len(paragraph_content) > 1024 and len(paragraph_content) < Sentence_Len_Threshold:
+            if len(paragraph_content) > 1024 or len(paragraph_content) < Sentence_Len_Threshold:
                 continue
 
             yield (idx, paragraph_content, 'Paragraph', paragraph_content)
@@ -110,6 +112,49 @@ def iterate_paragraph(file_content, object_key,smr_client, index_name, endpoint_
             for i, emb in enumerate(embeddings):
                 document = { "publish_date": publish_date, "idx": batch[i][0], "doc" : batch[i][1], "doc_type" : batch[i][2], "content" : batch[i][3], "doc_title": doc_title, "doc_category": "", "embedding" : emb}
                 yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document['doc']).encode('utf-8')).hexdigest()}
+
+def iterate_pdf_json(file_content, object_key, smr_client, index_name, endpoint_name):
+    json_arr = json.loads(file_content)
+    doc_title = json_arr[0]['doc_title']
+
+    def chunk_generator(json_arr):
+        for idx, json_item in enumerate(json_arr):
+            paragraph_content = None
+            content = json_item['content']
+            # print("----{}----".format(idx))
+            # print(content)
+
+            is_table = not isinstance(content, str)
+            doc_category = 'table' if is_table else 'paragraph'
+            if is_table:
+                paragraph_content = "Table - {}\n{}\n\n{}".format(content['table'], json.dumps(content['data']), content['footer'])
+            else:
+                paragraph_content = "#{}\n{}".format(doc_title, content)
+                if len(paragraph_content) > 1024 or len(paragraph_content) < Paragraph_Len_Threshold:
+                    continue
+
+            yield (idx, paragraph_content, 'Paragraph', paragraph_content, doc_category)
+
+            if is_table:
+                yield (idx, content['footer'], 'Sentence', content['footer'], doc_category)
+            else:
+                sentences = re.split('[。？?.！!]', paragraph_content)
+                for sent in (sent for sent in sentences if len(sent) > Sentence_Len_Threshold): 
+                    yield (idx, sent, 'Sentence', paragraph_content, doc_category)
+
+    generator = chunk_generator(json_arr)
+    batches = batch_generator(generator, batch_size=EMB_BATCH_SIZE)
+    try:
+        for batch in batches:
+            if batch is not None:
+                emb_src_texts = [item[1] for item in batch]
+                print("len of emb_src_texts :{}".format(len(emb_src_texts)))
+                embeddings = get_embedding(smr_client, emb_src_texts, endpoint_name)
+                for i, emb in enumerate(embeddings):
+                    document = { "publish_date": publish_date, "idx": batch[i][0], "doc" : batch[i][1], "doc_type" : batch[i][2], "content" : batch[i][3], "doc_title": doc_title, "doc_category": batch[i][4], "embedding" : emb}
+                    yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document['doc']).encode('utf-8')).hexdigest()}
+    except Exception as e:
+        logging.exception(e)
 
 def iterate_QA(file_content, object_key,smr_client, index_name, endpoint_name):
     json_content = json.loads(file_content)
@@ -334,10 +379,12 @@ def load_content_json_from_s3(bucket, object_key, content_type, credentials):
             json_content = parse_txt_to_json(file_content)
         elif content_type =='json':
             json_content = file_content
+        elif content_type == 'pdf.json':
+            json_content = file_content
         elif content_type == 'example':
             json_content = file_content
         else:
-            raise RuntimeError("unsupport content type...(pdf, faq, txt are supported.)")
+            raise RuntimeError("unsupport content type...(pdf, faq, txt, pdf.json are supported.)")
         
         return json_content
 
@@ -442,11 +489,14 @@ def WriteVecIndexToAOS(bucket, object_key, content_type, smr_client, aos_endpoin
             retry_on_timeout=True
         )
 
+        print("---------flag------")
         gen_aos_record_func = None
         if content_type == "faq":
             gen_aos_record_func = iterate_QA(file_content, object_key,smr_client, index_name, EMB_MODEL_ENDPOINT)
         elif content_type in ['txt', 'pdf', 'json']:
             gen_aos_record_func = iterate_paragraph(file_content,object_key, smr_client, index_name, EMB_MODEL_ENDPOINT)
+        elif content_type in [ 'pdf.json' ]:
+            gen_aos_record_func = iterate_pdf_json(file_content,object_key, smr_client, index_name, EMB_MODEL_ENDPOINT)
         elif content_type in ['example']:
             gen_aos_record_func = iterate_examples(file_content,object_key, smr_client, index_name, EMB_MODEL_ENDPOINT)
         else:
@@ -473,6 +523,9 @@ def process_s3_uploaded_file(bucket, object_key):
     elif object_key.endswith(".txt"):
         print("********** pre-processing text file")
         content_type = 'txt'
+    elif object_key.endswith(".pdf.json"):
+        print("********** pre-processing pdf.json file")
+        content_type = 'pdf.json'
     elif object_key.endswith(".pdf"):
         print("********** pre-processing pdf file")
         content_type = 'pdf'
@@ -484,7 +537,7 @@ def process_s3_uploaded_file(bucket, object_key):
         content_type = 'example'
         index_name = EXAMPLE_INDEX_NAME
     else:
-        raise RuntimeError("unsupport content type...(pdf, faq, txt are supported.)")
+        raise RuntimeError("unsupport content type...(pdf, faq, txt, pdf.json are supported.)")
     
     #check if it is already built
     idx_name = get_idx_from_ddb(object_key,EMB_MODEL_ENDPOINT)

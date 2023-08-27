@@ -48,12 +48,13 @@ chat_session_table = os.environ.get('chat_session_table')
 QA_SEP = "=>"
 A_Role="用户"
 B_Role="AWSBot"
+A_Role_en="user"
 SYSTEM_ROLE_PROMPT = '你是云服务AWS的智能客服机器人AWSBot'
 Fewshot_prefix_Q="问题"
 Fewshot_prefix_A="回答"
 RESET = '/rs'
 openai_api_key = None
-STOP=[f"\n{A_Role}", f"\n{B_Role}", f"\n{Fewshot_prefix_Q}"]
+STOP=[f"\n{A_Role_en}", f"\n{A_Role}", f"\n{Fewshot_prefix_Q}"]
 KNN_THRESHOLD = float(os.environ.get('knn_threshold',0.2))
 INVERTED_HRESHOLD =float(os.environ.get('inverted_theshold',1.0))
 
@@ -1201,7 +1202,7 @@ def lambda_handler(event, context):
         logger.info(f"image_path:{image_path}")
 
     ##获取前端给的系统设定，如果没有，则使用lambda里的默认值
-    global B_Role,SYSTEM_ROLE_PROMPT
+    global B_Role,SYSTEM_ROLE_PROMPT,STOP
     B_Role = event.get('system_role') if event.get('system_role') else B_Role
     SYSTEM_ROLE_PROMPT = event.get('system_role_prompt') if event.get('system_role_prompt') else SYSTEM_ROLE_PROMPT
 
