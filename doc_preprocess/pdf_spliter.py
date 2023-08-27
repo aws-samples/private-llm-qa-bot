@@ -12,7 +12,6 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter,CharacterText
 from langchain.docstore.document import Document
 
 from tqdm import tqdm
-import pdb
 
 class Elembbox(object):
     left = -1
@@ -134,10 +133,6 @@ class ElemTable(object):
             # print(f"{idx}, {key}, {cell['text']}")
             data[idx][key] = cell['text']
 
-        
-        if 'text' not in self.table_title.keys() or 'text' not in self.table_footer.keys():
-            pdb.set_trace()
-
         ret = {
             "table" : self.table_title.get("text", ""),
             "footer" : self.table_footer.get("text", ""),
@@ -157,7 +152,6 @@ def find_page_bbox(html_soup):
         attr_list = [ p.split(':') for p in style_attribute.strip(";").split('; ')]
         span_pos = { k : v for k,v in attr_list if k in ['left', 'top', 'width', 'height', 'font-size', 'border']}
         keys = span_pos.keys()
-        # pdb.set_trace()
         if 'border' in keys and span_pos['border'].strip() == 'gray 1px solid':
             left = int(span_pos['left'][:-2])
             top = int(span_pos['top'][:-2])
@@ -262,7 +256,6 @@ def extract_page_tables(response, pages_bbox):
 
             table_info = ElemTable(bbox_pixel, title_obj, footer_obj, cell_list)
             table_list.append(table_info)
-            # pdb.set_trace()
 
     return table_list, table_bboxes
                 
@@ -383,7 +376,6 @@ def split_pdf(soup, all_table_bboxes, page_table_list):
 
     #todo: mapping the word to cell (if the language is chinese, textract will lose chinese characters)
 
-    # pdb.set_trace()
     for table in page_table_list:
         table_snippet = {
             "content" : table.to_readable(),
@@ -444,7 +436,6 @@ if __name__ == '__main__':
     for snippet_info in split_pdf(soup, all_table_bboxes, all_table_list):
         snippet_arr.append(snippet_info)
 
-    pdb.set_trace()
     all_info = json.dumps(snippet_arr, ensure_ascii=False)
     out_f.write(all_info)
     out_f.close()
