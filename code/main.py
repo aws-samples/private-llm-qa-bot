@@ -1300,7 +1300,7 @@ def lambda_handler(event, context):
     session_id = event['chat_name']
     question = event['prompt']
     model_name = event['model'] if event.get('model') else event.get('model_name','')
-    # embedding_endpoint = event['embedding_model'] 
+    embedding_endpoint = event.get('embedding_model',os.environ.get("embedding_endpoint")) 
     use_qa = event.get('use_qa',False)
     multi_rounds = event.get('multi_rounds',False)
     template_id = event.get('template_id')
@@ -1361,7 +1361,7 @@ def lambda_handler(event, context):
 
     # 1. 获取环境变量
 
-    embedding_endpoint = os.environ.get("embedding_endpoint", "")
+    # embedding_endpoint = os.environ.get("embedding_endpoint", "")
     aos_endpoint = os.environ.get("aos_endpoint", "")
     aos_index = os.environ.get("aos_index", "")
     aos_knn_field = os.environ.get("aos_knn_field", "")
