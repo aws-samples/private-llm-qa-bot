@@ -295,54 +295,6 @@ class CustomDocRetriever(BaseRetriever,BaseModel):
 
     async def aget_relevant_documents(self, query: str) -> List[Document]:
         raise NotImplementedError
-    
-    
-    def add_neighbours_doc(self,client,opensearch_respose):
-        docs = []
-        for item in opensearch_respose:
-            if item['doc_type'] == 'Paragraph' and item['doc_title'].endswith('wiki'):
-                doc = self.search_paragraph_neighbours(client,item['idx'],item['doc_title'],item['doc_category'])
-                docs.append({ "doc": doc, "score": item['score'], "doc_title": item['doc_title'],"doc_type": item['doc_type'],'doc_category':item['doc_category']} )
-            else:
-                docs.append({ "doc": item['doc'], "score": item['score'], "doc_title": item['doc_title'],"doc_type": item['doc_type'],'doc_category':item['doc_category'] } )
-        
-        return docs
-
-    def search_paragraph_neighbours(self,client, idx, doc_title,doc_category):
-        query ={
-            "query":{
-                "bool": {
-                "must": [
-                    {
-                    "terms": {
-                        "idx": [i for i in range(idx-NEIGHBORS,idx+NEIGHBORS+1)]
-                    }
-                    },
-                    {
-                    "terms": {
-                        "doc_title": [doc_title]
-                    }
-                    },
-                    {
-                  "terms": {
-                    "doc_category": [doc_category]
-                    }
-                    },
-                    {
-                    "terms": {
-                        "doc_type": ['Paragraph']
-                    }
-                    }
-                ]
-                }
-            }
-        }
-        query_response = client.search(
-            body=query,
-            index=self.aos_index
-        )
-        doc = '\n'.join([item['_source']['doc'] for item in query_response["hits"]["hits"]])
-        return doc
 
     
     def get_relevant_documents_custom(self, query_input: str):
@@ -428,54 +380,8 @@ class CustomDocRetriever(BaseRetriever,BaseModel):
         
         recall_knowledge = combine_recalls(opensearch_knn_respose, opensearch_query_response)
 
-        ##如果是段落类型，添加临近doc
-        recall_knowledge = self.add_neighbours_doc(aos_client,recall_knowledge)
-
         return recall_knowledge,opensearch_knn_respose,opensearch_query_response
 
-    def get_relevant_documents_custom_pure_knn(self, query_input: str):
-            start = time.time()
-            query_embedding = get_vector_by_sm_endpoint(query_input, sm_client, self.embedding_model_endpoint)
-            aos_client = OpenSearch(
-                    hosts=[{'host': self.aos_endpoint, 'port': 443}],
-                    http_auth = awsauth,
-                    use_ssl=True,
-                    verify_certs=True,
-                    connection_class=RequestsHttpConnection
-                )
-            opensearch_knn_respose = search_using_aos_knn(aos_client,query_embedding[0], self.aos_index)
-            elpase_time = time.time() - start
-            logger.info(f'runing time of opensearch_knn : {elpase_time}s seconds')
-        
-            # 5. combine these two opensearch_knn_respose and opensearch_query_response
-            def filter_recalls(opensearch_knn_respose,topk):
-                '''
-                filter knn_result if the result don't appear in filter_inverted_result
-                '''
-                def get_topk_items(opensearch_knn_respose, topk=2):
-
-                    opensearch_knn_nodup = []
-                    unique_ids = set()
-                    for item in opensearch_knn_respose:
-                        if item['id'] not in unique_ids:
-                            opensearch_knn_nodup.append((item['doc'], item['score'],item['idx'], item['doc_title'], item['id'],item['doc_category'],item['doc_type']))
-                            unique_ids.add(item['id'])
-                    opensearch_knn_nodup.sort(key=lambda x: x[1])
-                    kg_combine_result = [ { "doc": item[0], "score": item[1],"idx":item[2],"doc_title":item[3], "doc_category":item[5],"doc_type": item[6] } for item in opensearch_knn_nodup[-1*topk:]]
-                    return kg_combine_result
-
-                filter_knn_result = [ item for item in opensearch_knn_respose if item['score'] > KNN_THRESHOLD ]
-                
-                ret_content = get_topk_items(filter_knn_result, topk)
-
-                return ret_content
-            
-            recall_knowledge = filter_recalls(opensearch_knn_respose,TOP_K)
-
-            ##如果是段落类型，添加临近doc
-            recall_knowledge = self.add_neighbours_doc(aos_client,recall_knowledge)
-
-            return recall_knowledge,opensearch_knn_respose,[]
 
 class ErrorCode:
     DUPLICATED_INDEX_PREFIX = "DuplicatedIndexPrefix"
