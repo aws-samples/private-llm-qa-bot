@@ -48,16 +48,19 @@ chat_session_table = os.environ.get('chat_session_table')
 QA_SEP = "=>"
 A_Role="用户"
 B_Role="AWSBot"
+A_Role_en="user"
 SYSTEM_ROLE_PROMPT = '你是云服务AWS的智能客服机器人AWSBot'
 Fewshot_prefix_Q="问题"
 Fewshot_prefix_A="回答"
 RESET = '/rs'
 openai_api_key = None
+
 STOP=[f"\n{A_Role}", f"\n{B_Role}", f"\n{Fewshot_prefix_Q}"]
 KNN_THRESHOLD = float(os.environ.get('knn_threshold',0.5))
 TOP_K = int(os.environ.get('TOP_K',4))
 INVERTED_HRESHOLD =float(os.environ.get('inverted_theshold',10.0))
 NEIGHBORS = int(os.environ.get('neighbors',1))
+
 
 class StreamScanner:    
     def __init__(self):
@@ -1328,6 +1331,7 @@ def lambda_handler(event, context):
     SYSTEM_ROLE_PROMPT = event.get('system_role_prompt',SYSTEM_ROLE_PROMPT)
     
     logger.info(f'system_role:{B_Role},system_role_prompt:{SYSTEM_ROLE_PROMPT}')
+
     llm_endpoint = None
     if model_name == 'chatglm':
         llm_endpoint = os.environ.get('llm_{}_endpoint'.format(model_name))
