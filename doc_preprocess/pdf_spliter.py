@@ -20,10 +20,6 @@ class Elembbox(object):
     height = -1 
     right = -1 
     bottom = -1
-    margin = 8 # for header text above table
-
-    RAW_MAX_DIST = 120
-    COL_MAX_DIST = 400
 
     # top 增加是往下 bottom > top
     # right 增加是往右 right > left
@@ -36,48 +32,42 @@ class Elembbox(object):
         self.right = left + width
         self.bottom = top + height
 
-    # def __str__(self):
-    #     return "left:{}, top:{}, right:{}, bottom:{}, width:{}, height:{}".format(self.left, self.top, self.right, self.bottom, self.width, self.height)
+    def __str__(self):
+        return "left:{}, top:{}, right:{}, bottom:{}, width:{}, height:{}".format(self.left, self.top, self.right, self.bottom, self.width, self.height)
 
     def to_span(self):
         return """<span style="position:absolute; border: red 1px solid; left:{}px; top:{}px; width:{}px; height:{}px;"></span>""".format(self.left, self.top, self.width, self.height)
 
-    # def __str__(self):
-    #     return json.dumps(dict(self), ensure_ascii=False)
+    def overlap_area(self, bbox, h_margin=0, v_margin=0):
+        if bbox is None:
+            return 0
 
-    # def __repr__(self):
-    #     return self.__str__()
+        # 解包bbox坐标
+        x1_1, y1_1, x2_1, y2_1 = self.left-h_margin, self.top-v_margin, self.right+h_margin, self.bottom+v_margin
+        x1_2, y1_2, x2_2, y2_2 = bbox.left-h_margin, bbox.top-v_margin, bbox.right+h_margin, bbox.bottom+v_margin
+        # print((x1_1, y1_1, x2_1, y2_1))
+        # print((x1_2, y1_2, x2_2, y2_2))
+        
+        # 计算重叠区域的坐标
+        x_overlap = max(0, min(x2_1, x2_2) - max(x1_1, x1_2))
+        y_overlap = max(0, min(y2_1, y2_2) - max(y1_1, y1_2))
+        
+        # print("x_overlap: {}".format(x_overlap))
+        # print("y_overlap: {}".format(y_overlap))
+        # 计算重叠面积
+        area = x_overlap * y_overlap
+        
+        return area
 
-    # def to_dict(self):
-    #     return {
-    #         "left" : self.left, "top" : self.top, "width" : self.width, "height" : self.height
-    #     }
+    def get_area(self):
+        return self.width * self.height
 
     def is_overlap(self, other):
-        if other is None:
-            return False
+        return self.overlap_area(other) > 0
 
-        def is_pt_in_bbox(x, y, bbox):
-            return x >= bbox.left \
-                and x <= bbox.right \
-                and y >= bbox.top - bbox.margin \
-                and y <= bbox.bottom + bbox.margin
-        
-        lefttop_in = is_pt_in_bbox(other.left, other.top, self)
-        leftbottom_in = is_pt_in_bbox(other.left, other.bottom, self)
-        righttop_in = is_pt_in_bbox(other.right, other.top, self)
-        rightbottom_in = is_pt_in_bbox(other.right, other.bottom, self)
-        
-        lefttop_in_2 = is_pt_in_bbox(self.left, self.top, other)
-        leftbottom_in_2 = is_pt_in_bbox(self.left, self.bottom, other)
-        righttop_in_2 = is_pt_in_bbox(self.right, self.top, other)
-        rightbottom_in_2 = is_pt_in_bbox(self.right, self.bottom, other)
-
-        return lefttop_in or leftbottom_in or righttop_in or rightbottom_in or lefttop_in_2 or leftbottom_in_2 or righttop_in_2 or rightbottom_in_2
-    
     def is_beside(self, other):
         # only horizontal direction
-        return self.is_overlap(other)
+        return self.overlap_area(other, h_margin=0, v_margin=8)
 
 class ElemTable(object):
     table_bbox = None
@@ -102,6 +92,15 @@ class ElemTable(object):
         }
         return json.dumps(x)
 
+    def max_cell_area(self):
+        max_area = 0
+        assert(self.table_data)
+
+        for cell in self.table_data:
+            cell_area = cell['bbox'].get_area() 
+            max_area = max(cell_area, max_area)
+        return max_area
+
     def to_readable(self):
         assert(self.table_data)
         cell_list = self.table_data
@@ -117,6 +116,8 @@ class ElemTable(object):
                     cell["is_header"] = True
                     header_cells.append(cell)
             
+        all_header_text = "".join([cell['text'] for cell in header_cells])
+
         head_dict = { str(cell['col_index']) : cell['text'] for cell in header_cells}
         
         header_row_idx = statistics.mode(cell['row_index'] for cell in header_cells)
@@ -136,7 +137,7 @@ class ElemTable(object):
         ret = {
             "table" : self.table_title.get("text", ""),
             "footer" : self.table_footer.get("text", ""),
-            "data" : data
+            "data" : None if len(all_header_text) == 0 else data
         }
 
         return ret
@@ -262,7 +263,7 @@ def extract_page_tables(response, pages_bbox):
 def split_pdf_to_snippet(soup, table_elem_bboxs):
     content = soup.find_all('div')
 
-    cur_fs = None
+    cur_fs = 0
     cur_text = None
     snippets = []   # first collect all snippets that have the same font size
 
@@ -275,6 +276,8 @@ def split_pdf_to_snippet(soup, table_elem_bboxs):
                 return True
 
         return False
+
+    table_text_objs = []
 
     previous_div_bbox = None
     snippet_start = True
@@ -291,12 +294,13 @@ def split_pdf_to_snippet(soup, table_elem_bboxs):
         
         if overlap_with_table(table_elem_bboxs, div_elem_bbox):
             skip_count += 1
+            table_text_objs.append({ "text" : c.text, "bbox" : div_elem_bbox})
             continue
 
         # if these two div is not beside each other 
         if not div_elem_bbox.is_beside(previous_div_bbox) and cur_text and cur_fs:
             snippets.append((cur_text,cur_fs,snippet_state))
-            cur_fs = None
+            cur_fs = 0
             cur_text = None
             snippet_state = snippet_start
 
@@ -353,10 +357,12 @@ def split_pdf_to_snippet(soup, table_elem_bboxs):
             merged_snippets.append({"content":content, "font_size":font_size})
 
     print("filter {} table text".format(skip_count))
-    return merged_snippets, doc_title
+    return merged_snippets, doc_title, table_text_objs
+
+
 
 def split_pdf(soup, all_table_bboxes, page_table_list):
-    semantic_snippets, doc_title = split_pdf_to_snippet(soup, all_table_bboxes)
+    semantic_snippets, doc_title, table_text_objs = split_pdf_to_snippet(soup, all_table_bboxes)
     text_splitter = RecursiveCharacterTextSplitter( 
         chunk_size = 1024,
         chunk_overlap  = 0,
@@ -374,11 +380,35 @@ def split_pdf(soup, all_table_bboxes, page_table_list):
             }
             yield snippet_info
 
-    #todo: mapping the word to cell (if the language is chinese, textract will lose chinese characters)
+    #mapping the word to cell (if the language is chinese, textract will lose chinese characters)
+    for i in range(len(page_table_list)):
+        table_max_cell_area = page_table_list[i].max_cell_area()
+        for j in range(len(page_table_list[i].table_data)):
+            cell_obj = page_table_list[i].table_data[j]
+            overlap_area_t1 = 0
+            for table_text_obj in table_text_objs:
+                # if text's area is bigger than biggest cell area, skip it
+                cell_text_area = table_text_obj['bbox'].get_area()
+                # print("cell_text_area: {}, table_max_cell_area:{}".format(cell_text_area, table_max_cell_area))
+                if cell_text_area > table_max_cell_area:
+                    # print("skip text: {}".format(table_text_obj['text']))
+                    continue
 
+                overlap_area_t2 = cell_obj['bbox'].overlap_area(table_text_obj['bbox'])
+                if overlap_area_t2 > overlap_area_t1:
+                    overlap_area_t1 = overlap_area_t2
+                    cell_obj['text'] = table_text_obj['text']
+
+    # pdb.set_trace()
     for table in page_table_list:
+        table_json = table.to_readable()
+
+        # if there is no data in table, skip it
+        if table_json['data'] == None:
+            continue
+
         table_snippet = {
-            "content" : table.to_readable(),
+            "content" : table_json,
             "doc_title" : doc_title
         }
 
