@@ -47,3 +47,6 @@ echo "UPLOAD_BUCKET=${bucket}" >> .env
 echo "UPLOAD_OBJ_PREFIX=ai-content/" >> .env
 echo "wss_apiId=${wss_apiId}" >> .env
 echo "wss_resourceArn=${wss_resourceArn}" >> .env
+echo "neighbors=1" >>.env
+echo "TOP_K=4" >>.env
+
