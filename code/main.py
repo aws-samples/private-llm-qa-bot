@@ -48,12 +48,13 @@ chat_session_table = os.environ.get('chat_session_table')
 QA_SEP = "=>"
 A_Role="用户"
 B_Role="AWSBot"
+A_Role_en="user"
 SYSTEM_ROLE_PROMPT = '你是云服务AWS的智能客服机器人AWSBot'
 Fewshot_prefix_Q="问题"
 Fewshot_prefix_A="回答"
 RESET = '/rs'
 openai_api_key = None
-STOP=[f"\n{A_Role}", f"\n{B_Role}", f"\n{Fewshot_prefix_Q}"]
+STOP=[f"\n{A_Role_en}", f"\n{A_Role}", f"\n{Fewshot_prefix_Q}"]
 KNN_THRESHOLD = float(os.environ.get('knn_threshold',0.5))
 TOP_K = int(os.environ.get('TOP_K',4))
 INVERTED_HRESHOLD =float(os.environ.get('inverted_theshold',10.0))
@@ -824,7 +825,7 @@ def create_baichuan_prompt_template(prompt_template):
     #template_1 = '以下context内的文本内容为背景知识：\n<context>\n{context}\n</context>\n请根据背景知识, 回答这个问题：{question}'
     #template_2 = '这是原始问题: {question}\n已有的回答: {existing_answer}\n\n现在context内的还有一些文本内容，（如果有需要）你可以根据它们完善现有的回答。\n<context>\n{context}\n</context>\n请根据新的文段，进一步完善你的回答。'
     if prompt_template == '':
-        prompt_template_zh = """{system_role_prompt} {role_bot}\n以下context内的文本内容为背景知识:\n<context>\n{chat_history}{context}\n</context>\n请根据背景知识, 回答这个问题,如果context内的文本内容为空，则回答不知道.\n问:{question}"""
+        prompt_template_zh = """{system_role_prompt} {role_bot}\n以下context内的文本内容为背景知识:\n<context>\n{chat_history}{context}\n</context>\n请根据背景知识, 回答这个问题,如果context内的文本内容为空，则回答不知道.\n{question}"""
     else:
         prompt_template_zh = prompt_template
     PROMPT = PromptTemplate(
@@ -836,7 +837,7 @@ def create_baichuan_prompt_template(prompt_template):
 
 def create_qa_prompt_templete(prompt_template):
     if prompt_template == '':
-        prompt_template_zh = """{system_role_prompt} {role_bot}\n请根据反括号中的内容提取相关信息回答问题:\n```\n{chat_history}{context}\n```\n如果反括号中的内容为空,则回答不知道.\n问:{question}"""
+        prompt_template_zh = """{system_role_prompt} {role_bot}\n请根据反括号中的内容提取相关信息回答问题:\n```\n{chat_history}{context}\n```\n如果反括号中的内容为空,则回答不知道.\n用户:{question}"""
     else:
         prompt_template_zh = prompt_template
     PROMPT = PromptTemplate(
@@ -848,7 +849,7 @@ def create_qa_prompt_templete(prompt_template):
 
 def create_chat_prompt_templete(prompt_template):
     if prompt_template == '':
-        prompt_template_zh = """{system_role_prompt} {role_bot}\n {chat_history}\n\n问: {question}"""
+        prompt_template_zh = """{system_role_prompt} {role_bot}\n {chat_history}\n\n用户: {question}"""
     else:
         prompt_template_zh = prompt_template.replace('{context}','') ##remove{context}
     PROMPT = PromptTemplate(
