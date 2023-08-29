@@ -55,6 +55,7 @@ RESET = '/rs'
 openai_api_key = None
 STOP=[f"\n{A_Role}", f"\n{B_Role}", f"\n{Fewshot_prefix_Q}"]
 KNN_THRESHOLD = float(os.environ.get('knn_threshold',0.2))
+TOP_K = int(os.environ.get('TOP_K',3))
 INVERTED_HRESHOLD =float(os.environ.get('inverted_theshold',1.0))
 NEIGHBORS = int(os.environ.get('neighbors',1))
 
@@ -118,7 +119,7 @@ class CustomStreamingOutCallbackHandler(BaseCallbackHandler):
 
     def on_llm_end(self, response: LLMResult, **kwargs: Any) -> None:
         """Run when LLM ends running."""
-        data = json.dumps({ 'msgid':self.msgid, 'role': "AI", 'text': {'content':f"[{self.model_name}]" } })
+        data = json.dumps({ 'msgid':self.msgid, 'role': "AI", 'text': {'content':f' [{self.model_name}]' } })
         self.postMessage(data)
         if self.recall_knowledge:
             text = format_reference(self.recall_knowledge)
@@ -341,7 +342,7 @@ class CustomDocRetriever(BaseRetriever,BaseModel):
         return doc
 
     
-    def get_relevant_documents_custom_bak(self, query_input: str):
+    def get_relevant_documents_custom(self, query_input: str):
         start = time.time()
         query_embedding = get_vector_by_sm_endpoint(query_input, sm_client, self.embedding_model_endpoint)
         aos_client = OpenSearch(
@@ -367,20 +368,20 @@ class CustomDocRetriever(BaseRetriever,BaseModel):
             '''
             filter knn_result if the result don't appear in filter_inverted_result
             '''
-            def get_topk_items(opensearch_knn_respose, opensearch_query_response, doc_type, topk=1):
+            def get_topk_items(opensearch_knn_respose, opensearch_query_response, topk=1):
 
                 opensearch_knn_nodup = []
                 unique_ids = set()
                 for item in opensearch_knn_respose:
                     if item['id'] not in unique_ids:
-                        opensearch_knn_nodup.append((item['doc'], item['score'],item['idx'], item['doc_title'], item['id'],item['doc_category']))
+                        opensearch_knn_nodup.append((item['doc'], item['score'],item['idx'], item['doc_title'], item['id'],item['doc_category'],item['doc_type']))
                         unique_ids.add(item['id'])
                 
                 opensearch_bm25_nodup = []
                 unique_ids = set()
                 for item in opensearch_query_response:
                     if item['id'] not in unique_ids:
-                        opensearch_bm25_nodup.append((item['doc'], item['score'], item['idx'], item['doc_title'],item['id'],item['doc_category']))
+                        opensearch_bm25_nodup.append((item['doc'], item['score'], item['idx'], item['doc_title'],item['id'],item['doc_category'],item['doc_type']))
                         unique_ids.add(item['id'])
 
                 opensearch_knn_nodup.sort(key=lambda x: x[1])
@@ -388,34 +389,38 @@ class CustomDocRetriever(BaseRetriever,BaseModel):
                 
                 half_topk = math.ceil(topk/2) 
     
-                kg_combine_result = [ { "doc": item[0], "score": item[1],"idx":item[2],"doc_title":item[3], "doc_type": doc_type,"doc_category":item[5] } for item in opensearch_knn_nodup[-1*half_topk:]]
+                kg_combine_result = [ { "doc": item[0], "score": item[1],"idx":item[2],"doc_title":item[3], "doc_category":item[5],"doc_type": item[6]  } for item in opensearch_knn_nodup[-1*half_topk:]]
                 knn_kept_doc = [ item[4] for item in opensearch_knn_nodup[-1*half_topk:] ]
 
-                count = len(kg_combine_result)
+                bm25_count = 0
                 for item in opensearch_bm25_nodup[::-1]:
                     if item[4] not in knn_kept_doc:
-                        kg_combine_result.append({ "doc": item[0], "score": item[1],"idx":item[2],"doc_title":item[3], "doc_type": doc_type ,"doc_category":item[5]})
-                        count += 1
-                    if count == topk:
+                        kg_combine_result.append({ "doc": item[0], "score": item[1],"idx":item[2],"doc_title":item[3],"doc_category":item[5],"doc_type": item[6] })
+                        bm25_count += 1
+                    if bm25_count+len(knn_kept_doc) >= topk:
+                        break
+                ##继续填补不足的召回
+                step_knn = 0
+                step_bm25 = 0
+                while topk - len(kg_combine_result)>0:
+                    if len(opensearch_knn_nodup) > half_topk:
+                        kg_combine_result += [{ "doc": item[0], "score": item[1],"idx":item[2],"doc_title":item[3], "doc_category":item[5],"doc_type": item[6]  } for item in opensearch_knn_nodup[-1*half_topk-1-step_knn:-1*half_topk-step_knn]]
+                        step_knn += 1
+                    elif len(opensearch_bm25_nodup) > half_topk:
+                        kg_combine_result += [{ "doc": item[0], "score": item[1],"idx":item[2],"doc_title":item[3], "doc_category":item[5],"doc_type": item[6]  } for item in opensearch_bm25_nodup[-1*half_topk-1-step_bm25:-1*half_topk-step_bm25]]
+                        step_bm25 += 1
+                    else:
                         break
 
                 return kg_combine_result
 
             knn_threshold = KNN_THRESHOLD
             inverted_theshold = INVERTED_HRESHOLD
-            filter_knn_result = [ item for item in opensearch_knn_respose if item['doc_type'] in ['Paragraph','Sentence'] and item['score'] > knn_threshold ]
-            filter_inverted_result = [ item for item in opensearch_query_response if item['doc_type'] in ['Paragraph','Sentence'] and item['score'] > inverted_theshold ]
+            filter_knn_result = [ item for item in opensearch_knn_respose if item['score'] > knn_threshold ]
+            filter_inverted_result = [ item for item in opensearch_query_response if item['score'] > inverted_theshold ]
             
-            paragraph_content = get_topk_items(filter_knn_result, filter_inverted_result, "Paragraph", 2)
-
-            # knn_threshold = 0.2
-            # inverted_theshold = 1.0
-            filter_knn_result = [ item for item in opensearch_knn_respose if item['doc_type'] == 'Question' and item['score'] > knn_threshold ]
-            filter_inverted_result = [ item for item in opensearch_query_response if item['doc_type'] == 'Question' and item['score'] > inverted_theshold ]
-
-            qa_content = get_topk_items(filter_knn_result, filter_inverted_result, "Question", 4 - len(paragraph_content))
-
-            ret_content = paragraph_content + qa_content
+            ret_content = get_topk_items(filter_knn_result, filter_inverted_result, TOP_K)
+            logger.info(f'get_topk_items:{len(ret_content)}')
             return ret_content
         
         recall_knowledge = combine_recalls(opensearch_knn_respose, opensearch_query_response)
@@ -462,7 +467,7 @@ class CustomDocRetriever(BaseRetriever,BaseModel):
 
                 return ret_content
             
-            recall_knowledge = filter_recalls(opensearch_knn_respose,3)
+            recall_knowledge = filter_recalls(opensearch_knn_respose,TOP_K)
 
             ##如果是段落类型，添加临近doc
             recall_knowledge = self.add_neighbours_doc(aos_client,recall_knowledge)
@@ -1048,7 +1053,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         start = time.time()
         ## 加上一轮的问题拼接来召回内容
         # query_with_history= get_question_history(chat_coversions[-2:])+query_input
-        recall_knowledge,opensearch_knn_respose,opensearch_query_response = doc_retriever.get_relevant_documents_custom_pure_knn(query_input) 
+        recall_knowledge,opensearch_knn_respose,opensearch_query_response = doc_retriever.get_relevant_documents_custom(query_input) 
         elpase_time = time.time() - start
         logger.info(f'runing time of opensearch_query : {elpase_time}s seconds')
         
