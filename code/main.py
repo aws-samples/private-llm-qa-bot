@@ -147,7 +147,7 @@ class SagemakerStreamContentHandler(LLMContentHandler):
  
     def transform_input(self, prompt: str, model_kwargs: Dict) -> bytes:
         input_str = json.dumps({'inputs': prompt,**model_kwargs})
-        # logger.info(f'transform_input:{input_str}')
+        logger.info(f'transform_input:{input_str}')
         return input_str.encode('utf-8')
     
     def transform_output(self, event_stream: Any) -> str:
