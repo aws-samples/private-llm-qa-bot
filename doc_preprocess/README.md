@@ -1,4 +1,4 @@
-### OpenSource doc spliter
+### OpenSource doc spliter(表格信息提取，需要结合OCR自行实现)
 
 - 运行依赖
     ```shell
@@ -20,8 +20,8 @@
     python doc_spliter.py --input_file ec2-ug.pdf --output_dir ./kg_dir
     ```
 
-### Textract-based doc spliter
-    
+### Textract-based doc spliter(支持表格信息提取)
+
 - 运行依赖
     ```shell
     pip install boto3
@@ -37,7 +37,9 @@
   + ./common-stock-fs.pdf
 
 - Usage
+    
+    输出为输入的同名目录
+    
     ```shell
-    # 指定 endpoint, 可以激活对长文本的摘要能力 --llm_endpoint ${llm_endpoint}
-    python pdf_spliter.py --input_file ../docs/common-stock-fs.pdf --output_file ../docs/common-stock-fs.pdf.json
+    python pdf_spliter.py --input_file ../docs/common-stock-fs.pdf
     ```

@@ -420,25 +420,31 @@ if __name__ == '__main__':
     parser.add_argument('--output_file', type=str, default='./common-stock-fs.pdf.json', help='input file')
     args = parser.parse_args()
     pdf_path = args.input_file
-    output_path = args.output_file
+    
 
     # convert pdf to image
     image_paths = []
     images = convert_from_path(pdf_path, 300)
 
-    png_folder = os.path.basename(pdf_path).replace(".pdf", "")
+    output_folder = os.path.basename(pdf_path).replace(".pdf", "")
+    file_name = output_folder.split('/')[-1]
 
-    if not os.path.exists(png_folder):
-        os.makedirs(png_folder)
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
 
     for idx, image in tqdm(enumerate(images)):
-        image_path = f'./{png_folder}/page-{idx}.png'
+        image_path = f'./{output_folder}/page-{idx}.png'
         image_paths.append(image_path)
         image.save(image_path)
 
     # parse to html
     loader = PDFMinerPDFasHTMLLoader(pdf_path)
     data = loader.load()[0]
+    html_path = f'./{output_folder}/{file_name}.html'
+    with open(html_path, 'w') as f:
+        f.write(data.page_content)
+        f.close()
+        
     soup = BeautifulSoup(data.page_content,'html.parser')
     page_bboxes = find_page_bbox(soup)
 
@@ -460,6 +466,7 @@ if __name__ == '__main__':
             all_table_list.extend(table_list)
             all_table_bboxes.extend(table_bboxes)
 
+    output_path = f'./{output_folder}/{file_name}.pdf.json'
     f_name = "{}".format(output_path)
     out_f = open(f_name, 'w')
     snippet_arr = []
