@@ -37,6 +37,7 @@ export class SagemakerDomainStack extends Stack {
         iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSGlueServiceRole'),
         iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonS3FullAccess')
       ],
+      roleName: "sagemaker_execute_role"
     });
 
     // Create the SageMaker Domain
