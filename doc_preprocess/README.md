@@ -24,12 +24,13 @@
     
 - 运行依赖
     ```shell
+    sudo yum install poppler-utils # on Mac, run `conda install -c conda-forge poppler`
     pip install boto3
     pip install BeautifulSoup4
     pip install pdfminer.six
-    conda install -c conda-forge poppler
     pip install pdf2image
     pip install tqdm
+    pip install langchain==v0.0.201
     ```
     如果存在依赖问题， 参考https://github.com/Belval/pdf2image 的README中的安装步骤
 
