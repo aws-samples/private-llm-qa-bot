@@ -20,22 +20,8 @@ export class SagemakerDomainStack extends Stack {
     const sagemakerExecutionRole = new iam.Role(this, 'sagemaker-execution-role', {
       assumedBy: new iam.CompositePrincipal(
         new iam.ServicePrincipal('glue.amazonaws.com'), new iam.ServicePrincipal('sagemaker.amazonaws.com')),
-      inlinePolicies: {
-        "chatbot-cc-policy": new iam.PolicyDocument({
-          statements: [
-            new iam.PolicyStatement({
-              effect: iam.Effect.ALLOW,
-              actions: ["iam:GetRole", "iam:PassRole", "sts:GetCallerIdentity"],
-              resources: ["*"],
-            }),
-          ],
-        }),
-      },
       managedPolicies: [
-        iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonSageMakerFullAccess'),
-        iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AwsGlueSessionUserRestrictedServiceRole'),
-        iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSGlueServiceRole'),
-        iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonS3FullAccess')
+        iam.ManagedPolicy.fromAwsManagedPolicyName('AdministratorAccess')
       ],
       roleName: "sagemaker_execute_role"
     });
