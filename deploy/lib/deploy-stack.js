@@ -126,7 +126,7 @@ export class DeployStack extends Stack {
       timeout: Duration.minutes(15),
       memorySize: 1024,
       runtime: 'python3.9',
-      functionName: 'Ask_Vortexa',
+      functionName: 'Ask_Assistant',
       vpc:vpc,
       vpcSubnets:subnets,
       securityGroups:securityGroups,
