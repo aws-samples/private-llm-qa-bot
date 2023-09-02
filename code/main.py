@@ -745,7 +745,7 @@ def create_baichuan_prompt_template(prompt_template):
 
 def create_qa_prompt_templete(prompt_template):
     if prompt_template == '':
-        prompt_template_zh = """{system_role_prompt} {role_bot}\n请根据反括号中的内容提取相关信息回答问题:\n```\n{chat_history}{context}\n```\n如果反括号中的内容为空,则回答不知道.\n用户:{question}"""
+        prompt_template_zh = """{system_role_prompt} {role_bot}\nPlease answer user's question according to information in triple backquote.\n```\n{chat_history}{context}\n```\nuser: {question}\n{role_bot}: """
     else:
         prompt_template_zh = prompt_template
     PROMPT = PromptTemplate(
@@ -757,7 +757,7 @@ def create_qa_prompt_templete(prompt_template):
 
 def create_chat_prompt_templete(prompt_template):
     if prompt_template == '':
-        prompt_template_zh = """{system_role_prompt} {role_bot}\n {chat_history}\n\n用户: {question}"""
+        prompt_template_zh = """{system_role_prompt} {role_bot}\n {chat_history}\n\nuser: {question}\n{role_bot}: """
     else:
         prompt_template_zh = prompt_template.replace('{context}','') ##remove{context}
     PROMPT = PromptTemplate(
@@ -1312,7 +1312,17 @@ def lambda_handler(event, context):
     # 2. return rusult
 
     # 处理
+    
+    def remove_chinese(text):
+        # 使用正则表达式匹配中文字符
+        chinese_pattern = re.compile(r'[\u4e00-\u9fa5]+')
+        
+        # 使用sub方法将匹配到的中文字符替换为空字符串
+        cleaned_text = chinese_pattern.sub('', text)
+        
+        return cleaned_text
 
+    answer = remove_chinese(answer)
     # Response:
     # "id": "设置一个uuid"
     # "created": "1681891998"
