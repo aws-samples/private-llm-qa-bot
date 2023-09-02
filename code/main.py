@@ -981,7 +981,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
             )
         # model_kwargs={'parameters':parameters,'history':[]}
         # if imgurl:
-        model_kwargs={'parameters':parameters,'history':[],'image':imgurl}
+        model_kwargs={'parameters':parameters,'history':[],'image':imgurl,'stream':use_stream}
         llm = SagemakerStreamEndpoint(endpoint_name=llm_model_endpoint, 
                 region_name=region, 
                 model_kwargs=model_kwargs,
@@ -1031,9 +1031,9 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
             ##add history parameter
             if isinstance(llm,SagemakerStreamEndpoint) or isinstance(llm,SagemakerEndpoint):
                 chat_history=''
-                llm.model_kwargs['history'] = chat_coversions[-3:]
+                llm.model_kwargs['history'] = chat_coversions[-1:]
             else:
-                chat_history= get_chat_history(chat_coversions[-3:])
+                chat_history= get_chat_history(chat_coversions[-1:])
         else:
             chat_history=''
         
@@ -1065,9 +1065,9 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         if multi_rounds:
             if isinstance(llm,SagemakerStreamEndpoint) or isinstance(llm,SagemakerEndpoint):
                 chat_history=''
-                llm.model_kwargs['history'] = chat_coversions[-3:]
+                llm.model_kwargs['history'] = chat_coversions[-1:]
             else:
-                chat_history= get_chat_history(chat_coversions[-3:])
+                chat_history= get_chat_history(chat_coversions[-1:])
         else:
             chat_history=''
             
@@ -1092,10 +1092,9 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
             # print(answer)
 
     answer = enforce_stop_tokens(answer, STOP)
-
+    ref_text = ''
     if not use_stream and recall_knowledge:
-        text = format_reference(recall_knowledge)
-        answer+= f'{text}```'
+        ref_text = format_reference(recall_knowledge)
 
     json_obj = {
         "query": query_input,
@@ -1110,7 +1109,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
 
     json_obj['session_id'] = session_id
     json_obj['chatbot_answer'] = answer
-    json_obj['conversations'] = chat_coversions[-3:]
+    json_obj['conversations'] = chat_coversions[-1:]
     json_obj['timestamp'] = int(time.time())
     json_obj['log_type'] = "all"
     json_obj_str = json.dumps(json_obj, ensure_ascii=False)
@@ -1123,7 +1122,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
     logger.info(f'runing time of update_session : {elpase_time}s seconds')
     logger.info(f'runing time of all  : {elpase_time1}s seconds')
 
-    return answer,use_stream
+    return answer+ f'{ref_text}```',use_stream
 
 def delete_doc_index(obj_key,embedding_model,index_name):
     def delete_aos_index(obj_key,index_name,size=50):
