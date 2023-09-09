@@ -23,6 +23,9 @@ export class Ec2Stack extends NestedStack {
       super(scope, id, props);
     
     const vpc = props.vpc;
+    const emb_model = props.emb_model
+    const region = props.region
+    const aos_endpoint = props.aos_endpoint
 
 //    // Allow SSH (TCP Port 22) access from anywhere
 //    const securityGroup = new ec2.SecurityGroup(this, 'SecurityGroup', {
@@ -40,7 +43,7 @@ export class Ec2Stack extends NestedStack {
     assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com')
   })
 
-  role.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonSSMManagedInstanceCore'))
+  role.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName('AdministratorAccess'))
 
   const ami = new ec2.AmazonLinuxImage({
     generation: ec2.AmazonLinuxGeneration.AMAZON_LINUX_2,
@@ -64,12 +67,18 @@ export class Ec2Stack extends NestedStack {
     bucketKey: asset.s3ObjectKey,
   });
 
+  const args = `${emb_model} ${region} ${aos_endpoint}`;
   ec2Instance.userData.addExecuteFileCommand({
     filePath: localPath,
-    arguments: '--verbose -y'
+    arguments: args
   });
   asset.grantRead(ec2Instance.role);
 
+  new CfnOutput(this,'emb_model',{value:emb_model});
+  new CfnOutput(this,'region',{value:region});
+  new CfnOutput(this,'args',{value:args});
+  new CfnOutput(this,'localPath',{value:localPath});
+  
   this.instanceId = ec2Instance.instanceId;
   this.dnsName = ec2Instance.instancePublicDnsName;
   this.publicIP = ec2Instance.instancePublicIp;

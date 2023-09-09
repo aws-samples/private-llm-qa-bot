@@ -42,21 +42,14 @@ export class DeployStack extends Stack {
     const account_id = Stack.of(this).account;
     const aos_existing_endpoint = props.env.aos_existing_endpoint;
 
+
+
     const vpcStack = new VpcStack(this,'vpc-stack',{env:process.env});
     const vpc = vpcStack.vpc;
     const subnets = vpcStack.subnets;
     const securityGroups = vpcStack.securityGroups;
 
     const cn_region = ["cn-north-1","cn-northwest-1"];
-
-    
-    if (!cn_region.includes(region)) {
-      const ec2stack = new Ec2Stack(this,'Ec2Stack',{vpc:vpc,securityGroup:securityGroups[0]});
-      new CfnOutput(this, 'OpenSearch EC2 Proxy Address', { value: `http://${ec2stack.publicIP}/_dashboards/`});
-      // new CfnOutput(this, 'Download Key Command', { value: 'aws secretsmanager get-secret-value --secret-id ec2-ssh-key/cdk-keypair/private --query SecretString --output text > cdk-key.pem && chmod 400 cdk-key.pem' })
-      // new CfnOutput(this, 'ssh command', { value: 'ssh -i cdk-key.pem -o IdentitiesOnly=yes ec2-user@' + ec2stack.dnsName})
-      ec2stack.addDependency(vpcStack);
-    }
 
       // Create open search if the aos endpoint not provided
     let opensearch_endpoint=aos_existing_endpoint;
@@ -67,6 +60,16 @@ export class DeployStack extends Stack {
         opensearch_endpoint = opensearchStack.domainEndpoint;
         opensearchStack.addDependency(vpcStack);
     }
+
+    if (!cn_region.includes(region)) {
+      const ec2stack = new Ec2Stack(this,'Ec2Stack6',{vpc:vpc,securityGroup:securityGroups[0], emb_model:process.env.embedding_endpoint.replace('-endpoint',''), region:region, aos_endpoint:opensearch_endpoint});
+      new CfnOutput(this, 'OpenSearch EC2 Proxy Address', { value: `http://${ec2stack.publicIP}/_dashboards/`});
+      // new CfnOutput(this, 'Download Key Command', { value: 'aws secretsmanager get-secret-value --secret-id ec2-ssh-key/cdk-keypair/private --query SecretString --output text > cdk-key.pem && chmod 400 cdk-key.pem' })
+      // new CfnOutput(this, 'ssh command', { value: 'ssh -i cdk-key.pem -o IdentitiesOnly=yes ec2-user@' + ec2stack.dnsName})
+      ec2stack.addDependency(vpcStack);
+      ec2stack.addDependency(opensearchStack);
+    }
+
     new CfnOutput(this,'VPC',{value:vpc.vpcId});
     new CfnOutput(this,'opensearch endpoint',{value:opensearch_endpoint});
     new CfnOutput(this,'region',{value:process.env.CDK_DEFAULT_REGION});
@@ -174,7 +177,7 @@ export class DeployStack extends Stack {
       timeout: Duration.minutes(15),
       memorySize: 1024,
       runtime: 'python3.9',
-      // functionName: 'Main_brain',
+      functionName: 'Detect_Intention',
       vpc:vpc,
       vpcSubnets:subnets,
       securityGroups:securityGroups,
@@ -257,6 +260,7 @@ export class DeployStack extends Stack {
         },
         // layers:[layer],
         runtime: lambda.Runtime.PYTHON_3_9,
+        functionName: 'Agent_Plugin',
         timeout: Duration.minutes(1),
         memorySize: 256,
         handler: 'app.lambda_handler',
@@ -281,6 +285,7 @@ export class DeployStack extends Stack {
             embedding_endpoint:process.env.embedding_endpoint
           },
           runtime: lambda.Runtime.PYTHON_3_9,
+          functionName: 'Trigger_Ingestion',
           timeout: Duration.minutes(2),
           handler: 'offline_trigger_lambda.lambda_handler',
           code: lambda.Code.fromAsset(path.join(__dirname,'../../code/lambda_offline_trigger')),
