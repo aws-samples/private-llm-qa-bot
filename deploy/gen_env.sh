@@ -1,12 +1,7 @@
 #!/bin/bash
 
 region=$1
-
-if [ ! -n "$2" ]; then
-    account_id=`aws sts get-caller-identity --query "Account" --output text`
-else
-    account_id="$2"
-fi
+account_id="$2"
 
 ts=`date +%y-%m-%d-%H-%M-%S`
 unique_tag="$account_id-$ts"
