@@ -20,11 +20,11 @@ echo "enter /home/ec2-user"
 cd /home/ec2-user
 
 echo "execute init_aos_client.py"
-curl -LJO https://raw.githubusercontent.com/aws-samples/private-llm-qa-bot/JAM/deploy/init_aos_client.py
+curl -LJO https://raw.githubusercontent.com/aws-samples/private-llm-qa-bot/JAM20230915/deploy/init_aos_client.py
 python3 init_aos_client.py $aos_endpoint
 echo "finish execute init_aos_client.py"
 
 echo "execute jam_deploy.py"
-curl -LJO https://raw.githubusercontent.com/aws-samples/private-llm-qa-bot/JAM/deploy/jam_deploy.py
+curl -LJO https://raw.githubusercontent.com/aws-samples/private-llm-qa-bot/JAM20230915/deploy/jam_deploy.py
 python3 jam_deploy.py $emb_model $region
 echo "finish execute jam_deploy.py"
