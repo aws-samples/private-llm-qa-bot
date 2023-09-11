@@ -32,7 +32,7 @@ s3_client = boto3.client("s3", region_name=region)
 sm_client = boto3.client("sagemaker", region_name=region)
 smr_client = boto3.client("sagemaker-runtime", region_name=region)
 
-bucket = f"sagemaker-{region}-{account_id}"
+bucket = f"{account_id}-knowledge-bucket"
 
 s3_model_prefix = "LLM-RAG/workshop/bge-en-model"  # folder where model checkpoint will go
 model_snapshot_path = list(local_model_path.glob("**/snapshots/*"))[0]
