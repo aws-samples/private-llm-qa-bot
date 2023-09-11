@@ -653,7 +653,7 @@ def aos_search(client, index_name, field, query_term, exactly_match=False, size=
                                     },
                                     {
                                         "match": {
-                                            "doc": query_term
+                                            "content": query_term
                                         }
                                     }
                                 ]
@@ -1352,6 +1352,8 @@ def lambda_handler(event, context):
     elif model_name == 'other-stream':
         llm_endpoint = os.environ.get('llm_other_stream_endpoint')
     elif model_name == 'baichuan':
+        llm_endpoint = os.environ.get('llm_baichuan_stream_endpoint')
+    elif model_name == 'baichuan-stream':
         llm_endpoint = os.environ.get('llm_baichuan_stream_endpoint')
     else:
         llm_endpoint = os.environ.get('llm_default_endpoint')
