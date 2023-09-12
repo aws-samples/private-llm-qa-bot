@@ -558,7 +558,7 @@ def aos_search(client, index_name, field, query_term, exactly_match=False, size=
                                     },
                                     {
                                         "match": {
-                                            "doc": query_term
+                                            "content": query_term
                                         }
                                     }
                                 ]
@@ -985,7 +985,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
             ##添加召回引用
             stream_callback.add_recall_knowledge(recall_knowledge)
             query_type = QueryType.KnowledgeQuery
-            prompt_template = create_baichuan_prompt_template(template) if llm_model_name.startswith('baichuan-finetune') else create_qa_prompt_templete(template) 
+            prompt_template = create_baichuan_prompt_template(template) if llm_model_name.startswith('baichuan') else create_qa_prompt_templete(template) 
             llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
             # context = "\n".join([doc['doc'] for doc in recall_knowledge])
             context = qa_knowledge_fewshot_build(recall_knowledge)
