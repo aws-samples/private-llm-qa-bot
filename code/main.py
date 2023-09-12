@@ -465,6 +465,12 @@ def query_kendra(Kendra_index_id="", lang="zh", search_query_text="what is s3?",
     return results[:Kendra_result_num]
 
 
+def is_chinese(string):
+    for char in string:
+        if '\u4e00' <= char <= '\u9fff':
+            return True
+
+    return False
 
 # AOS
 def get_vector_by_sm_endpoint(questions, sm_client, endpoint_name):
@@ -474,6 +480,11 @@ def get_vector_by_sm_endpoint(questions, sm_client, endpoint_name):
     instruction_zh = "为这个句子生成表示以用于检索相关文章："
     instruction_en = "Represent this sentence for searching relevant passages:"
 
+    if isinstance(questions, str):
+        instruction = instruction_zh if is_chinese(questions) else instruction_en
+    else:
+        instruction = instruction_zh
+
     response_model = sm_client.invoke_endpoint(
         EndpointName=endpoint_name,
         Body=json.dumps(
@@ -481,7 +492,7 @@ def get_vector_by_sm_endpoint(questions, sm_client, endpoint_name):
                 "inputs": questions,
                 "parameters": parameters,
                 "is_query" : True,
-                "instruction" :  instruction_en
+                "instruction" :  instruction
             }
         ),
         ContentType="application/json",
