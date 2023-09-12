@@ -745,7 +745,7 @@ def create_baichuan_prompt_template(prompt_template):
 
 def create_qa_prompt_templete(prompt_template):
     if prompt_template == '':
-        prompt_template_zh = """{system_role_prompt} {role_bot}\nPlease answer user's question according to information in triple backquote.\n```\n{chat_history}{context}\n```\nuser: {question}\n{role_bot}: """
+        prompt_template_zh = """Please answer user's question according to information in triple backquote. {system_role_prompt}\n```\n{chat_history}{context}\n```\nuser: {question}\n{role_bot}: """
     else:
         prompt_template_zh = prompt_template
     PROMPT = PromptTemplate(
