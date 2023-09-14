@@ -63,7 +63,10 @@ export class DeployStack extends Stack {
     let opensearchStack;
     if (!aos_existing_endpoint || aos_existing_endpoint === 'optional'){
          opensearchStack = new OpenSearchStack(this,'os-chat-dev',
-              {vpc:vpc,subnets:subnets,securityGroup:securityGroups[0]});
+              {vpc:vpc,
+                subnets:subnets,
+                securityGroup:securityGroups[0],
+              });
         opensearch_endpoint = opensearchStack.domainEndpoint;
         opensearchStack.addDependency(vpcStack);
     }
