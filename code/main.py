@@ -99,7 +99,8 @@ class CustomStreamingOutCallbackHandler(BaseCallbackHandler):
         try:
             self.wsclient.post_to_connection(Data = data.encode('utf-8'),  ConnectionId=self.connectionId)
         except Exception as e:
-            print (f'post {json.dumps(data)} to_wsconnection error:{str(e)}')
+            pass
+            # print (f'post {json.dumps(data)} to_wsconnection error:{str(e)}')
 
     def message_format(self,messages):
         """Format messages as ChatGPT who only accepts roles of ['system', 'assistant', 'user']"""
@@ -979,9 +980,9 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         llmcontent_handler = SagemakerStreamContentHandler(
             callbacks=stream_callback
             )
-        # model_kwargs={'parameters':parameters,'history':[]}
-        # if imgurl:
+
         model_kwargs={'parameters':parameters,'history':[],'image':imgurl,'stream':use_stream}
+        logging.info(f"model_kwargs:{model_kwargs}")
         llm = SagemakerStreamEndpoint(endpoint_name=llm_model_endpoint, 
                 region_name=region, 
                 model_kwargs=model_kwargs,
@@ -994,9 +995,9 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
             "temperature": temperature,
             "top_p":0.95
         }
-        # model_kwargs={'parameters':parameters,'history':[]}
-        # if imgurl:
+
         model_kwargs={'parameters':parameters,'history':[],'image':imgurl}
+        logging.info(f"model_kwargs:{model_kwargs}")
         llmcontent_handler = llmContentHandler()
         llm=SagemakerEndpoint(
                 endpoint_name=llm_model_endpoint, 
@@ -1006,7 +1007,6 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
                 endpoint_kwargs={'CustomAttributes':'accept_eula=true'} ##for llama2
             )
     
-    # sm_client = boto3.client("sagemaker-runtime")
     
     # 1. get_session
     start1 = time.time()
