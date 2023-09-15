@@ -955,7 +955,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
             "max_tokens_to_sample": max_tokens,
             "stop_sequences":STOP,
             "temperature":temperature,
-            "top_p":1
+            "top_p":0.95
         }
         
         llm = Bedrock(model_id="anthropic.claude-v1", client=boto3_bedrock, model_kwargs=parameters)
@@ -974,7 +974,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         parameters = {
                 "max_length": max_tokens,
                 "temperature": temperature,
-                "top_p":1
+                "top_p":0.95
                 }
         llmcontent_handler = SagemakerStreamContentHandler(
             callbacks=stream_callback
@@ -992,7 +992,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         parameters = {
             "max_length": max_tokens,
             "temperature": temperature,
-            "top_p":1
+            "top_p":0.95
         }
         # model_kwargs={'parameters':parameters,'history':[]}
         # if imgurl:
@@ -1314,7 +1314,7 @@ def lambda_handler(event, context):
     template_id = event.get('template_id')
     msgid = event.get('msgid')
     max_tokens = event.get('max_tokens',2048)
-    temperature =  event.get('temperature',0.01)
+    temperature =  event.get('temperature',0.1)
     imgurl = event.get('imgurl')
     image_path = ''
     if imgurl:
