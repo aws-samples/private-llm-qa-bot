@@ -521,7 +521,7 @@ def search_using_aos_knn(client, q_embedding, index, size=10):
         body=query,
         index=index
     )
-    opensearch_knn_respose = [{'idx':item['_source'].get('idx',1),'doc_category':item['_source']['doc_category'],'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc':"{}{}{}".format(item['_source']['doc'], QA_SEP, item['_source']['content']),"doc_type":item["_source"]["doc_type"],"score":item["_score"]}  for item in query_response["hits"]["hits"]]
+    opensearch_knn_respose = [{'idx':item['_source'].get('idx',1),'doc_category':item['_source']['doc_category'],'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc':item['_source']['content'],"doc_type":item["_source"]["doc_type"],"score":item["_score"]}  for item in query_response["hits"]["hits"]]
     return opensearch_knn_respose
     
 
@@ -607,7 +607,7 @@ def aos_search(client, index_name, field, query_term, exactly_match=False, size=
     if exactly_match:
         result_arr = [ {'idx':item['_source'].get('idx',0),'doc_category':item['_source']['doc_category'],'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc': item['_source']['content'], 'doc_type': item['_source']['doc_type'], 'score': item['_score']} for item in query_response["hits"]["hits"]]
     else:
-        result_arr = [ {'idx':item['_source'].get('idx',0),'doc_category':item['_source']['doc_category'],'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc':"{}{}{}".format(item['_source']['doc'], QA_SEP, item['_source']['content']), 'doc_type': item['_source']['doc_type'], 'score': item['_score']} for item in query_response["hits"]["hits"]]
+        result_arr = [ {'idx':item['_source'].get('idx',0),'doc_category':item['_source']['doc_category'],'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc':item['_source']['content'], 'doc_type': item['_source']['doc_type'], 'score': item['_score']} for item in query_response["hits"]["hits"]]
 
     return result_arr
 
@@ -705,20 +705,18 @@ class QueryType(Enum):
     Conversation   = "Conversation"       #用户输入的是跟知识库无关的问题
 
 
-
-
-
 def qa_knowledge_fewshot_build(recalls):
     ret_context = []
-    for recall in recalls:
-        if recall['doc_type'] == 'Question':
-            q, a = recall['doc'].split(QA_SEP)
-            qa_example = "{}: {}\n{}: {}".format(Fewshot_prefix_Q, q, Fewshot_prefix_A, a)
-            ret_context.append(qa_example)
-        elif recall['doc_type'] == 'Paragraph':
-            ret_context.append(recall['doc'])
+    # for recall in recalls:
+    #     if recall['doc_type'] == 'Question':
+    #         q, a = recall['doc'].split(QA_SEP)
+    #         qa_example = "{}: {}\n{}: {}".format(Fewshot_prefix_Q, q, Fewshot_prefix_A, a)
+    #         ret_context.append(qa_example)
+    #     elif recall['doc_type'] == 'Paragraph':
+    #         ret_context.append(recall['doc'])
 
-    context_str = "\n\n".join(ret_context)
+    # context_str = "\n\n".join(ret_context)
+    context_str = "\n\n".join([ recall['doc'] for recall in recalls])
     return context_str
 
 
