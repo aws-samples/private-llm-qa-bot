@@ -384,7 +384,6 @@ class CustomDocRetriever(BaseRetriever,BaseModel):
                         unique_ids.add(doc_hash)
                 
                 opensearch_bm25_nodup = []
-                unique_ids = set()
                 for item in opensearch_query_response:
                     if item['id'] not in unique_ids:
                         opensearch_bm25_nodup.append((item['doc'], item['score'], item['idx'], item['doc_title'],item['id'],item['doc_category'],item['doc_type']))
