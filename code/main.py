@@ -56,7 +56,8 @@ RESET = '/rs'
 openai_api_key = None
 STOP=[f"\n{A_Role_en}", f"\n{A_Role}", f"\n{Fewshot_prefix_Q}"]
 
-KNN_THRESHOLD = float(os.environ.get('knn_threshold',0.5))
+KNN_QQ_THRESHOLD = float(os.environ.get('knn_qq_threshold',0.5))
+KNN_QD_THRESHOLD = float(os.environ.get('knn_qd_threshold',0.5))
 TOP_K = int(os.environ.get('TOP_K',4))
 INVERTED_HRESHOLD =float(os.environ.get('inverted_theshold',10.0))
 NEIGHBORS = int(os.environ.get('neighbors',1))
@@ -369,10 +370,8 @@ class CustomDocRetriever(BaseRetriever,BaseModel):
 
                 return kg_combine_result
 
-            knn_threshold = KNN_THRESHOLD
-            inverted_theshold = INVERTED_HRESHOLD
-            filter_knn_result = [ item for item in opensearch_knn_respose if item['score'] > knn_threshold ]
-            filter_inverted_result = [ item for item in opensearch_query_response if item['score'] > inverted_theshold ]
+            filter_knn_result = [ item for item in opensearch_knn_respose if (item['score'] > KNN_QQ_THRESHOLD and item['doc_type'] == 'Question') or  (item['score'] > KNN_QD_THRESHOLD and item['doc_type'] == 'Paragraph')]
+            filter_inverted_result = [ item for item in opensearch_query_response if item['score'] > INVERTED_HRESHOLD ]
             
             ret_content = get_topk_items(filter_knn_result, filter_inverted_result, TOP_K)
             logger.info(f'get_topk_items:{len(ret_content)}')
