@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import cdk from 'aws-cdk-lib';
 import { DeployStack } from '../lib/deploy-stack.js';
-import { SagemakerDomainStack } from '../lib/sagemaker.js';
+// import { SagemakerDomainStack } from '../lib/sagemaker.js';
+import { SagemakerNotebookStack } from '../lib/sagemaker_nb_instance.js';
 import * as dotenv from 'dotenv' 
 dotenv.config()
 
@@ -23,7 +24,7 @@ new DeployStack(app, 'QAChatDeployStack', {
   /* For more information, see https://docs.aws.amazon.com/cdk/latest/guide/environments.html */
 });
 
-new SagemakerDomainStack(app, 'SagemakerDeployStack', {
+new SagemakerNotebookStack(app, 'SagemakerNotebookDeployStack', {
   /* If you don't specify 'env', this stack will be environment-agnostic.
    * Account/Region-dependent features and context lookups will not work,
    * but a single synthesized template can be deployed anywhere. */
