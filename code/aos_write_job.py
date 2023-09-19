@@ -539,6 +539,8 @@ def WriteVecIndexToAOS(bucket, object_key, content_type, smr_client, aos_endpoin
             gen_aos_record_func = iterate_paragraph(file_content,object_key, smr_client, index_name, EMB_MODEL_ENDPOINT)
         elif content_type in ['example']:
             gen_aos_record_func = iterate_examples(file_content,object_key, smr_client, index_name, EMB_MODEL_ENDPOINT)
+        elif content_type in ['wiki']:
+            gen_aos_record_func = iterate_paragraph_wiki(file_content,object_key, smr_client, index_name, EMB_MODEL_ENDPOINT)
         else:
             raise RuntimeError('No Such Content type supported') 
 
