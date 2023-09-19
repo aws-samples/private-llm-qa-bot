@@ -8,7 +8,7 @@ from botocore.exceptions import ClientError
 from datetime import datetime, timedelta
 import boto3
 import time
-import requests
+import hashlib
 import uuid
 # from transformers import AutoTokenizer
 from enum import Enum
@@ -56,7 +56,8 @@ RESET = '/rs'
 openai_api_key = None
 STOP=[f"\n{A_Role_en}", f"\n{A_Role}", f"\n{Fewshot_prefix_Q}"]
 
-KNN_THRESHOLD = float(os.environ.get('knn_threshold',0.5))
+KNN_QQ_THRESHOLD = float(os.environ.get('knn_qq_threshold',0.5))
+KNN_QD_THRESHOLD = float(os.environ.get('knn_qd_threshold',0.5))
 TOP_K = int(os.environ.get('TOP_K',4))
 INVERTED_HRESHOLD =float(os.environ.get('inverted_theshold',10.0))
 NEIGHBORS = int(os.environ.get('neighbors',1))
@@ -379,14 +380,16 @@ class CustomDocRetriever(BaseRetriever,BaseModel):
                 for item in opensearch_knn_respose:
                     if item['id'] not in unique_ids:
                         opensearch_knn_nodup.append((item['doc'], item['score'],item['idx'], item['doc_title'], item['id'],item['doc_category'],item['doc_type']))
-                        unique_ids.add(item['id'])
+                        doc_hash = hashlib.md5(str(item['doc']).encode('utf-8')).hexdigest()
+                        unique_ids.add(doc_hash)
                 
                 opensearch_bm25_nodup = []
                 unique_ids = set()
                 for item in opensearch_query_response:
                     if item['id'] not in unique_ids:
                         opensearch_bm25_nodup.append((item['doc'], item['score'], item['idx'], item['doc_title'],item['id'],item['doc_category'],item['doc_type']))
-                        unique_ids.add(item['id'])
+                        doc_hash = hashlib.md5(str(item['doc']).encode('utf-8')).hexdigest()
+                        unique_ids.add(doc_hash)
 
                 opensearch_knn_nodup.sort(key=lambda x: x[1])
                 opensearch_bm25_nodup.sort(key=lambda x: x[1])
@@ -419,10 +422,8 @@ class CustomDocRetriever(BaseRetriever,BaseModel):
 
                 return kg_combine_result
 
-            knn_threshold = KNN_THRESHOLD
-            inverted_theshold = INVERTED_HRESHOLD
-            filter_knn_result = [ item for item in opensearch_knn_respose if item['score'] > knn_threshold ]
-            filter_inverted_result = [ item for item in opensearch_query_response if item['score'] > inverted_theshold ]
+            filter_knn_result = [ item for item in opensearch_knn_respose if (item['score'] > KNN_QQ_THRESHOLD and item['doc_type'] == 'Question') or  (item['score'] > KNN_QD_THRESHOLD and item['doc_type'] == 'Paragraph')]
+            filter_inverted_result = [ item for item in opensearch_query_response if item['score'] > INVERTED_HRESHOLD ]
             
             ret_content = get_topk_items(filter_knn_result, filter_inverted_result, TOP_K)
             logger.info(f'get_topk_items:{len(ret_content)}')
@@ -563,7 +564,7 @@ def search_using_aos_knn(client, q_embedding, index, size=10):
         body=query,
         index=index
     )
-    opensearch_knn_respose = [{'idx':item['_source'].get('idx',1),'doc_category':item['_source']['doc_category'],'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc':"{}{}{}".format(item['_source']['doc'], QA_SEP, item['_source']['content']),"doc_type":item["_source"]["doc_type"],"score":item["_score"]}  for item in query_response["hits"]["hits"]]
+    opensearch_knn_respose = [{'idx':item['_source'].get('idx',1),'doc_category':item['_source']['doc_category'],'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc':item['_source']['content'],"doc_type":item["_source"]["doc_type"],"score":item["_score"]} for item in query_response["hits"]["hits"]]
     return opensearch_knn_respose
     
 
@@ -649,8 +650,7 @@ def aos_search(client, index_name, field, query_term, exactly_match=False, size=
     if exactly_match:
         result_arr = [ {'idx':item['_source'].get('idx',0),'doc_category':item['_source']['doc_category'],'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc': item['_source']['content'], 'doc_type': item['_source']['doc_type'], 'score': item['_score']} for item in query_response["hits"]["hits"]]
     else:
-        result_arr = [ {'idx':item['_source'].get('idx',0),'doc_category':item['_source']['doc_category'],'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc':"{}{}{}".format(item['_source']['doc'], QA_SEP, item['_source']['content']), 'doc_type': item['_source']['doc_type'], 'score': item['_score']} for item in query_response["hits"]["hits"]]
-
+        result_arr = [ {'idx':item['_source'].get('idx',0),'doc_category':item['_source']['doc_category'],'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc':item['_source']['content'], 'doc_type': item['_source']['doc_type'], 'score': item['_score']} for item in query_response["hits"]["hits"]]
     return result_arr
 
 def delete_session(session_id):
@@ -752,15 +752,16 @@ class QueryType(Enum):
 
 def qa_knowledge_fewshot_build(recalls):
     ret_context = []
-    for recall in recalls:
-        if recall['doc_type'] == 'Question':
-            q, a = recall['doc'].split(QA_SEP)
-            qa_example = "{}: {}\n{}: {}".format(Fewshot_prefix_Q, q, Fewshot_prefix_A, a)
-            ret_context.append(qa_example)
-        elif recall['doc_type'] == 'Paragraph':
-            ret_context.append(recall['doc'])
+    # for recall in recalls:
+    #     if recall['doc_type'] == 'Question':
+    #         q, a = recall['doc'].split(QA_SEP)
+    #         qa_example = "{}: {}\n{}: {}".format(Fewshot_prefix_Q, q, Fewshot_prefix_A, a)
+    #         ret_context.append(qa_example)
+    #     elif recall['doc_type'] == 'Paragraph':
+    #         ret_context.append(recall['doc'])
 
-    context_str = "\n\n".join(ret_context)
+    # context_str = "\n\n".join(ret_context)
+    context_str = "\n\n".join([ recall['doc'] for recall in recalls])
     return context_str
 
 
