@@ -329,16 +329,16 @@ class CustomDocRetriever(BaseRetriever,BaseModel):
                 opensearch_knn_nodup = []
                 unique_ids = set()
                 for item in opensearch_knn_respose:
-                    if item['id'] not in unique_ids:
+                    doc_hash = hashlib.md5(str(item['doc']).encode('utf-8')).hexdigest()
+                    if doc_hash not in unique_ids:
                         opensearch_knn_nodup.append((item['doc'], item['score'],item['idx'], item['doc_title'], item['id'],item['doc_category'],item['doc_type']))
-                        doc_hash = hashlib.md5(str(item['doc']).encode('utf-8')).hexdigest()
                         unique_ids.add(doc_hash)
                 
                 opensearch_bm25_nodup = []
                 for item in opensearch_query_response:
-                    if item['id'] not in unique_ids:
+                    doc_hash = hashlib.md5(str(item['doc']).encode('utf-8')).hexdigest()
+                    if doc_hash not in unique_ids:
                         opensearch_bm25_nodup.append((item['doc'], item['score'], item['idx'], item['doc_title'],item['id'],item['doc_category'],item['doc_type']))
-                        doc_hash = hashlib.md5(str(item['doc']).encode('utf-8')).hexdigest()
                         unique_ids.add(doc_hash)
 
                 opensearch_knn_nodup.sort(key=lambda x: x[1])
