@@ -8,7 +8,7 @@ from botocore.exceptions import ClientError
 from datetime import datetime, timedelta
 import boto3
 import time
-import requests
+import hashlib
 import uuid
 # from transformers import AutoTokenizer
 from enum import Enum
@@ -331,14 +331,16 @@ class CustomDocRetriever(BaseRetriever,BaseModel):
                 for item in opensearch_knn_respose:
                     if item['id'] not in unique_ids:
                         opensearch_knn_nodup.append((item['doc'], item['score'],item['idx'], item['doc_title'], item['id'],item['doc_category'],item['doc_type']))
-                        unique_ids.add(item['id'])
+                        doc_hash = hashlib.md5(str(item['doc']).encode('utf-8')).hexdigest()
+                        unique_ids.add(doc_hash)
                 
                 opensearch_bm25_nodup = []
                 unique_ids = set()
                 for item in opensearch_query_response:
                     if item['id'] not in unique_ids:
                         opensearch_bm25_nodup.append((item['doc'], item['score'], item['idx'], item['doc_title'],item['id'],item['doc_category'],item['doc_type']))
-                        unique_ids.add(item['id'])
+                        doc_hash = hashlib.md5(str(item['doc']).encode('utf-8')).hexdigest()
+                        unique_ids.add(doc_hash)
 
                 opensearch_knn_nodup.sort(key=lambda x: x[1])
                 opensearch_bm25_nodup.sort(key=lambda x: x[1])
