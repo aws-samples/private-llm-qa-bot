@@ -173,12 +173,12 @@ def iterate_QA(file_content, object_key,smr_client, index_name, endpoint_name):
 
         for i in range(len(embeddings)):
             document = { "publish_date": publish_date, "doc" : questions[i], "idx": idx,"doc_type" : "Question", "content" : docs[i], "doc_title": doc_title, "doc_category": doc_category, "embedding" : embeddings[i]}
-            yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document).encode('utf-8')).hexdigest()}
+            yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document['doc']).encode('utf-8')).hexdigest()}
 
         embeddings_docs = get_embedding(smr_client, docs, endpoint_name)
         for i in range(len(embeddings_docs)):
             document = { "publish_date": publish_date, "doc" : docs[i], "idx": idx,"doc_type" : "Paragraph", "content" : docs[i], "doc_title": doc_title, "doc_category": doc_category, "embedding" : embeddings_docs[i]}
-            yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document).encode('utf-8')).hexdigest()}
+            yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document['doc']).encode('utf-8')).hexdigest()}
 
 def iterate_examples(file_content, object_key, smr_client, index_name, endpoint_name):
     json_arr = json.loads(file_content)
