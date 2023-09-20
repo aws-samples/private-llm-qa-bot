@@ -410,11 +410,11 @@ class CustomDocRetriever(BaseRetriever,BaseModel):
                 step_knn = 0
                 step_bm25 = 0
                 while topk - len(kg_combine_result)>0:
-                    if len(opensearch_knn_nodup) > half_topk and (-1*half_topk-1-step_knn) >= 0:
+                    if len(opensearch_knn_nodup) > half_topk and len(opensearch_knn_nodup[-1*half_topk-1-step_knn:-1*half_topk-step_knn]) > 0:
                         kg_combine_result += [{ "doc": item[0], "score": item[1],"idx":item[2],"doc_title":item[3], "doc_category":item[5],"doc_type": item[6]  } for item in opensearch_knn_nodup[-1*half_topk-1-step_knn:-1*half_topk-step_knn]]
                         kg_combine_result.sort(key=lambda x: x['score'])
                         step_knn += 1
-                    elif len(opensearch_bm25_nodup) > half_topk and (-1*half_topk-1-step_bm25) >=0:
+                    elif len(opensearch_bm25_nodup) > half_topk and len(opensearch_bm25_nodup[-1*half_topk-1-step_bm25:-1*half_topk-step_bm25]) >0:
                         kg_combine_result += [{ "doc": item[0], "score": item[1],"idx":item[2],"doc_title":item[3], "doc_category":item[5],"doc_type": item[6]  } for item in opensearch_bm25_nodup[-1*half_topk-1-step_bm25:-1*half_topk-step_bm25]]
                         step_bm25 += 1
                     else:
