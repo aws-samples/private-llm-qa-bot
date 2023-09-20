@@ -302,7 +302,8 @@ class CustomDocRetriever(BaseRetriever,BaseModel):
     def add_neighbours_doc(self,client,opensearch_respose):
         docs = []
         for item in opensearch_respose:
-            if item['doc_type'] == 'Paragraph' and item['doc_title'].endswith('wiki'):
+            ## only apply to wiki and blog.json file
+            if item['doc_type'] == 'Paragraph' and ( item['doc_title'].endswith('wiki') or item['doc_title'].endswith('.blog.json')):
                 doc = self.search_paragraph_neighbours(client,item['idx'],item['doc_title'],item['doc_category'])
                 docs.append({ "doc": doc, "score": item['score'], "doc_title": item['doc_title'],"doc_type": item['doc_type'],'doc_category':item['doc_category']} )
             else:
@@ -343,7 +344,7 @@ class CustomDocRetriever(BaseRetriever,BaseModel):
             body=query,
             index=self.aos_index
         )
-        doc = '\n'.join([item['_source']['doc'] for item in query_response["hits"]["hits"]])
+        doc = '\n'.join([item['_source']['content'] for item in query_response["hits"]["hits"]])
         return doc
 
     
