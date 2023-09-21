@@ -124,12 +124,13 @@ class CustomStreamingOutCallbackHandler(BaseCallbackHandler):
 
     def on_llm_end(self, response: LLMResult, **kwargs: Any) -> None:
         """Run when LLM ends running."""
-        data = json.dumps({ 'msgid':self.msgid, 'role': "AI", 'text': {'content':f' [{self.model_name}]' } })
+        # data = json.dumps({ 'msgid':self.msgid, 'role': "AI", 'text': {'content':f' [{self.model_name}]' } })
+        # self.postMessage(data)
+        # if self.recall_knowledge:
+        text = format_reference(self.recall_knowledge)
+        data = json.dumps({ 'msgid':self.msgid, 'role': "AI", 'text': {'content':f'{text}```'} })
         self.postMessage(data)
-        if self.recall_knowledge:
-            text = format_reference(self.recall_knowledge)
-            data = json.dumps({ 'msgid':self.msgid, 'role': "AI", 'text': {'content':f'{text}```'} })
-            self.postMessage(data)
+
         
 
     def on_chain_error(
@@ -850,6 +851,7 @@ def format_reference(recall_knowledge):
         doc_category  = item['doc_category'] 
         doc_title =  item['doc_title']
         text += f'Doc[{sn+1}]:["{doc_title}"]-["{doc_category}"]\n{json.dumps(displaydata,ensure_ascii=False)}\n'
+    text += '\n```'
     return text
 
 def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str, llm_model_endpoint:str, llm_model_name:str, aos_endpoint:str, aos_index:str, aos_knn_field:str,
