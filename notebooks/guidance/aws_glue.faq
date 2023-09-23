@@ -1,0 +1,261 @@
+Question: 什么是 AWS Glue？
+Answer: AWS Glue 是一项无服务器数据集成服务，它简化了发现、准备和合并数据以进行分析、机器学习和应用程序开发的工作。 AWS Glue 提供数据集成所需的全部功能，使您只需几分钟时间便可以开始分析数据并将数据投入使用，而不用耗时几个月。AWS Glue 为您提供可视化界面和基于代码的界面来简化数据集成。用户使用 AWS Glue 数据目录可以轻松找到并访问数据。数据工程师和 ETL（即提取、转换和加载）开发人员只需在 AWS Glue Studio 中点击几次，便能够以可视化的方式创建、运行和监控 ETL 工作流程。数据分析师和数据科学家可以使用 AWS Glue DataBrew 可视化方式丰富、清理和标准化数据，而无需编写代码。
+=====
+Question: 如何开始使用 AWS Glue？
+Answer: 要开始使用 AWS Glue，只需登录 AWS 管理控制台，然后导航到“分析”分类下的“Glue”即可。您可以按照我们的其中一个指导教程进行操作，它将向您介绍 AWS Glue 的示例使用案例。您还可以在 AWS Labs 下的 GitHub 存储库中找到示例 ETL 代码。
+
+=====
+Question: AWS Glue 的主要组件有什么？
+Answer: AWS Glue 包含一个数据目录，该目录是一个中央元数据存储库；一个可以自动生成 Scala 或 Python 代码的 ETL 引擎；一个用于处理依赖项解析、作业监控和重试的灵活调度程序；AWS Glue DataBrew，用于通过可视化界面清理和标准化数据。这些组件结合在一起，自动执行与发现、分类、清理、丰富和移动数据相关的许多无差别的繁重任务，因此您可以将更多时间用在数据分析上。
+=====
+Question: 何时应使用 AWS Glue？
+Answer: 您应该使用 AWS Glue 来发现您所拥有的数据的属性、将其进行转换并准备好进行分析。Glue 可以自动发现存储在 Amazon S3 数据湖、Amazon Redshift 数据仓库以及在 AWS 上运行的各种数据库中的结构化和半结构化数据。它通过 Glue 数据目录提供统一的数据视图，该数据目录可用于 ETL 以及使用 Amazon Athena、Amazon EMR 和 Amazon Redshift Spectrum 等服务进行查询和报告。Glue 会自动为您的 ETL 作业生成 Scala 或 Python 代码，您可以使用熟悉的工具对这些代码进一步进行自定义。 您可以使用 AWS Glue DataBrew 以可视化方式清理和标准化数据，而无需编写代码。
+
+=====
+Question: AWS Glue 支持哪些数据源？
+Answer: AWS Glue 为以下位置存储的数据提供原生支持：Amazon Aurora、Amazon RDS for MySQL、Amazon RDS for Oracle、Amazon RDS for PostgreSQL、Amazon RDS for SQL Server、Amazon Redshift、DynamoDB 和 Amazon S3，以及 Amazon EC2 上运行的 Virtual Private Cloud (Amazon VPC) 中的 MySQL、Oracle、Microsoft SQL Server 和 PostgreSQL 数据库。AWS Glue 还支持来自 Amazon MSK、Amazon Kinesis Data Streams 和 Apache Kafka 的数据流。
+
+您还可以编写自定义 Scala 或 Python 代码，并在 AWS Glue ETL 作业中导入自定义库和 Jar 文件，以访问 AWS Glue 非原生支持的数据源。有关导入自定义库的更多详细信息，请参阅我们的文档。
+
+=====
+Question: AWS Glue 如何与 AWS Lake Formation 相关联？
+Answer: 答：Lake Formation 利用与 AWS Glue 的共享基础设施，包括控制台控件、ETL 代码创建和作业监控、通用数据目录和无服务器架构。虽然 AWS Glue 仍然专注于这些类型的功能，但 Lake Formation 涵盖了 AWS Glue 功能，并提供了旨在帮助构建、保护和管理数据湖的其他功能。有关更多详细信息，请参阅 AWS Lake Formation 页面。
+=====
+Question: 什么是 AWS Glue 数据目录？
+Answer: AWS Glue 数据目录是一个中央存储库，用于存储所有数据资产的结构和操作元数据。对于给定的数据集，您可以存储其表定义和物理位置、添加业务相关属性以及跟踪此数据如何随着时间发生变化。
+
+AWS Glue 数据目录与 Apache Hive 元数据库兼容，可以替代用于 Amazon EMR 上运行的大数据应用程序的 Apache Hive 元数据库。有关设置 EMR 集群以将 AWS Glue 数据目录用作 Apache Hive 元数据库的更多信息，请单击此处。
+
+AWS Glue 数据目录还实现了与 Amazon Athena、Amazon EMR 和 Amazon Redshift Spectrum 之间的开箱即用集成。当您将表定义添加到 Glue 数据目录后，它们即可用于 ETL，并且还可以在 Amazon Athena、Amazon EMR 和 Amazon Redshift Spectrum 中轻松查询，以便您能够对这些服务之间的数据有一个通用视图。
+=====
+Question: 如何将元数据导入 AWS Glue 数据目录？
+Answer: AWS Glue 提供了多种将元数据填充到 AWS Glue 数据目录中的方法。Glue 抓取程序会扫描您拥有的各种数据存储，以自动推断出架构和分区结构，并使用相应的表定义和统计信息来填充 Glue 数据目录。您还可以安排抓取程序定期运行，以便您的元数据始终处于最新状态并与底层数据保持同步。或者，您可以通过使用 AWS Glue 控制台或调用 API 来手动添加和更新表详细信息。您还可以通过 Amazon Athena 控制台或 Amazon EMR 集群上的 Hive 客户端来运行 Hive DDL 语句。最后，如果您已经拥有了永久 Apache Hive 元数据库，则可以使用我们的导入脚本将这些元数据批量导入到 AWS Glue 数据目录中。
+=====
+Question: 什么是 AWS Glue 抓取程序？
+Answer: AWS Glue 抓取程序可连接到数据存储，使用分类器的优先级列表来提取数据和其他统计数据的架构，然后使用该元数据填充 Glue 数据目录。抓取程序可定期运行，以检测新数据的可用性以及现有数据的更改，包括表定义的更改。抓取程序会自动将新表、新分区以及新版本的表定义添加到现有表。您可以自定义 Glue 抓取程序以对自己的文件类型进行分类。
+=====
+Question: 如何将数据从现有的 Apache Hive 元数据库导入到 AWS Glue 数据目录中？
+Answer: 您只需运行 ETL 作业即可，该作业将从 Apache Hive 元数据库读取数据，并将数据以中间格式导出到 Amazon S3 中，然后再将该数据导入 AWS Glue 数据目录中。
+=====
+Question: 如果将元数据存储在 AWS Glue 数据目录中，那么是否还需要保留 Apache Hive 元数据库？
+Answer: 不需要。AWS Glue 数据目录与 Apache Hive 元数据库兼容。您可以指向 Glue 数据目录终端节点，并使用它来替换 Apache Hive 元数据库。有关如何配置集群，将 AWS Glue 数据目录用作 Apache Hive 元数据库的更多信息，请访问此处阅读我们的文档。
+=====
+Question: 如果已经在使用 Amazon Athena 或 Amazon Redshift Spectrum，并且也已经在 Amazon Athena 的内部数据目录中存储了表，那么如何开始使用 AWS Glue 数据目录作为通用元数据存储库？
+Answer: 您必须先将 Amazon Athena 数据目录升级到 AWS Glue 数据目录，然后才能开始使用 AWS Glue 数据目录作为 Amazon Athena、Amazon Redshift Spectrum 和 AWS Glue 之间的通用元数据存储库。此处详细介绍了升级所需的步骤。
+=====
+Question: 哪些分析服务使用 AWS Glue 数据目录？
+Answer: 您可以从 Glue ETL、Amazon Athena、Amazon EMR、Amazon Redshift Spectrum 和第三方服务轻松访问存储在 AWS Glue 数据目录中的元数据。
+=====
+Question: 什么是 AWS Glue Schema Registry？
+Answer: AWS Glue Schema Registry 是 AWS Glue 的无服务器功能，让您可以使用 Apache Avro 和 JSON 架构数据格式中注册的架构来验证和控制流式传输数据的演变，无需支付额外费用。通过 Apache 许可的序列化器和反序列化器，Schema Registry 与为 Apache Kafka 开发的 Java 应用程序/适用于 Apache Kafka 的 Amazon Managed Streaming for Apache Kafka (MSK)、Amazon Kinesis Data Streams、Apache Flink/适用于 Apache Flink 的 Amazon Kinesis Data Analytics 和 AWS Lambda 集成。当数据流处理应用程序与 Schema Registry 集成时，您可以改善数据质量并使用管辖 Schema 发展的兼容性检查来防止出现意外更改。另外，您还可以使用存储在注册表中的 Apache Avro 架构来创建或更新 AWS Glue 表和分区。
+=====
+Question: 为何应该使用 AWS Glue Schema Registry？
+Answer: 助 AWS Glue Schema Registry，您可以：
+
+验证架构。当数据流应用程序与 AWS Glue Schema Registry 集成时，系统将根据中央注册表中的架构对用于数据生成的架构进行验证，从而使您可以集中控制数据质量。
+保护架构演变。您可以使用八种兼容性模式之一来设置架构可演变和不可演变的规则。
+提高数据质量。序列化程序针对存储在注册表中的架构来验证数据生产者使用的架构，从而提高数据生成时的数据质量，并减少意外架构偏离带来的下游问题。
+节省成本。序列化程序将数据转换为二进制格式，并可在交付数据之前对其进行压缩，从而降低了数据传输和存储成本。
+提高处理效率。在许多情况下，数据流包含不同架构的记录。Schema Registry 使从数据流读取的应用程序能够基于架构选择性地处理每条记录，而不必解析其内容，从而提高了处理效率。
+=====
+Question: AWS Glue Schema Registry 支持哪些数据格式、客户端语言和集成？
+Answer: Schema Registry 支持 Apache Avro 和 JSON Schema 数据格式以及 Java 客户端应用程序。我们计划继续扩展对其他数据格式和非 Java 客户端的支持。Schema Registry 与为 Apache Kafka 开发的应用程序、Amazon Managed Streaming for Apache Kafka (MSK)、Amazon Kinesis Data Streams、Apache Flink、适用于 Apache Flink 的 Amazon Kinesis Data Analytics 和 AWS Lambda 集成。
+=====
+Question: AWS Glue Schema Registry 支持哪些演变规则？
+Answer: 以下兼容模式可供您管理架构演变：向后、全部向后、向前、全部向前、完整、全部、无和禁用。访问 Schema Registry 用户文档以了解有关兼容性规则的更多信息。
+=====
+Question: AWS Glue Schema Registry 如何保持应用程序的高可用性？
+Answer: Schema Registry 存储和控制层面专为实现高可用性而设计，并由 AWS Glue SLA 提供支持，并且序列化器和反序列化器利用最佳实践缓存技术来最大化客户端内的架构可用性。
+=====
+Question: AWS Glue Schema Registry 是否开源？
+Answer: AWS Glue Schema Registry 存储是一项 AWS 服务，而序列化程序和反序列化程序是 Apache 许可的开源组件。
+=====
+Question: AWS Glue Schema Registry 是否提供静态加密和传输中加密？
+Answer: 是的，您的客户端通过 API 调用与 Schema Registry 进行通信，而 API 调用使用通过 HTTPS 的 TLS 加密对传输中的数据进行加密。 存储在 Schema Registry 中的架构始终使用服务托管的 KMS 密钥进行静态加密。
+=====
+Question: 如何以私有方式连接到 AWS Glue Schema Registry？
+Answer: 您可以通过为 AWS Glue 定义接口 VPC 终端节点，使用 AWS PrivateLink 将数据生产者的 VPC 连接到 AWS Glue。使用 VPC 接口终端节点时，VPC 与 AWS Glue 之间的通信将完全在 AWS 网络中进行。有关更多信息，请访问用户文档。
+=====
+Question: 如何监控我的 AWS Glue Schema Registry 使用情况？
+Answer: AWS CloudWatch 指标在 CloudWatch 免费套餐中提供。您可以在 CloudWatch 控制台中访问这些指标。请访问 AWS Glue Schema Registry 用户文档以了解更多信息。
+=====
+Question: AWS Glue Schema Registry 是否提供工具来管理用户授权？
+Answer: 是的，Schema Registry 支持资源级权限和基于身份的 IAM 策略。
+=====
+Question: 如何从现有架构注册表迁移到 AWS Glue Schema Registry？
+Answer: 用户文档中提供了从第三方架构注册表迁移到 AWS Glue Schema Registry 的步骤。
+=====
+Question: AWS Glue 是否有可视化 ETL 的无代码界面？
+Answer: 是。AWS Glue Studio 提供一个图形界面来编写 Glue 作业以处理您的数据。当您定义数据源的流、可视化界面中的转换和目标之后，AWS Glue Studio 将代表您生成 Apache Spark 代码。
+=====
+Question: 我可以使用哪种编程语言为 AWS Glue 编写 ETL 代码？
+Answer: 您可以使用 Scala 或 Python。
+=====
+Question: 如何自定义 AWS Glue 生成的 ETL 代码？
+Answer: AWS Glue 的 ETL 脚本推荐系统生成 Scala 或 Python 代码。它利用 Glue 的自定义 ETL 库来简化对数据源的访问以及管理作业执行情况。有关库的更多详细信息，请参阅我们的文档。您可以使用 AWS Glue 的自定义库来编写 ETL 代码，或者也可以使用 Scala 或 Python 语言编写任意代码，方法是通过 AWS Glue 控制台的脚本编辑器使用内联编辑，下载自动生成的代码，然后在自己的 IDE 中进行编辑。您也可以一开始使用我们的 Github 存储库中托管的许多示例代码之一，然后自定义此代码。
+=====
+Question: 是否可以导入自定义库作为 ETL 脚本的一部分？
+Answer: 支持。您可以将自定义 Python 库和 Jar 文件导入 AWS Glue ETL 作业。有关更多详细信息，请在此处参阅我们的文档。
+=====
+Question: 是否可以使用自己的代码？
+Answer: 可以。您可以使用 AWS Glue 的 ETL 库自己编写代码，或者自己编写 Scala 或 Python 代码，然后将其上传到 Glue ETL 作业。有关更多详细信息，请在此处参阅我们的文档。
+=====
+Question: 如何使用自己的 IDE 开发 ETL 代码？
+Answer: 您可以创建开发终端节点并进行连接，从而获得连接到笔记本和 IDE 的方法。
+=====
+Question: 如何使用 AWS Glue 中的多个作业构建端到端的 ETL 工作流？
+Answer: 除了 ETL 库和代码生成，AWS Glue 还提供一套强大的编排功能，可让您管理多个作业之间的依赖关系，以构建端到端的 ETL 工作流。AWS Glue ETL 作业可以按计划或按作业完成事件进行触发。可并行触发多个作业，也可以按作业完成事件依次触发作业。您还可以从外部来源触发一个或多个 Glue 作业，例如 AWS Lambda 函数。
+=====
+Question: AWS Glue 如何监控依赖关系？
+Answer: AWS Glue 可使用触发器管理两个或多个作业之间的依赖关系或外部事件上的依赖关系。触发器可以监控以及调用一个或多个作业。您可以使用计划触发器来定期调用作业，也可以使用按需触发器或作业完成触发器来调用作业。
+=====
+Question: AWS Glue 如何处理 ETL 错误？
+Answer: AWS Glue 可监控作业事件指标和错误，并会将所有通知推送到 Amazon CloudWatch。您可以借助 Amazon CloudWatch 配置大量可基于 AWS Glue 特定通知触发的操作。例如，如果您从 Glue 获得错误或成功通知，则可以触发 AWS Lambda 函数。Glue 还提供默认重试行为，会在发送错误通知之前，重试三次所有失败的操作。
+=====
+Question: 是否可以使用 AWS Glue 运行现有的 ETL 作业？
+Answer: 支持。您可以在 AWS Glue 上运行现有的 Scala 或 Python 代码。仅需将代码上传到 Amazon S3，然后创建一个或多个使用此代码的作业即可。您可以将多个作业指向 Amazon S3 上的同一代码位置，从而可以跨这些作业重复使用同一代码。
+=====
+Question: 如何使用 AWS Glue 来对流数据执行 ETL 操作？
+Answer: AWS Glue 支持对来自 Amazon Kinesis Data Streams、Apache Kafka 和 Amazon MSK 的数据流的 ETL 操作。将流添加到 Glue 数据目录，然后在设置 AWS Glue 作业时将其选择为数据源。
+=====
+Question: 是否必须同时使用 AWS Glue 数据目录和 Glue ETL 才能使用该服务？
+Answer: 不是。虽然我们确信同时使用 AWS Glue 数据目录和 ETL 可提供端到端的 ETL 体验，但您也可以单独使用其中任意一个。
+=====
+Question: 应该何时使用 AWS Glue 流，何时使用 Amazon Kinesis Data Analytics？
+Answer: AWS Glue 和 Amazon Kinesis Data Analytics 均可轻松处理流数据。当您的使用案例主要是 ETL，以及您希望在基于 Apache Spark 的无服务器平台上运行作业时，建议使用 AWS Glue。当您的使用案例主要是分析，以及您希望在基于 Apache Flink 的无服务器平台上运行作业时，建议使用 Amazon Kinesis Data Analytics。
+
+AWS Glue 中的流 ETL 支持使用您当前用于批处理作业的无服务器按需支付平台对流数据进行高级 ETL 操作。AWS Glue 生成可自定义的 ETL 代码，以便在传输过程中准备您的数据，并具有内置功能以处理半结构化或具有演进架构的流数据。使用 Glue 将其内置转换和 Spark 本机转换应用于数据流，并将其加载到数据湖或数据仓库中。
+
+Amazon Kinesis Data Analytics 使您能够构建复杂的流应用程序，以实时分析流数据。它提供了无服务器的 Apache Flink 运行时，无需服务器即可自动扩展，并可持久地保存应用程序状态。使用 Amazon Kinesis Data Analytics 进行实时分析和更通用的流数据处理。
+=====
+Question: 应该何时使用 AWS Glue，何时使用 Amazon Kinesis Data Firehose？
+Answer: AWS Glue 和 Amazon Kinesis Data Firehose 均可用于进行流式 ETL 操作。对于复杂的 ETL 操作，建议使用 AWS Glue，包括加入流以及根据数据内容在 Amazon S3 中对输出进行分区。当您的使用案例专注于数据交付并准备数据以便在交付后进行处理时，建议使用 Amazon Kinesis Data Firehose。
+
+AWS Glue 中的流 ETL 支持使用您当前用于批处理作业的无服务器按需支付平台对流数据进行高级 ETL 操作。AWS Glue 生成可自定义的 ETL 代码，以便在传输过程中准备您的数据，并具有内置功能以处理半结构化或具有演进架构的流数据。使用 Glue 将复杂的转换应用于数据流，使用来自其他流和持久数据存储的信息丰富记录，然后将记录加载到数据湖或数据仓库中。
+
+在 Amazon Kinesis Data Firehose 中进行流 ETL 操作使您能够轻松捕获、转换和交付流数据。Amazon Kinesis Data Firehose 提供 ETL 功能，包括通过 AWS Lambda 进行无服务器数据转换，以及从 JSON 到 Parquet 的格式转换。它包括旨在使数据在交付后更易于处理的 ETL 功能，但不包括 AWS Glue 支持的高级 ETL 功能。
+
+=====
+Question: FindMatches ML 转换解决了哪些类型的问题？
+Answer: indMatches 通常解决记录连接和数据删除重复问题。删除重复是当您试图识别数据库中的记录时必须做的事情，这些记录在概念上是“相同的”，但是您有单独的记录。如果重复记录可以用唯一的键标识（例如，如果产品可以用 UPC 代码唯一标识），那么这个问题就很简单，但是当您必须进行“模糊匹配”时，这个问题就变得非常具有挑战性。
+
+记录连接基本上与底层的数据删除重复问题相同，但这个术语通常意味着您正在对两个不共享唯一键的数据库进行“模糊连接”，而不是对单个数据库进行删除重复。例如，考虑将客户大型数据库与已知欺诈者的小型数据库进行匹配的问题。FindMatches 可以用于记录连接和删除重复问题。
+
+例如，AWS Glue 的 FindMatches ML 转换可以帮助您解决以下问题：
+
+将医院之间的患者记录连接起来，这样医生就有了更多的背景信息，并且能够通过在单独的数据库中使用 FindMatches 来更好地治疗患者，这些数据库都包含姓名、生日、家庭住址、电话号码等常见字段。
+
+对包含诸如“标题”、“情节概要”、“发行年份”、“运行时间”和“演员表”等列的电影数据库进行删除重复操作。例如，同一部电影可能被识别为不同名称：“星球大战”、“星球大战：新希望”和“星球大战：第四集——新希望（特别版）”。
+
+通过识别服装产品目录中的等效项目，自动将店面中的所有相关产品组合在一起，您要在其中定义“等效”以表示它们相同，忽略大小和颜色的差异。因此，将“Levi 501 Blue Jeans，size 34x34”定义为与“Levi 501 Jeans — black，size 32x31”相同。
+=====
+Question: AWS Glue 如何对我的数据进行删除重复操作？
+Answer: WS Glue 的 FindMatches ML 转换可以轻松查找和连接引用同一实体但不共享可靠标识符的记录。在 FindMatches 之前，开发人员通常会通过编写大量手动调整的规则来确定性地解决数据匹配问题。FindMatches 在幕后使用机器学习算法来学习如何根据每个开发人员自己的业务标准匹配记录。FindMatches 首先识别客户的记录，以标记它们是否匹配，然后使用机器学习创建 ML 转换。然后，客户可以在他们的数据库上执行此转换以查找匹配的记录，或者他们可以要求 FindMatches 为他们提供附加记录来进行标记，从而将他们的 ML 转换提升到更高的精度级别。
+=====
+Question: ML 转换是什么？
+Answer: ML 转换为创建和管理机器学习的转换提供了一个目标。这些 ML 转换一旦创建并经过训练，就可以在标准的 AWS Glue 脚本中执行。客户选择特定算法（例如，FindMatches ML 转换），然后输入数据集和训练示例，以及该算法所需的调整参数。AWS Glue 使用这些输入来构建 ML 转换，该转换可以合并到一个正常的 ETL 作业工作流中。
+=====
+Question: ML 转换是如何工作的？
+Answer: AWS Glue 包括专门的基于 ML 的数据集转换算法，客户可以使用这些算法创建自己的 ML 转换。这些包括删除重复记录和查找匹配。
+
+客户首先导航到控制台的 ML 转换标签（或使用 ML 转换服务终端节点或通过 CLI 访问 ML 转换训练），创建他们的第一个 ML 转换模型。ML 转换标签为管理用户转换提供了一个用户友好的视图。ML 转换需要与其他转换不同的工作流要求，包括需要单独的训练、参数调整和执行工作流；需要估算生成转换的质量指标；以及需要管理和收集额外的真值标签，用于训练和主动学习。
+
+为了通过控制台创建 ML 转换，客户首先选择转换类型（如删除重复记录或匹配记录），并提供以前在数据目录中发现的适当数据源。根据转换的不同，可能会要求客户为训练或附加参数提供实际真值标签数据。客户可以监控它们的训练作业的状态，并查看每个转换的质量指标。（使用客户提供的标签数据的保留集报告质量指标。）
+
+客户一旦满意 ML 转换模型的性能，就可以在生产中推广使用该模型。然后，可以在 ETL 工作流期间使用 ML 转换，既可以在服务自动生成的代码中使用，也可以在随其他作业提交的用户定义脚本中使用，类似于其他 AWS Glue 库中提供的预构建转换。
+=====
+Question: 我是否可以看到有关使用 AWS Glue（和 AWS Lake Formation）查找匹配和删除重复记录的演示文稿？
+Answer: ：可以， AWS 在线技术讨论的完整记录，“使用 AWS Lake Formation 的 ML 转换进行模糊匹配和删除重复数据”在此提供。
+=====
+Question: 什么是 AWS Glue DataBrew？
+Answer: AWS Glue DataBrew 是一种可视化的数据准备工具，它使数据分析师和数据科学家能够通过一个交互式、点击式可视化界面轻松地准备数据，而不需要编写代码。使用 Glue DataBrew，您可以直接从湖内数仓、数据仓库和数据库（包括 Amazon S3、Amazon Redshift、Amazon Aurora 和 Amazon RDS）中轻松可视化、整理和标准化数 TB，甚至是数 PB 数据。AWS Glue DataBrew 现已在美国东部（弗吉尼亚北部）、美国东部（俄亥俄）、美国西部（俄勒冈）、欧洲（爱尔兰）、欧洲（法兰克福）、亚太地区（悉尼）和亚太地区（东京）全面推出。 
+=====
+Question: 谁可以使用 AWS Glue DataBrew？
+Answer: AWS Glue DataBrew 专为需要清理和标准化数据以进行分析和机器学习的用户而建立。数据分析师和数据科学家是主要用户。对于数据分析师，其工作职能包括商业智能分析师、运营分析师、市场情报分析师、法律分析师、金融分析师、经济专家、定量分析专家或会计师等。对于数据科学家，其工作职能包括材料科学家、生物分析科学家和科学研究人员等。
+=====
+Question: AWS Glue DataBrew 支持什么类型的转换？
+Answer: 您可以从 250 多个内置的转换中进行选择，无需编写代码即可合并、转变和转置数据。AWS Glue DataBrew 还会自动推荐一些转换，例如筛选异常，纠正无效、不正确分类或重复的数据，将数据标准化为标准日期和时间值，或生成用于分析的聚合。对于复杂的转换，比如将单词转换为通用的基本单词或根单词，Glue DataBrew 提供了使用高级机器学习技术（如自然语言处理）的转换。您可以将多个转换分组在一起、将它们另存为配方，并将配方直接应用于新的传入数据。
+=====
+Question: AWS Glue DataBrew 支持什么文件格式？
+Answer: 对于输入数据，AWS Glue DataBrew 支持常用的文件格式，如逗号分隔值 (.csv)、JSON 和嵌套 JSON、Apache Parquet 和嵌套 Apache Parquet 以及 Excel 表格。对于输出数据，AWS Glue DataBrew 支持逗号分隔值 (.csv)、JSON、Apache Parquet、Apache Avro、Apache ORC 和 XML。
+=====
+Question: 我是否能免费试用 AWS Glue DataBrew？
+Answer: 可以。注册 AWS 免费套餐账户，然后访问 AWS Glue DataBrew 管理控制台，立即免费开始使用。如果您是第一次使用 Glue DataBrew，则前 40 个交互式会话免费。请访问 AWS Glue 定价页面，以了解更多信息。
+=====
+Question: 我是否需要使用 AWS Glue 数据目录或 AWS Lake Formation 来使用 AWS Glue DataBrew？
+Answer: 否。您无需使用 AWS Glue 数据目录或 AWS Lake Formation 即可使用 AWS Glue DataBrew。但是，如果您使用 AWS Glue 数据目录或 AWS Lake Formation，DataBrew 用户可以从他们的集成式数据目录中选择可用的数据集。
+=====
+Question: 我是否能保留对我的数据进行的所有更改的记录？
+Answer: 可以。您可以在 AWS Glue DataBrew 管理控制台中可视化跟踪对您的数据进行的所有更改。通过可视化视图，可以很容易地跟踪对数据集、项目和配方以及所有其他相关作业所做的更改及其关系。此外，Glue DataBrew 将所有账户活动作为日志保存在 AWS CloudTrail 中。
+=====
+Question: 什么是 Glue Flex？
+Answer: AWS Glue Flex 是一个灵活的执行任务类，您可以通过它将非紧急数据集成工作负载（如预生产任务、测试、数据负载等）的成本降低高达 35%。Glue 具有两个任务执行类：标准和灵活。标准执行类是需要快速启动任务和专用资源的时间敏感型工作负载的理想之选。灵活执行类适合于开始和完成时间可能不同的非紧急任务。AWS Glue Flex 可以降低非时间敏感型工作负载（例如，夜间批处理 ETL 任务、周末任务、一次性批量数据摄取等）的成本。
+=====
+Question: AWS Glue 的标准和灵活执行类有何不同？
+Answer: AWS Glue 的标准和灵活执行类具有不同的执行属性。如果是标准执行类，则任务将会立即启动并且在运行时具有专用资源。灵活执行类任务在 AWS 中的可在任务运行时回收的非专用计算资源中运行，其开始和完成时间可能不同。因此，这两种执行类适合于不同工作负载。标准执行类是需要快速启动任务和专用资源的时间敏感型工作负载的理想之选。灵活执行类经济实惠，适合于可接受不同开始和结束时间的非紧急任务。
+=====
+Question: 如何开始使用 AWS Glue Flex 灵活执行类任务？
+Answer: 灵活执行类可用于 Glue Spark 任务。要使用灵活执行类，您只需将执行类参数的默认设置从“STANDARD”（标准）改为“FLEX”（灵活）。您可以通过 Glue Studio 或 CLI 完成此操作。请访问 AWS Glue 用户文档，以了解更多信息。
+=====
+Question: 哪些类型的数据集成和 ETL 工作负载不适合于 AWS Glue Flex 灵活执行类？
+Answer: AWS Glue Flex 灵活执行类不适合于需要一致的任务开始和运行时间的时间敏感型工作负载，也不适合于必须在特定时间执行的任务。此外，不推荐将 AWS Glue Flex 用于长时间运行的数据集成工作负载，因为它们很有可能中断，导致频繁取消。
+=====
+Question: 使用 AWS Glue Flex 灵活执行类的任务多久会中断一次？
+Answer: AWS Glue Flex 的可用性和中断频率取决于多个因素，包括所在区域和可用区（AZ）、当天的时间、周中日。资源可用性决定了 Glue Flex jobs 是否会启动。尽管高峰时期的中断率可以为 5-10%，但我们仍希望 Glue Flex 任务的中断率在 5% 左右或者因中断导致的 Glue Flex 任务的故障率低于 5%。
+=====
+Question: 灵活执行类是否始终可用？
+Answer: 是，您始终可以选择灵活执行类来运行 Glue 任务。但是，AWS Glue 执行这些任务的能力取决于非专用 AWS 容量以及为任务选择的工作程序数量。可能出现的情况是，在高峰时段，Glue 没有足够的容量来运行任务。在这种情况下，任务不会启动。您可以指定一个超时值，Glue 在此值之后将会取消任务。超时值越长，执行任务的几率越大。
+=====
+Question: 如果 AWS Glue Flex 任务在执行时中断，则会出现什么情况？
+Answer: 根据指定的工作程序数量，如果没有足够的工作程序来完成任务而导致 Glue Flex 任务中断，则任务将会失败。在取消任务之前，Glue 会将失败的任务重试指定的任务定义重试最大次数。您应无法将灵活执行类用于任何在其他系统或进程中具有下游依赖项的任务。
+=====
+Question: 灵活执行类支持哪些类型的 AWS Glue 任务？
+Answer: 灵活执行类仅支持 Glue Spark 任务。不支持 Pythonshell 和流式传输。Glue 版本 3.0 及更高版本支持 AWS Glue Flex。灵活执行类目前不支持流式传输工作负载。
+=====
+Question: 何时应使用 AWS Glue？何时应使用 AWS Data Pipeline？
+Answer: AWS Glue 可提供在无服务器 Apache Spark 环境中运行的托管 ETL 服务。这使您能够专注于 ETL 作业，不用担心配置和管理底层计算资源。AWS Glue 采用数据第一的方式，可让您专注于数据属性和数据操作，以将数据转换为您可以获取业务见解的形式。它可提供集成的数据目录，以便对元数据执行 ETL 操作，以及可通过 Amazon Athena 和 Amazon Redshift Spectrum 进行查询。
+
+AWS Data Pipeline 可提供托管编排服务，为您在执行环境、访问和控制运行代码的计算资源以及本身执行数据处理的代码方面提供更大的灵活性。AWS Data Pipeline 可在您的账户中启动计算资源，从而使您能够直接访问 Amazon EC2 实例或 Amazon EMR 集群。
+
+此外，AWS Glue ETL 作业均使用 Scala 或 Python 语言。如果您的使用案例要求您使用 Apache Spark 以外的引擎，或者您想运行在各种引擎（如 Hive、Pig 等）上运行的异构作业集，那么 AWS Data Pipeline 将是一个更好的选择。
+=====
+Question: 何时应使用 AWS Glue？何时应使用 Amazon EMR？
+Answer: AWS Glue 基于 Apache Spark 环境运行，为数据转换作业提供横向扩展的执行环境。AWS Glue 可推断、拓展和监控 ETL 作业，大大简化了作业的创建和维护过程。Amazon EMR 可让您直接访问 Hadoop 环境，为您在使用 Spark 以外的工具时提供较低级的访问权限和更高的灵活性。
+=====
+Question: 何时应使用 AWS Glue？何时应使用 AWS Database Migration Service？
+Answer: AWS Database Migration Service (DMS) 可帮助您轻松并安全地将数据库迁移至 AWS。如果需要将数据库从本地迁移至 AWS 或需要本地源与 AWS 上的源之间进行数据库复制，我们建议您使用 AWS DMS。一旦数据位于 AWS 中，您就可以使用 AWS Glue 将数据源中的数据移动、合并、复制到另一个数据库或数据仓库（比如 Amazon Redshift）中并进行转换。
+=====
+Question: 何时应使用 AWS Glue？何时应使用 AWS Batch？
+Answer: AWS Batch 使您能够轻松有效地在 AWS 上运行任何批量计算作业，而无需考虑作业的性质。AWS Batch 可在您的 AWS 账户中创建和管理计算资源，使您能够全面控制和了解所使用的资源。AWS Glue 是一项完全托管的 ETL 服务，可提供无服务器的 Apache Spark 环境来运行 ETL 作业。对于 ETL 使用案例，我们建议您探索使用 AWS Glue。对于其他面向批量操作的使用案例，其中包括一些 ETL 使用案例，AWS Batch 可能是更合适的选择。
+=====
+Question: AWS Glue 如何收费？
+Answer: 除 AWS Glue 数据目录免费套餐之外，您需要支付简单月度费用，用于存储和访问 AWS Glue 数据目录中的元数据。您将为爬网程序运行按小时费率付费（按秒计费），最少 10 分钟。如果您选择使用一个开发终端节点，以交互式方法开发您的 ETL 代码，那么您需要为预置开发终端节点的时间按小时费率付费（按秒计费），最少 10 分钟。此外，您将为 ETL 作业按小时费率付费（按秒计费），最少 1 分钟或 10 分钟，取决于您选择的 Glue 版本。有关更多详细信息，请参阅我们的定价页面。
+=====
+Question: AWS Glue 作业的计费何时开始，何时结束？
+Answer: 计费在作业安排执行后立即开始，并持续至整个作业完成。使用 AWS Glue 时，您只需针对作业运行的时间付费，而无需为环境预置或关闭时间付费。
+=====
+Question: AWS Glue 如何确保数据安全？
+Answer: 我们为静态数据提供服务器端加密，为动态数据提供 SSL 加密。
+=====
+Question: AWS Glue 有哪些服务限制？
+Answer: 有关服务限制的更多信息，请参阅我们的文档。
+=====
+Question: 哪些区域提供 AWS Glue？
+Answer: 请参阅 AWS 区域表，了解 AWS Glue 服务在不同区域的具体提供情况。
+=====
+Question: 为开发终端节点分配了多少 DPU（数据处理单元）？
+Answer: 一个开发终端节点默认预置 5 个 DPU。您可以为开发终端节点配置最少 2 个，最多 5 个 DPU。
+=====
+Question: 如何扩展 AWS Glue ETL 作业的规模和性能？
+Answer: 您仅需指定想分配给 ETL 作业的 DPU（数据处理单元）数量即可。一个 Glue ETL 作业至少需要 2 个 DPU。默认情况下，AWS Glue 会为每个 ETL 作业分配 10 个 DPU。
+=====
+Question: 如何监控 AWS Glue 作业的执行情况？
+Answer: AWS Glue 会提供每个作业的状态，并将所有通知推送到 Amazon CloudWatch。您可以通过 CloudWatch 操作设置 SNS 通知，接收作业失败或完成通知。
+=====
+Question: AWS Glue SLA 提供什么保障？
+Answer: 我们的 AWS Glue SLA 保证 AWS Glue 的月度正常运行时间百分比至少为 99.9%。
+=====
+Question: 怎样确定我是否有资格获得 SLA 服务抵扣？
+Answer: 如果您运行任务的可用区不止一个，且在任意月度计费周期内，相同区域内的月度正常运行时间百分比低于 99.9%，那么根据 AWS Glue SLA 的规定，您有资格获得 SLA 针对 AWS Glue 提供的抵扣。
+
+如需 SLA 的所有条款与条件的完整详细信息，以及如何提交索赔的详细信息，请参阅 AWS Glue SLA 详细信息页面。

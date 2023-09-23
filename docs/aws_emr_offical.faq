@@ -1,0 +1,966 @@
+Question: 什么是 Amazon EMR？
+Answer: Amazon EMR 是行业领先的云大数据平台，适用于使用多种开源框架进行数据处理、交互分析和机器学习，例如 Apache Spark、Apache Hive、Presto。借助 EMR，您可以用不到传统本地解决方案一半的成本运行 PB 级分析，并且其速度比标准 Apache Spark 快 1.7 倍以上
+=====
+Question: 为什么应该使用 Amazon EMR？
+Answer: 通过 Amazon EMR，您可以专注于数据转换和分析，而不必操心管理计算能力或开源应用程序，并且还能节省资金。使用 EMR，您可以立即在 Amazon EC2 上预置任意大小的容量，并设置扩展规则来管理不断变化的计算需求。您可以设置 CloudWatch 警报，以便在基础设施发生变化时可以立即收到通知并采取行动。如果您使用 Kubernetes，还可以使用 EMR 将您的工作负载提交到 Amazon EKS 集群。无论您使用 EC2 还是 EKS，都可以从 EMR 优化的运行时中获益，以便加快您的分析速度，并节省时间和资金
+=====
+Question: 如何部署和管理 Amazon EMR？
+Answer: 您可以使用 Amazon EC2、Amazon Elastic Kubernetes Service (EKS) 或本地部署 AWS Outposts 将工作负载部署到 EMR。您可以使用 EMR 控制台、API、开发工具包或 CLI 运行和管理工作负载，并使用 Amazon Managed Workflow for Apache Airflow (MWAA) 或 AWS Step Functions 进行编排。对于交互式体验，您可以使用 EMR Studio 或 SageMaker Studio。
+=====
+Question: 如何开始使用 Amazon EMR？
+Answer: 要注册 Amazon EMR，请单击 Amazon EMR 详细信息页面 http://aws.amazon.com/emr 中的“立即注册”按钮。您必须注册 Amazon EC2 和 Amazon S3 才能访问 Amazon EMR；如果您尚未注册这些服务，在 Amazon EMR 注册过程中系统将会提示您进行注册。注册后，请参阅 Amazon EMR 文档，其中包括我们的“入门指南”，能够很好地协助您开始使用此服务
+=====
+Question: Amazon EMR 的可靠性如何？
+Answer: 请参阅我们的 服务等级协议
+=====
+Question: 可以在哪里找到示例代码？
+Answer: 有关示例代码，请参阅这些文章和教程。如果您使用 EMR Studio，则可以使用一组笔记本示例探索这些功能
+=====
+Question: 如何开发数据处理应用程序？
+Answer: 您可以在 Amazon EMR Studio 中开发、可视化和调试在 R、Python、Scala 和 PySpark 中编写的数据科学和数据工程应用程序。您还可以在桌面上开发数据处理作业，例如，使用 Eclipse、Spyder、PyCharm 或 RStudio，并在 Amazon EMR 上运行。此外，您可以在启动新集群时在软件配置中选择 JupyterHub 或 Zeppelin，并使用一个或多个实例在 Amazon EMR 上开发您的应用程序。
+=====
+Question: 相对于 AWS 管理控制台，使用命令行工具或 API有什么优势？
+Answer: 命令行工具或 API 能够以编程方式启动和监控群集的运行进度、围绕群集创建更多自定义的功能（例如，对多个处理步骤排序、计划、工作流或监控）或为其他 Amazon EMR 客户构建增值工具或应用程序。相比而言，AWS 管理控制台提供易用的图形界面，可以直接从 Web 浏览器启动和监控群集
+=====
+Question: 是否可向已在运行的群集添加步骤？
+Answer: 可以。任务运行后，您可以通过 AddJobFlowSteps API 选择性地添加更多步骤。AddJobFlowSteps API 将向当前的步骤序列结尾添加新的步骤。您可以使用此 API 在集群中执行条件逻辑或进行调试。
+=====
+Question: 当集群完成时，我是否会收到通知？
+Answer: 您可以注册 Amazon SNS，让集群在完成后向您发布 SNS 主题。您还可以在 AWS 管理控制台上查看集群进度，或者使用命令行、软件开发工具包或者 API 获取集群的状态。
+=====
+Question: 完成步骤后可以终止集群吗？
+Answer: 可以。可以通过启动自动终止标志，在完成所有步骤后自动终止集群。
+=====
+Question: Amazon EMR 支持哪些操作系统版本？
+Answer: Amazon EMR 5.30.0 及更高版本，以及 Amazon EMR 6.x 系列基于 Amazon Linux 2。您也可以指定一个基于 Amazon Linux 2 创建的自定义 AMI。这让您可以为几乎任何应用程序执行复杂的预配置。有关更多信息，请参阅使用自定义 AMI
+=====
+Question: Amazon EMR 是否支持第三方软件包？
+Answer: 是。 您可以使用引导操作在集群中安装第三方软件包。此外，也可以使用 Hadoop 分布式缓存机制上传静态编译的可执行文件。EMR 6.x 支持 Hadoop 3，它允许 YARN NodeManager 直接在 EMR 集群主机上或 Docker 容器内启动容器。要了解更多信息，请参阅我们的文档。
+=====
+Question: 我可以使用哪些工具进行调试？
+Answer: 您可以使用多种工具来收集有关集群的信息，以帮助确定问题所在。如果您使用 Amazon EMR studio，则可以启动 Spark UI 和 YARN Timeline Service 等工具来简化调试。从 Amazon EMR 控制台，您可脱离集群访问 Apache Spark、Tez UI 和 YARN 时间线服务器的持久性应用程序用户界面、多个集群内应用程序用户界面，以及所有 YARN 应用程序的 Amazon EMR 控制台中应用程序历史记录的摘要视图。您还可以使用 SSH 连接主节点，并通过这些 Web 界面查看集群实例。有关更多信息，请参阅我们的文档
+=====
+Question: 什么是 EMR Studio？
+Answer: EMR Studio 是一个集成开发环境 (IDE)，使数据科学家和数据工程师能够轻松地开发、可视化和调试用 R、Python、Scala 和 PySpark 编写的数据工程和数据科学应用程序。
+
+它是一个完全托管的应用程序，具有单点登录、完全托管的 Jupyter Notebooks、自动基础设施预置，并且能够在不登录 AWS 控制台或集群的情况下调试作业。数据科学家和分析人员可以安装自定义内核和库，使用代码库（如 GitHub 和 BitBucket）与同事协作，或者使用 Apache Airflow、AWS Step Functions 和 Amazon Managed Workflows for Apache Airflow 等编排服务，将参数化笔记本作为计划工作流的一部分运行。 您可以使用 Amazon MWAA 读取 Amazon EMR 笔记本上的编排分析作业，以了解更多信息。EMR Studio 内核和应用程序在 EMR 集群上运行，因此您可以利用性能优化的适用于 Apache Spark 的 Amazon EMR 运行时，获得分布式数据处理带来的优势。管理员可以设置 EMR Studio，以便分析师可以在现有 EMR 集群上运行其应用程序，或使用 EMR 的预定义 AWS CloudFormation 模板创建新集群。
+=====
+Question: EMR Studio 有什么作用？
+Answer: 
+借助 EMRStudio，您可以使用企业凭证直接登录到完全托管式 Jupyter 笔记本电脑，而无需登录到 AWS控制台，数秒钟即可启动笔记本电脑，开始使用示例笔记本电脑，并执行数据探查。您还可以通过从笔记本加载自定义内核和 Python 库来自定义环境。EMR Studio 内核和应用程序在 EMR 集群上运行，因此您可以利用性能优化的适用于 Apache Spark 的 Amazon EMR 运行时，获得分布式数据处理带来的优势。您可以通过 GitHub 和其他存储库共享笔记本来与同事协作。您还可以将笔记本直接作为连续集成和部署管道运行。您可以将不同的参数值传递给笔记本。您还可以将笔记本连接起来，并使用诸如 Apache Airflow 之类的工作流编排服务将笔记本集成到计划工作流中。此外，您可以通过本机应用程序界面（例如 Spark UI 和 YARN 时间线服务）使用尽可能少的单击来调试集群和作业
+=====
+Question: EMR Studio 与 EMR Notebooks 有何不同？
+Answer: 有五个主要区别。
+
+使用 EMR Studio 时，无需访问 AWS 管理控制台。EMR Studio 托管在 AWS 管理控制台之外。如果您不向数据科学家或数据工程师提供对 AWS 管理控制台的访问权限，这一点将非常有用。
+您可以使用 AWS IAM Identity Center（AWS SSO 的后继者），利用由身份提供商提供的企业凭证登录到 EMR Studio。 
+EMR Studio 为您带来笔记本的第一次体验。EMR Studio 内核和应用程序在 EMR 集群上运行，因此您可以利用性能优化的适用于 Apache Spark 的 Amazon EMR 运行时，获得分布式数据处理带来的优势。在集群上运行代码就像将笔记本附加到现有集群或预置新集群一样简单。
+EMR Studio 具有简化的用户界面并抽象了硬件配置。例如，您可以设置一次集群模板，然后使用模板启动新的集群。 
+EMR Studio 提供了简化的调试体验，因此您只需单击几次就可以在一个位置访问本机应用程序用户界面
+=====
+Question: EMR Studio 与 SageMaker Studio 有何不同？
+Answer: 您可以同时将 EMR Studio 和 SageMaker Studio 与 Amazon EMR 一起使用。EMR Studio 提供集成开发环境 (IDE)，使您能够轻松地开发、可视化和调试用 R、Python、Scala 和 PySpark 编写的数据工程和数据科学应用程序。Amazon SageMaker Studio 提供了一个基于 Web 的可视化界面，您可以通过该界面执行所有机器学习开发步骤。借助 SageMaker Studio，您可以全面掌控和了解构建、训练和部署模型的每个步骤。您可以快速上传数据、创建新笔记本、训练和调优模型，在步骤之间来回移动以调整实验、对比结果以及将模型部署到生产环境中，而且上述所有工作都在一个地方完成，大大提升了工作效率。 
+=====
+Question: 我如何开始使用 EMR Studio？
+Answer: 
+您的管理必须首先设置 EMR Studio。从管理员那里收到 Amazon EMR Studio 的唯一登录 URL 后，您可以使用企业凭证直接登录到 Studio
+=====
+Question: 我是否需要登录到 AWS 管理控制台才能使用 EMR Studio？
+Answer: 不需要。管理员设置 EMR Studio 并提供 Studio 访问 URL 后，您的团队可以使用企业凭证登录。无需登录到 AWS 管理控制台。在 EMR Studio 中，您的团队可以执行任务并访问由管理员配置的资源。
+=====
+Question: EMR Studio 中的单点登录体验支持哪些身份提供商？
+Answer: AWS IAM Identity Center（AWS SSO 的后继者）是 EMR Studio 的单点登录服务提供程序。AWS IAM 支持的身份提供商列表可在我们的文档中找到。
+=====
+Question: 什么是 EMR Studio 中的工作区？
+Answer: Workspace 可帮助您组织 Jupyter Notebooks。工作区中的所有笔记本都保存到同一个 Amazon S3 位置，并在同一集群上运行。您还可以将代码存储库（如 GitHub 存储库）链接到工作区中的所有笔记本。您可以在将工作区附加到集群之前创建和配置工作区，但您应该在运行笔记本之前先连接到集群。
+=====
+Question: 在 EMR Studio 中，是否可以在没有集群的情况下创建工作区或打开工作区？
+Answer: 是的，您可以创建或打开工作区而无需将其附加到集群。仅在需要执行时，才应该将它们连接到集群。EMR Studio 内核和应用程序在 EMR 集群上运行，因此您可以利用性能优化的适用于 Apache Spark 的 Amazon EMR 运行时，获得分布式数据处理带来的优势。
+=====
+Question: 我能否安装定制库以在我的笔记本代码内使用？
+Answer: 所有 Spark 查询都在您的 EMR 集群上运行，因此您需要安装 Spark 应用程序在该集群上使用的所有运行时库。您可以轻松地在笔记本单元中安装笔记本范围的库。您还可以在笔记本单元内，或在使用 SSH 连接集群的主节点时，在集群主节点上安装 Jupyter Notebook 内核和 Python 库。有关更多信息，请参阅文档。此外，创建集群时，您可以使用引导操作或自定义 AMI 安装查询的库。如需了解更多信息，请参阅 Amazon EMR 管理指南中的创建引导操作以安装其他软件和使用自定义 AMI。
+=====
+Question: 笔记本保存在哪里？
+Answer: 工作区和工作区中的笔记本文件自动定期保存到您在创建该工作区时指定的 Amazon S3 位置中的 ipynb 文件。该笔记本文件的名称与您在 Amzon EMR Studio 中的笔记本相同。
+=====
+Question: 如何对我的笔记本应用版本控制？ 能否使用像 GitHub 这样的存储库？
+Answer: 您可以在版本受控的环境中将 基于 Git 的存储库与 Amazon EMR Studio Notebooks 相关联，以保存您的笔记本。
+=====
+Question: 在 EMR Studio 中，我可以在哪些计算资源上运行笔记本？
+Answer: 使用 EMR Studio，您可以在运行于 Amazon Elastic Compute Cloud (Amazon EC2) 上的 Amazon EMR 上或者运行于 Amazon Elastic Kubernetes Service (Amazon EKS) 上的 Amazon EMR 上运行笔记本代码。可以将笔记本附加到现有或新的集群上。您可以在 EMR Studio 中以两种方式创建 EMR 集群：使用预配置的集群模板通过 AWS Service Catalog 创建集群；通过指定集群名称、实例数和实例类型创建集群。
+=====
+Question: 我是否可以在 EMR Studio 中将工作区重新附加到不同的计算资源？
+Answer: 是的，您可以打开您的工作区，选择左侧的 EMR 集群图标，按下分离按钮，然后从选择集群下拉列表中选择集群，并按下附加按钮。
+=====
+Question: 在 EMR Studio 中，我在哪里可以找到所有工作区？
+Answer: 在 EMR Studio 中，您可以选择左侧的 WorkSpace 选项卡，查看您和其他用户在同一个 AWS 账户中创建的所有工作区。
+=====
+Question: 使用 EMR Studio 需要哪些 IAM 策略？
+Answer: 每个 EMR Studio 都需要权限才能与其他 AWS 服务进行互操作。为了给您的 EMR Studio 必要的权限，您的管理员需要使用所提供的策略来创建 EMR Studio 服务角色。他们还需要为 EMR Studio 指定一个定义 Studio 级别权限的用户角色。当他们将用户和组从 AWS IAM Identity Center（AWS SSO 的后继者）添加到 EMR Studio 时，他们可以将会话策略分配给用户或组以应用细粒度权限控制。会话策略可帮助管理员优化用户权限，而无需创建多个 IAM 角色。有关会话策略的更多信息，请参阅《AWS Identity and Access Management 用户指南》中的策略和权限。
+=====
+Question: 在 EMR Studio 中，对附加我工作区的 EMR 集群是否有任何限制？
+Answer: 可以。目前不支持高可用性（多主控）集群、Kerberos 化集群和 AWS Lake Formation 集群。
+=====
+Question: 使用 Amazon EMR Studio 的费用是多少？
+Answer: 向您提供的 Amazon EMR Studio 不再额外收费。在您使用 EMR Studio 时，将收取适用于 Amazon Simple Storage Service 存储和 Amazon EMR 集群的费用。要更多了解定价选项和详细信息，请参阅 Amazon EMR 定价
+=====
+Question: 什么是 EMR Notebooks？
+Answer: 我们建议新客户使用 Amazon EMR Studio，而不是 EMR Notebooks。EMR Notebooks 提供基于 Jupyter Notebook 的托管环境，可供数据科学家、分析员和开发人员准备数据并使其可视化、与同伴协作、构建应用程序，并使用 EMR 集群执行交互分析。尽管我们建议新客户使用 EMR Studio，但出于兼容性考虑，我们也支持 EMR Notebooks。
+=====
+Question: EMR Notebooks 有什么作用？
+Answer: 您可以使用 EMR Notebooks 构建 Apache Spark 应用程序，并且轻而易举地在 EMR 集群上运行交互式查询。多个用户可以直接从控制台创建无服务器笔记本、将其挂载到现有的共享 EMR 集群，或直接从控制台预置一个集群并立即开始使用 Spark 进行实验。您可以卸载笔记本并将其重新挂载到新集群。笔记本自动保存到 S3 存储桶，您可以从控制台检索已保存的笔记本以恢复工作。EMR Notebooks 预打包了在 Anaconda 存储库中创建的库，供您在自己的笔记本代码中导入和使用这些库，并利用它们操作数据以及将结果可视化。另外，EMR Notebooks 集成有 Spark 监控功能，您可以用来监测 Spark 作业的进度并在自己的笔记本中调试代码。
+=====
+Question: 我如何开始使用 EMR Notebooks？
+Answer: 要开始使用 EMR Notebooks，打开 EMR 控制台，在导航窗格中选择 Notebooks。在这里，只需选择 Create Notebook，输入笔记本的名称，选择一个 EMR 群集或即时创建一个新群集，为要使用的笔记本提供服务角色，并选择您要将笔记本文件保存到的 S3 存储桶，然后单击 Create Notebook。当笔记本显示 Ready 状态后，选择 Open 以启动笔记本编辑器。
+=====
+Question: EMR Notebooks 支持哪些 EMR 版本？
+Answer: EMR Notebooks 可挂载到运行 EMR 5.18.0 版或更高版本的 EMR 集群。
+=====
+Question: 使用 EMR Notebooks 的费用是多少？
+Answer: 向您提供的 EMR Notebooks 不再额外收费。您的帐户将根据挂载的 EMR 集群照常收费。您可以访问 https://aws.amazon.com/emr/pricing/ 以了解关于集群订价的更多信息  
+=====
+Question: 如何将我的数据导入 Amazon S3？
+Answer: Amazon EMR 提供了几种将数据导入集群中的方法。最常用的方法是将数据上传到 Amazon S3，并使用 Amazon EMR 的内置功能将数据加载到您的集群中。您可以使用 Hadoop 的分布式缓存功能将文件从分布式文件系统传输到本地文件系统。有关更多详细信息，请参阅文档。或者，如果您要将数据从本地迁移到云，可以使用 AWS 提供的任何一种云数据迁移服务。
+=====
+Question: 如何获得已终止集群的日志？
+Answer: Hadoop 系统日志及用户日志存放在您在创建集群时指定的 Amazon S3 存储段中。持久性应用程序 UI 在集群外运行，Spark 历史记录服务器、Tez UI 和 YARN 时间线服务器日志在应用程序终止后 30 天内可用。
+=====
+Question: 您是否会压缩日志？
+Answer: 不会，目前，Amazon EMR 在将日志迁移到 Amazon S3 时，不会压缩日志。
+=====
+Question: 是否可从 Internet 或 Amazon S3 以外的其他位置加载数据？
+Answer: 可以。您可以使用 AWS Direct Connect 建立到 AWS 的私有专用网络连接。如果您有大量数据，可以使用 AWS Import/Export。有关更多详细信息，请参阅我们的文档
+=====
+Question: Amazon EMR 是否可估算处理我的输入数据需要多长时间？
+Answer: 由于每个群集和输入数据不同，我们无法估算您的任务持续时间。
+=====
+Question: Amazon EMR 的收费如何？
+Answer: Amazon EMR 定价既简单又可预测：您按每秒费率根据使用时间付费，同时设有一分钟最低费用。您可以使用 AWS 定价计算器估算您的费用。其他 Amazon Web Services（包括 Amazon EC2）的使用与 Amazon EMR 分开计费。
+=====
+Question: Amazon EMR 集群的账单周期如何计算？
+Answer: 当该集群准备好执行步骤时，Amazon EMR 计费开始。当您请求关闭该集群时，Amazon EMR 计费结束。有关 Amazon EC2 开始和结束计费的详细信息，请参阅 Amazon EC2 计费常见问题。
+=====
+Question: 在哪里可以跟踪我的 Amazon EMR、Amazon EC2 和 Amazon S3 使用情况？
+Answer: 您可以在账单与收费管理控制台跟踪您的使用情况。
+=====
+Question: 如何计算控制台中所显示的标准实例小时数？
+Answer: 在 AWS 管理控制台中，每个群集都有一个“标准实例小时数”列，显示该群集大约使用的计算小时数（舍入至最接近的值）。
+
+“标准实例小时数”是基于“1 小时 m1.small 用量 = 1 小时标准计算时间”得出的计算时间小时数。您可以查看我们的文档，以了解实例系列中不同规格的列表以及每小时对应的标准化因数。
+例如，如果您运行一个 10 节点 r3.8xlarge 集群一小时，则控制台中所显示的标准实例总小时数为 640 [10（节点数）X 64（标准化因子）X 1（集群运行的小时数）= 640]。
+
+这只是大致时间，不应用作账单。请参阅账单与收费管理控制台，了解可计费的 Amazon EMR 使用量
+=====
+Question: Amazon EMR 是否支持 Amazon EC2 按需实例、Spot 实例和预留实例？
+Answer: 是的。Amazon EMR 可无缝支持按需实例、Spot 实例和预留实例。单击此处详细了解 Amazon EC2 预留实例。单击此处详细了解 Amazon EC2 Spot 实例。单击此处详细了解 Amazon EC2 容量预留
+=====
+Question: 价格是否含税？
+Answer: 除非另行说明，否则我们的价格不包含适用的税费和关税（包括增值税和适用的销售税）。使用日本账单地址的客户若要使用 AWS，则需缴纳日本消费税。了解更多。
+=====
+Question: 在集群执行过程中，如何防止其他用户查看我的数据？
+Answer: Amazon EMR 在两个 Amazon EC2 安全组中启动您的实例，一组用于主实例，另一组用于其他集群节点。主安全组的端口是开放的，以便与服务进行通信。它的 SSH 端口也呈开放状态，以允许您使用启动时指定的密钥 SSH 到实例。其他节点在单独的安全组中启动，仅允许与主实例进行交互。默认情况下，两个安全组都设置为不允许从属于其他客户的 Amazon EC2 实例等外部源进行访问。由于这些是您账户内的安全组，所以您可以使用标准 EC2 工具或控制面板重新配置它们。单击此处详细了解 EC2 安全组。此外，如果规则允许在您未添加到例外情况列表的任何端口进行公有访问，您可以在用于阻止集群创建的每个区域中配置 Amazon EMR 阻止公有访问
+=====
+Question: 我的数据的安全性如何？
+Answer: Amazon S3 提供身份验证机制，确保存储的数据安全以防被未授权访问。除非上传数据的客户另行指定，否则仅该用户才能访问数据。Amazon EMR 客户还可以选择使用确保安全传送的 HTTPS 协议将数据发送到 Amazon S3。此外，Amazon EMR 始终使用 HTTPS 在 Amazon S3 与 Amazon EC2 之间发送数据。为了提高安全性，客户可以在将输入数据上传到 Amazon S3 之前对其进行加密（使用任何常见的数据压缩工具）；然后，当 Amazon EMR 从 Amazon S3 提取数据时，客户需要在其群集的开头添加一个解密步骤。
+=====
+Question: 我能否获得我的账户上所有的 EMR API 调用历史记录以用于安全或合规性审计？
+Answer: 是的。AWS CloudTrail 是一项 web 服务，为您的帐户记录 AWS API 调用并向您交付日志文件。由 CloudTrail 生成的 AWS API 调用历史记录可用于安全分析、资源变更追踪以及合规性审计。在 AWS CloudTrail 详细信息页面了解更多有关 CloudTrail 的信息，或者通过 CloudTrail 的 AWS 管理控制台将它打开。
+=====
+Question: 如何控制 EMR 用户在 Amazon S3 中可以访问的内容？
+Answer: 默认情况下，Amazon EMR 应用程序流程在调用其他 AWS 服务时使用 EC2 实例配置文件。对于多租户集群，Amazon EMR 提供了三个选项来管理用户对 Amazon S3 数据的访问。
+与 AWS Lake Formation 的集成允许您定义和管理 AWS Lake Formation 中的精细授权策略，以访问 AWS Glue 数据目录中的数据库、表和列。您可以对通过 Amazon EMR Notebooks 和 Apache Zeppelin 提交的用于交互式 EMR Spark 工作负载的作业实施授权策略，并将审核事件发送到 AWS CloudTrail。通过启用此集成，您还可以从与安全断言标记语言 (SAML) 2.0 兼容的企业身份验证系统中启用到 EMR Notebooks 或 Apache Zeppelin 的联合单点登录。
+与 Apache Ranger 的本机集成允许您设置新的或现有的 Apache Ranger 服务器，以定义和管理精细授权策略，从而使用户可以通过 Hive Metastore 访问 Amazon S3 数据的数据库、表和列。Apache Ranger 是一个开源工具，用于在 Hadoop 平台上启用、监视和管理全面的数据安全。
+
+通过本机集成，您可以在 Apache Ranger Policy Admin 服务器上定义三种授权策略。您可以为 Hive 设置数据表、数据列和数据行级别的授权，为 Spark 设置数据表和数据列级别的授权，以及为 Amazon S3 设置前缀和对象级别的授权。Amazon EMR 会在集群上自动安装和配置相应的 Apache Ranger 插件。这些 Ranger 插件与 Policy Admin 服务器同步，以定义授权策略，实施数据访问控制，并将审核事件发送到 Amazon CloudWatch Logs。
+Amazon EMR User Role Mapper 允许您利用 AWS IAM 权限来管理对 AWS 资源的访问。您可以在用户（或组）和自定义 IAM 角色之间创建映射。用户或组只能访问自定义 IAM 角色允许的数据。目前可通过 AWS 实验室使用该功能
+=====
+Question: Amazon EMR 如何运用可用区？
+Answer: Amazon EMR 可启动同一 Amazon EC2 可用区中给定集群的所有节点。在同一可用区内运行集群可提高任务流的性能。默认情况下，Amazon EMR 选择运行集群的可用资源最多的可用区域。不过，如果需要，您可以指定其他可用区。您还可以选择为价格最低的按需实例优化分配、优化 Spot 容量或使用按需容量预留。
+=====
+Question: 在哪些区域可以使用 Amazon EMR？
+Answer: 要了解支持 Amazon EMR 的 AWS 区域列表，请访问所有 AWS 全球基础设施的 AWS 区域表。
+=====
+Question: AWS Local Zones 是否支持 Amazon EMR？
+Answer: EMR 支持在洛杉矶 AWS 本地扩展区启动集群。您可以在美国西部（俄勒冈）区域使用 EMR，以在与洛杉矶 AWS 本地扩展区相关的子网中启动集群。
+=====
+Question: 我应选择哪个地区来运行群集？
+Answer: 创建群集时，通常应选择您的数据所在的区域。
+=====
+Question: 在美国地区运行的集群中是否可使用欧洲数据（反之亦然）？
+Answer: 是的，您可以。如果您在不同的地区之间传输数据，将对您收取带宽费用。有关带宽定价信息，请访问 EC2 详细信息页面上的定价部分。
+=====
+Question: AWS GovCloud（美国）地区有何不同之处？
+Answer: AWS GovCloud（美国）区域专为美国政府机构和客户而设计。它遵循 US ITAR 要求。在 GovCloud，EMR 不支持 Spot 实例或启用调试功能。EMR 管理控制台在 GovCloud 中尚不可用。
+
+=====
+Question: 什么是 Amazon EMR 集群？
+Answer: 
+集群是 Aazon Elastic Compute Cloud (Amazon EC2)实例的集合。集群中的每个实例都称为节点，并在集群内具有一个角色，称为节点类型。Amazon EMR 还在每个节点类型安装不同的软件组件，在 Apache Hadoop 等分布式应用程序中为每个节点提供一个角色。每个集群都有一个以“j-”开头的唯一标识符
+=====
+Question: 集群中的节点类型是什么？
+Answer: 
+Amazon MR 集群拥有三种类型的节点：主节点：该节点通过运行软件组件来协调数据和任务在其他节点之间的分配，以方便处理，以此管理集群。主节点跟踪任务的状态并监控集群的健康状况。每个集群都有一个主节点，并且可以创建只有主节点的单节点集群。
+核心节点：该节点具有软件组件，用于在集群上的 Hadoop Distributed File System (HDFS) 中运行任务和存储数据。多节点集群至少有一个核心节点。
+任务节点：该节点具有软件组件，仅运行任务，不会在 HDFS 中存储数据。任务节点可选。
+=====
+Question: 什么是集群步骤？
+Answer: 
+群集步骤由用户定义的处理单位，大约与操作数据的一种算法相对应。一个步骤就是作为以 Java、Ruby、Perl、Python、PHP、R 或 C++ 编写的Java Jar 或流程序实施的 Hadoop MapReduce 应用程序。例如，要计算文档中单词的出现频率并按计数排序输出它们，第一步是计算每个单词出现次数的 MapReduce 应用程序，第二步是根据计数对第一步的输出排序的 MapReduce 应用程序。
+=====
+Question: 集群有哪些不同的状态？
+Answer: 
+STARTIN – 集群通过配置 EC2 实例开启。BOOTSTRAPPING – 集群上正在执行引导操作。
+RUNNING – 群集当前正在运行的步骤。
+WAITING – 群集当前处于活动状态，但没有运行步骤。
+TERMINATING – 群集正在关闭。
+TERMINATED – 群集已在未发生错误的情况下关闭。
+TERMINATED_WITH_ERRORS – 群集在发生错误的情况下关闭
+=====
+Question: 步骤有哪些不同的状态？
+Answer: 
+PENDING– 该步骤正在等待运行。RUNNING – 该步骤当前正在运行。
+COMPLETED – 该步骤已成功完成。
+CANCELLED – 该步骤在运行前被取消，因为上一步出现故障或群集在运行前已终止。
+FAILED – 该步骤在运行中出现故障。
+
+启动集
+=====
+Question: 如何启动集群？
+Answer: 
+您可以通在 AWS 管理控制台中填写简单的群集请求表启动群集。在请求表中，需要指定群集的名称、Amazon S3中输入数据的位置、处理应用程序、理想的数据输出位置、希望使用的 Amazon EC2 实例数量和类型。您也可以指定一个存储群集日志文件和 SSH 密钥的位置，以便在群集运行时进行登录。此外，您可以使用 RunJobFlow API 或在命令行工具中使用 ‘create’ 命令启动集群。要使用 EMR Studio 启动集群，请参阅下面的 EMR Studio 部分
+=====
+Question: 如何终止集群？
+Answer: 
+您可以随在 AWS 管理控制台中选择群集并单击“终止”按钮来终止群集。此外，也可以使用 TerminateJobFlowsAPI。如果终止正在运行的群集，Amazon S3 中尚未保存的任何结果都将丢失，并且所有 Amazon EC2 实例都会关闭
+=====
+Question: Amazon EMR 是否支持多个集群同时操作？
+Answer: 
+您可以根需要运行任何数量的集群。但开始使用时，在所有集群中，运行的实例数限额为 20 个。如果需要运行更多数量的实例，请填写 Amazon EC2实例请求表。一旦您的 Amazon EC2 限额已提升，将会对您的 Amazon EMR 集群自动应用新的限额。
+管理集
+=====
+Question: Amazon EMR 如何使用 Amazon EC2 和 Amazon S3？
+Answer: 可以将您的输入数据和数据处理应用程序上传到 Amazon S3。然后，Amazon EMR 将按您指定启动一定数量的 Amazon EC2 实例。该服务开始执行集群，同时使用 S3 URI 方案将输入数据从 Amazon S3 推入启动的 Amazon EC2 实例。一旦集群完成后，Amazon EMR 即可将输出数据传输到 Amazon S3，您在此可以取回数据或将其用作其他集群的输入数据
+=====
+Question: 在 Amazon EMR 中如何进行计算？
+Answer: Amazon EMR 使用 Hadoop 数据处理引擎来执行 MapReduce 编程模型中实施的计算。客户可根据 map() 和 reduce() 函数执行其算法。该服务可启动客户指定数量的 Amazon EC2 实例，其中包含一个主实例和多个其他节点。Amazon EMR 在这些实例上运行 Hadoop 软件。主节点将输入数据划分成数据块，并将数据块处理分配到其他节点。然后，每个节点对分配给它的数据运行 map 函数，生成中间数据。然后，对中间数据排序和分区，并将其发送到对其在节点本地应用缩减器函数的进程。最后，在文件中收集缩减器任务的输出。一个“集群”可能包含一系列上述 MapReduce 步骤。
+=====
+Question: Amazon EMR 支持哪些 Amazon EC2 实例类型？
+Answer: 有关最新可用实例类型和各区域定价的详细信息，请参阅 EMR 定价页面
+=====
+Question: 运行集群需要多长时间？
+Answer: 运行群集所需的时间取决于若干因素，包括群集的类型、输入数据的数量以及您为群集选择的 Amazon EC2 实例数量和类型。
+=====
+Question: 如果集群中的主节点出现故障，Amazon EMR 是否可以使其恢复？
+Answer: 可以。您可以启动具有三个主节点的 EMR 集群（版本 5.23 或更高），并支持 YARN Resource Manager、HDFS Name Node、Spark、Hive 和 Ganglia 等应用程序的高可用性。如果主要主节点出现故障或者 Resource Manager 或 Name Node 等关键进程崩溃，Amazon EMR 会自动将故障转移到备用主节点。由于主节点不是潜在的单个故障点，您可以不间断地运行长期存在的 EMR 集群。如果发生故障转移，Amazon EMR 会自动使用具有相同配置和启动操作的新主节点替换发生故障的主节点。 
+=====
+Question: 如果集群中的其他节点出现故障，Amazon EMR 是否可以从其恢复？
+Answer: 能。Amazon EMR 对于节点故障具有容错功能，当节点出现故障时将继续执行任务。Amazon EMR 还将在核心节点出现故障时预置新节点。但如果群集内的所有节点全部丢失，Amazon EMR 不会替换任何节点。
+=====
+Question: 是否可以 SSH 到我的群集节点？
+Answer: 能。您可以 SSH 到自己的群集节点，并从该位置直接执行 Hadoop 命令。如果您需要 SSH 到特定节点，则必须首先 SSH 到主节点，然后再 SSH 到所需节点。
+=====
+Question: 什么是 Amazon EMR 引导操作？
+Answer: 引导操作是 Amazon EMR 中的一项功能，为用户提供一种在执行群集前运行自定义设置的方式。运行群集前，可使用引导操作来安装软件或配置实例。有关引导操作的更多信息，请阅读 EMR 的开发人员指南。
+=====
+Question: 如何使用引导操作？
+Answer: 您可以群集实例中已安装的任何语言编写 Bootstrap Action 脚本，包括 Bash、Perl、Python、Ruby、C++ 或 Java。可使用一些预定义的引导操作。完成编写脚本后，您需要将其上传到 Amazon S3 并在启动集群时引用其位置。请参阅开发人员指南，了解有关如何使用引导操作的详细信息。
+=====
+Question: 如何为集群配置 Hadoop 设置？
+Answer: EMR 默认的 Hadoop 配置适合大多数工作负载。不过，根据群集的特定内存和处理要求，最好对这些设置进行调优。例如，如果您的群集任务需要使用大量内存，则可以选择每个核心使用较少的任务并降低任务跟踪程序堆阵大小。对于此情况，在启动时可以使用预定义的引导操作来配置群集。请参阅开发人员指南中的配置内存密集型引导操作，了解配置详细信息和使用说明。此外，还可以使用允许您根据所选的任何价值自定义群集设置的其他预定义引导操作。请参阅开发人员指南中的配置 Hadoop 引导操作，了解相关使用说明。
+=====
+Question: 是否可以修改正在运行的集群中的节点数？
+Answer: 能。节点有两种类型：(1) 核心节点，既可使用 Hadoop 分布式文件系统 (HDFS) 托管持续性数据，又能运行 Hadoop 任务；以及 (2) 任务节点，仅用来运行 Hadoop 任务。当群集运行时，您可以增加核心节点的数量，也可以增加或减少任务节点的数量。通过 API、Java 软件开发工具包或命令行客户端可以执行该操作。请参阅开发人员指南中的调整运行的集群部分，了解如何修改运行的集群大小的详细信息。您还可以使用 EMR 托管扩展。
+=====
+Question: 我何时会希望使用核心节点与任务节点？
+Answer: 由于核心节点在 HDFS 中托管持续性数据而无法删除，所以应为核心节点预留所需的容量，直到群集完成。由于任务节点可以添加或删除且不含 HDFS，所以它们非常适合仅临时需要容量的情况。您可以在 Spot 实例上启动任务实例队列，以增加容量，同时最大限度地减少成本。
+=====
+Question: 为什么我会希望修改正在运行的集群中的节点数？
+Answer: 在某些情况下，您可能会希望修改正在运行的集群中的节点数。如果您的群集运行速度低于预期或时间要求发生变化，您可以增加核心节点数来提高群集性能。如果集群的不同阶段有不同的容量需求，您可以开始使用少量核心节点，并随时增加或减少任务节点的数量来满足集群不断变化的容量要求。 您还可以使用 EMR 托管扩展。
+=====
+Question: 是否可以自动修改集群步骤之间的节点数？
+Answer: 能。您可以在工作流中包含预定义的步骤，以自动在已知具有不同容量需求的步骤之间调整群集大小。由于所有步骤都保证按顺序运行，这让您能够设置执行给定集群步骤的节点数。
+=====
+Question: 如何允许其他 IAM 用户访问我的群集？
+Answer: 要创建对 EMR CLI 中的所有 IAM 用户可见的新群集，请在创建群集时添加 --visible-to-all-users 标志。例如：elastic-mapreduce --create --visible-to-all-users。在管理控制台内，只需在 Create cluster Wizard 的 Advanced Options 面板上选择“Visible to all IAM Users”即可。
+
+要使现有群集对所有 IAM 用户可见，您必须使用 EMR CLI。使用 --set-visible-to-all-users，并指定群集标识符。例如：elastic-mapreduce --set-visible-to-all-users true --jobflow j-xxxxxxx。此步骤只能由群集的创建者执行。
+
+有关更多信息，请参阅 EMR 开发人员指南中的配置用户权限部分。
+
+标记集
+=====
+Question: 可以标记哪些 Amazon EMR 资源？
+Answer: 可以将标记添加到活跃的 Amazon EMR 群集。Amazon EMR 群集由 Amazon EC2 实例组成，添加到 Amazon EMR 群集的标记将传播到该群集的每个活跃 Amazon EC2 实例中。无法在已终止的群集或者属于活跃群集一部分的已终止 Amazon EC2 实例中添加、编辑或删除标记。
+=====
+Question: Amazon EMR 标记是否支持 IAM 用户的资源权限？
+Answer: 不支持，Amazon EMR 不支持按标记确定基于资源的许可。但需要注意的是，传播到 EC2 实例的标记与正常的 Amazon EC2 标记的行为方式相同，这一点非常重要。因此，从 Amazon EMR 传播的标记如果与 Amazon EC2 的 IAM 策略中的条件匹配，此策略将对这些标记生效。
+=====
+Question: 可以向资源添加多少个标记？
+Answer: 在 Amazon EMR 群集上最多可以添加十个标记。
+=====
+Question: 我在群集上的 Amazon EMR 标记是否会显示在此群集的每个 Amazon EC2 实例上？ 如果删除我的 Amazon EMR 
+Answer: 群集上的某个标记，是否会从每个相关的 EC2 实例中自动删除该标记？是，Amazon EMR 会将添加到群集的标记传播到组成该群集的 EC2 实例。如果将某个标记添加到 Amazon EMR 群集，则此标记也会显示在相关的 Amazon EC2 实例上。同样，如果从 Amazon EMR 群集中删除某个标记，也会从其相关的 Amazon EC2 实例中删除该标记。但是，如果使用 Amazon EC2 的 IAM 策略，并计划使用 Amazon EMR 的标记功能，应确保授予使用 Amazon EC2 标记 API CreateTags 和 DeleteTags 的权限。
+=====
+Question: 如何在我的账单明细中显示我的标记来划分成本？
+Answer: 在此处选择要在 AWS 账单报告中使用的标记。然后，为了查看您组合资源的成本，您可以根据拥有相同标记键值的资源组织账单信息。
+=====
+Question: 如何分辨哪些 Amazon EC2 实例属于某个 Amazon EMR 群集？
+Answer: 与 Amazon EMR 群集关联的 Amazon EC2 实例将有两个系统标记：
+
+aws:elasticmapreduce:instance-group-role=CORE
+键 = instance-group role；值 = [CORE or TASK]；
+aws:elasticmapreduce:job-flow-id=j-12345678
+键 = job-flow-id；值 = [JobFlowID
+=====
+Question: 可以直接在 Amazon EC2 实例上编辑标记吗？
+Answer: 可以，您可以在属于 Amazon EMR 群集的 Amazon EC2 实例上直接添加或删除标记。但是，我们不建议这样做，因为 Amazon EMR 的标记系统不会同步对关联的 Amazon EC2 实例所做的直接更改。我们推荐从 Amazon EMR 控制台、CLI 或 API 添加和删除 Amazon EMR 集群的标记，以确保集群及其关联的 Amazon EC2 实例具有正确的标记。
+=====
+Question: 什么是 Amazon EMR Serverless？
+Answer: Amazon EMR Serverless 是 Amazon EMR 中的一个新部署选项，它让您可以运行 Apache Spark 和 Apache Hive 之类的大数据框架，而无需配置、管理和扩展集群。
+=====
+Question: 谁可以使用 EMR Serverless？
+Answer: 数据工程师、分析师和科学家可以使用 EMR Serverless，以利用 Apache Spark 和 Apache Hive 之类的开源框架构建应用程序。他们可以使用这些框架来转换数据、运行交互式 SQL 查询和机器学习工作负载
+=====
+Question: 如何开始使用 EMR Serverless？
+Answer: 您可以使用 EMR Studio、AWS CLI 或 API 提交作业、跟踪作业状态并构建要在 EMR Serverless 上运行的数据管道。要开始使用 EMR Studio，请登录 AWS 管理控制台，导航到 Analytics 类别下的 Amazon EMR，然后选择 Amazon EMR Serverless。按照 AWS 管理控制台中的说明，导航到 Analytics 类别下的 Amazon EMR，然后选择 Amazon EMR Serverless。 按照入门指南中的说明创建您的 EMR Serverless 应用程序并提交作业。您可以参考 AWS CLI 页面上的与您的应用程序交互，以启动您的应用程序并使用 CLI 提交作业。您还可以在我们的 GitHub 存储库中找到 EMR Serverless 示例和示例代码。
+=====
+Question: EMR Serverless 支持哪些开源框架？
+Answer: EMR Serverless 当前支持 Apache Spark 和 Apache Hive 引擎。如果您希望支持其他框架，例如 Apache Presto 或 Apache Flink，请发送请求至 emr-feedback@amazon.com。
+=====
+Question: EMR Serverless 在哪些区域中可用？
+Answer: EMR Serverless 现已在下列 AWS 区域开放：亚太地区（孟买）、亚太地区（首尔）、亚太地区（新加坡）、亚太地区（悉尼）、亚太地区（东京）、加拿大（中部）、欧洲地区（法兰克福）、欧洲地区（爱尔兰）、欧洲地区（伦敦）、欧洲地区（巴黎）、欧洲地区（斯德哥尔摩）、南美洲（圣保罗）、美国东部（弗吉尼亚州北部）、美国东部（俄亥俄州）、美国西部（北加利福尼亚）和美国西部（俄勒冈州）
+=====
+Question: Amazon EMR Serverless、EC2 上的 Amazon EMR、AWS Outposts 上的 Amazon EMR 和 EKS 上的 Amazon EMR 有什么区别？
+Answer: Amazon EMR 提供了在基于 EC2 的集群、EKS 集群、Outposts 或 Serverless 上运行应用程序的选项。EC2 集群上的 EMR 适用于在运行其应用程序时需要最大控制能力和灵活性的客户。借助 EC2 集群上的 EMR，客户可以选择 EC2 实例类型以满足特定于应用程序的性能需求、自定义 Linux AMI、自定义 EC2 实例配置、自定义和扩展开源框架，以及在集群实例上安装其他自定义软件。EKS 上的 Amazon EMR 适用于希望在 EKS 上实现标准化以跨应用程序管理集群或在同一集群上使用不同版本开源框架的客户。AWS Outposts 上的 Amazon EMR 适用于希望在 Outpost 内更靠近其数据中心运行 EMR 的客户。EMR Serverless 适用于希望避免管理和操作集群而更喜欢使用开源框架运行应用程序的客户。
+=====
+Question: EMR Serverless 支持哪些 EMR 版本？
+Answer: EMR Serverless 支持 EMR 版本标签 6.6 及更高版本。借助 EMR Serverless，您可以获得与在其他 EMR 部署选项中相同的性能优化 EMR 运行时，它与标准开源框架 100% API 兼容。
+=====
+Question: BilledResourceUtilization 中是否包含预初始化容量的费用？
+Answer: BilledResourceUtilization 仅考虑将预初始化容量用于作业的持续时间，而不考虑此类容量的任何空闲时间。
+=====
+Question: BilledResourceUtilization 和 TotalResourceUtilization 有什么区别？
+Answer: 如果工作线程的运行时系统持续时间少于 60 秒，BilledResourceUtilization 会将其计为 60 秒，而 TotalResourceUtilization 会将其四舍五入到最接近的秒数。此外，BilledResourceUtilization 会从计算中除去 20GB 的免费存储空间。
+=====
+Question: 什么是应用程序以及如何创建？
+Answer: 借助 Amazon EMR Serverless，您可以创建一个或多个使用开源分析框架的 EMR Serverless 应用程序。要创建应用程序，您必须指定以下属性：1) 适用于您要使用的开源框架版本的 Amazon EMR 发布版本，以及 2) 您希望应用程序使用的特定分析引擎，例如 Apache Spark 3.1 或 Apache Hive 3.0。创建应用程序后，您可以开始运行数据处理作业或对应用程序的交互式请求。
+=====
+Question: 什么是工作线程？
+Answer: EMR Serverless 应用程序在内部使用工作线程来执行您的工作负载。提交作业后，EMR Serverless 会计算该作业所需的资源并安排工作线程。EMR Serverless 将您的工作负载分解为任务，使用开源框架预置和设置工作线程，并在工作完成时将其停用。EMR Serverless 会根据作业每个阶段所需的工作负载和并行度自动增加或缩减工作线程，因此您无需估计运行工作负载所需的工作线程数量。这些工作线程的默认大小取决于您的应用程序类型和 Amazon EMR 发布版本。您可以在安排作业运行时覆盖这些大小。
+=====
+Question: 我可以指定我的作业可使用的工作线程最小和最大数量吗？
+Answer: 使用 EMR Serverless，您可以指定并发工作线程的最小和最大数量以及工作线程的 vCPU 和内存配置。您还可以设置应用程序资源的最大容量限制以控制成本。
+=====
+Question: 我应在何时创建多个应用程序？
+Answer: 在执行以下任一操作时考虑创建多个应用程序：
+
+使用不同的开源框架
+针对不同的用例使用不同版本的开源框架
+从一个版本升级到另一个版本时执行 A/B 测试
+为测试和生产场景维护单独的逻辑环境
+为面向不同团队的独立逻辑环境提供独立的成本控制和使用跟踪功能
+隔离不同的业务线应用程序
+=====
+Question: 在 EMR Serverless 应用程序创建后能否更改其默认属性？
+Answer: 是的，您可以使用 EMR Studio 或 update-application API/CLI 调用修改应用程序属性，例如初始容量、最大容量限制和网络配置。
+=====
+Question: 我应何时创建具有预初始化工作线程池的应用程序？
+Answer: 没有预初始化工作线程的 EMR Serverless 应用程序需要最多 120 秒来确定所需的资源并进行预置。EMR Serverless 提供了一项可选功能，可使工作线程保持初始化并能够随时在几秒钟内做出响应，从而有效地为应用程序创建一个待命工作线程池。此功能称为预初始化容量，可以通过设置应用程序的初始容量参数为每个应用程序配置。
+
+预初始化容量允许作业立即开始，使其成为实施时间敏感型作业的理想选择。您可以指定在启动 EMR Serverless 应用程序时要预初始化的工作线程数量。随后，当用户提交作业时，可以使用预初始化的工作线程立即启动作业。如果作业需要的工作线程多于您选择的预初始化数量，EMR Serverless 会自动添加更多工作线程（可达到您指定的最大并发限制）。作业完成后，EMR Serverless 会自动恢复为维护您指定的预初始化工作线程。如果工作线程空闲 15 分钟，它们会自动关闭。您可以使用 updateApplication API 或 EMR Studio 更改应用程序的默认空闲超时。
+=====
+Question: 如何在 EMR Serverless 上提交和管理作业？
+Answer: 您可以使用 EMR Studio、开发工具包/CLI 或我们的 Apache Airflow 连接器提交和管理 EMR Serverless 作业。
+=====
+Question: 如何在我想在 EMR Serverless 上运行的作业中包含依赖项？
+Answer: 对于 PySpark，您可以使用 virtualenv 打包 Python 依赖项并使用 --archives 选项传递存档文件，这样使您的工作线程能够在作业运行期间使用这些依赖项。对于 Scala 或 Java，您可以将依赖项打包为 jar，将它们上传到 Amazon S3，然后使用 --jars 或 --packages 选项将它们传递给您的 EMR Serverless 作业运行。
+=====
+Question: EMR Serverless Spark 和 Hive 应用程序是否支持用户定义函数（UDF）？
+Answer: EMR Serverless 支持基于 Java 的 UDF。您可以将它们打包为 jar，然后上传到 S3，并在 Spark 或 HiveQL 脚本中使用它们。
+=====
+Question: EMR Serverless 支持哪些工作线程配置？
+Answer: 有关详细信息，请参阅支持的工作线程配置。
+=====
+Question: 如果 EMR Serverless 作业运行时间超过预期，我可以取消它吗？
+Answer: 是的，您可以从 EMR Studio 中或通过调用 cancelJobRun API/CLI 取消正在运行的 EMR Serverless 作业。
+=====
+Question: 我可以为工作线程增加额外的存储空间吗？
+Answer: EMR Serverless 为每个工作线程提供了 20 GB 的临时存储。如果需要更多存储空间，您可以在作业提交期间将其自定义为 20 GB 到 200 GB。
+=====
+Question: 可以在哪里找到示例代码？
+Answer: 
+您可以在们的 GitHub 存储库中找到 EMR Serverless 代码示例
+=====
+Question: EMR Serverless 中有哪些可用的工作线程选项？
+Answer: EMR Serverless 提供两种工作线程选择：按需工作线程和预初始化工作线程。
+
+按需工作线程仅在工作需要时启动，并在工作完成后自动释放。这可以帮助您节省成本，让您只需为使用的资源付费，并避免因闲置容量而产生任何额外成本。按需工作线程会根据您的工作负载扩展或缩减您的应用程序，让您不必担心资源配置过多或不足。
+
+预初始化工作线程是一项可选功能，可以让工作线程在几秒钟内准备好响应。这就为应用程序有效创建了一个工作线程热池，可以让作业立即启动，非常适合迭代应用程序和时间敏感型作业。
+=====
+Question: 能否在多个可用区 (AZ) 中配置 EMR Serverless 应用程序？
+Answer: 
+是的，可在多个可用区中配置 EMR Serverless 应用程序。设置多个可用区的流程取决于所使用的工作线程类型。
+仅使用按需工作线程时，EMR Serverless 默认会将作业分发到多个可用区，但每个作业仅在一个可用区中运行。您可以将子网与可用区关联起来，以选择要使用的可用区。如果某个可用区出现故障，EMR Serverless 会自动在另一个运行正常的可用区中运行您的任务。
+
+使用预初始化工作线程时，EMR Serverless 会从您指定的子网中选择运行状况良好的可用区。作业会在该可用区中提交，直到您停止该应用程序。如果某个可用区受损，您可以重启应用程序以切换到另一个运行正常的可用区
+=====
+Question: 我能否连接到其他地区的数据存储？
+Answer: 在没有 VPC 连接的情况下配置时，EMR Serverless 只能访问同一区域中的某些 AWS 资源。请参阅注意事项。要访问其他区域中的 AWS 资源或非 AWS 资源，您需要设置 VPC 访问和 NAT 网关以路由到 AWS 资源的公共端点。
+监控和调
+=====
+Question: 如何监控 Amazon EMR Serverless 应用程序和作业运行？
+Answer: Amazon EMR Serverless 应用程序级和作业级指标每 30 秒向 Amazon CloudWatch 发布一次。
+=====
+Question: 如何使用 EMR Serverless 启动 Spark UI 和 Tez UI？
+Answer: 在 EMR Studio 中，您可以选择正在运行或已完成的 EMR Serverless 作业，然后单击 Spark UI 或 Tez UI 按钮以启动它们。
+=====
+Question: 我可以访问我的 Amazon Virtual Private Cloud（VPC）中的资源吗？
+Answer: 是的，您可以配置 Amazon EMR Serverless 应用程序以访问自己的 VPC 中的资源。请参阅文档中的配置 VPC 访问部分以了解更多信息。 
+=====
+Question: 使用 EMR Serverless 应用程序可以实现什么样的隔离？
+Answer: 每个 EMR Serverless 应用程序都与其他应用程序隔离，并在安全 Amazon VPC 上运行。
+=====
+Question: Amazon EMR Serverless 服务限额有何变化？
+Answer: 
+Amazon MR Serverless 将推出一项新的服务限额，称为每账户的最大并发 vCPU 数量。借助这种基于 vCPU的限额，您可以设置应用程序在区域内最多能够扩展的最大汇总 vCPU 数量。现有的应用程序级别、基于工作线程的限额（最大活跃工作线程数）将于 2023 年 2 月 1 日结束支持
+=====
+Question: 在哪里可以查看和管理我账户的 vCPU 限额？
+Answer: 
+您可以在AWS 服务限额管理控制台中查看、管理和请求增加限额。有关更多信息，请参阅服务限额用户指南中的请求增加限额
+=====
+Question: 账户级 vCPU 限额和应用程序级 maximumCapacity 属性有什么区别？
+Answer: 
+EMR Sererless 提供两种成本控制 - 1/ 每个账户的最大并发 vCPU 限额适用于您账户中某个区域中的所有 EMR Serverless 应用程序。2/maximumCapacity 参数限制特定 EMR Serverless 应用程序的 vCPU。您应该使用基于 vCPU 的限额来限制一个区域中所有应用程序使用的最大并发 vCPU，并使用 maximumCapacity 属性来限制特定应用程序使用的资源。例如 如果您有 5 个应用程序并且每个应用程序最多可以扩展到 1000 个 vCPU，请将每个应用程序的 maximumCapacity 属性设置为 1000 个 vCPU，并将基于账户级 vCPU 的限额配置为 5 * 1000 = 5000 个 vCPU。
+=====
+Question: 如何知道我是否达到了基于 vCPU 的账户限额？
+Answer: 
+如果您超账户级 vCPU 限额，EMR Serverless 将停止供应新容量。如果您在超过限额后尝试创建新应用程序，应用程序创建将失败并显示错误消息“用程序创建失败，因为您已超出每个账户服务限额的最大并发 vCPU 数。您可以使用 AWS 服务限额控制台查看和管理您的服务限额。” 如果您在超过限额后提交新作业，该作业将失败并显示错误消息：“作业失败，因为您已超出每个账户服务限额的最大并发 vCPU。您可以使用 AWS 服务限额控制台查看和管理您的服务限额。” 有关更多详细信息，请参阅文档。
+=====
+Question: Amazon EMR Serverless 如何帮助节省大数据部署成本？
+Answer: Amazon EMR Serverless 可以通过三种方式帮助您节省成本。首先，管理、保护和扩展集群没有运营开销。其次，EMR Serverless 会在处理作业的每个阶段自动增加工作线程，并在不需要时减少工作线程。您需要为从工作线程开始运行到停止期间使用的汇总 vCPU、内存和存储资源付费，该时间四舍五入到最接近的秒数，最小值为 1 分钟。例如，您的作业在前 10 分钟的作业处理中可能需要 10 个工作线程，而在接下来的 5 分钟需要 50 个工作线程。使用细粒度的自动扩展功能，您只需承担 10 个工作线程运行 10 分钟加 50 个工作线程运行 5 分钟的费用。因此，您不必为未充分利用的资源付费。第三，EMR Serverless 包括适用于 Apache Spark 和 Apache Hive 以及 Presto 的 Amazon EMR 性能优化运行时。Amazon EMR 运行时与 API 兼容，速度是标准开源分析引擎的两倍以上，因此您的作业运行速度更快，计算成本更低。
+=====
+Question: EMR Serverless 成本是否与 EC2 竞价型实例上的 Amazon EMR 相当？
+Answer: 这取决于 EC2 上的当前 EMR 的集群利用率。如果您使用 EC2 按需型实例运行 EMR 集群，则在您当前的集群利用率低于 70% 时，EMR Serverless 将可实现更低的总拥有成本（TCO）。如果您使用 EC2 Savings Plans，则在您当前的集群利用率低于 50% 时，EMR Serverless 将实现更低的 TCO。如果您使用 EC2 竞价型实例，EC2 上的 Amazon EMR 和 EKS 上的 Amazon EMR 仍将保持更高成本效益。
+=====
+Question: 即使在作业运行到完成之后，预初始化的工作线程仍需收费吗？
+Answer: 是的，如果您在作业完成后不停止工作线程，预初始化的工作线程将会产生费用。
+=====
+Question: 我应向谁发出疑问、评论和功能请求？
+Answer: 请发送电子邮件至 emr-feedback@amazon.com，以向我们提交您对 EMR Serverless 的疑问和宝贵反馈。
+
+Amazon EKS 上的 Amazon EM
+=====
+Question: 什么是 Amazon EKS 上的 Amazon EMR？
+Answer: 
+Amazon KS 上的 Amazon EMR 是 Amazon EMR 的一个部署模型，它使客户能够轻松、经济高效地处理海量数据。它利用在容器中灵活的 AmazonEKS 托管服务上运行的托管分析框架，以及 Amazon Elastic Compute Cloud (Amazon EC2)、AWS Fargate 和 Amazon Simple Storage Service (Amazon S3) 的 Web 级基础设施
+=====
+Question: 为什么要使用 Amazon EKS 上的 Amazon EMR？
+Answer: 
+Amazon KS 上的 Amazon EMR使用基于容器的方法将分析作业与正在处理该作业的服务和基础设施解耦。您可以将精力放在开发应用程序上，而较少关注基础设施的运行，因为 EKS 上的 EMR 会根据作业的计算、内存和应用程序依赖关系动态配置基础设施。基础设施团队可以集中管理一个通用计算平台，以将 EMR 工作负载与其他基于容器的应用程序进行整合。多个团队、组织或业务部门可以在共享基础设施上同时独立运行其分析流程，同时维持由 Amazon EKS 和 AWS Identity and Access Management (IAM) 实现的隔离状态
+=====
+Question: 对于已经运行 Amazon EKS 上的 Apache Spark 的用户有什么优势？
+Answer: 
+如果您已运行 Amazon EKS 上的 Apache Spark，则可以获取 Amazon EMR的所有优势，例如自动预置和扩展，并能使用最新的完全托管版本的开源大数据分析框架。您可以获得适用于 Apache Spark 的经优化 EMR 运行时（性能比 EKS 上的开源 Apache Spark 快 3 倍），EMR Studio 和 Apache Spark UI 提供的无服务器数据科学体验，精细的数据访问控制，以及对数据加密的支持。
+=====
+Question: 这项功能与其他 AWS 服务有什么关系？如何配合使用这些服务？
+Answer: 
+Amazon KS 为客户提供了在 AWS 上运行 Kubernetes 的托管体验，使您可以使用 EKS 托管节点组或 AWS Fargate 添加计算容量。在 EKS上运行 EMR 作业可以在 Amazon S3 上访问其数据，同时可以将监控和日志记录与 Amazon CloudWatch 集成。AWS Identity and Access Management (IAM) 支持对作业和相关 AWS 服务进行基于角色的访问控制
+=====
+Question: Amazon EKS 上的 Amazon EMR 的工作原理是什么？
+Answer: 
+向 Amazn EMR 注册 EKS 集群。然后，使用 CLI、SDK 或 EMR Studio 将您的 Spark 作业提交到 EMR。EMR 请求 EKS 上的 Kubernetes计划程序来安排 Pod。对于您运行的每个作业，EKS 上的 EMR 都会创建一个容器。该容器包含具有安全更新的 Amazon Linux 2 基本镜像、Apache Spark 和运行 Spark 的相关依赖项以及特定于应用程序的依赖项。每个作业均在 Pod 中运行。Pod 会下载该容器并开始执行它。如果容器的映像先前已部署到节点，则将使用缓存的映像，并绕过下载。可将 Sidecar 容器（例如日志或指标转发服务器）部署到 Pod。Pod 在作业终止后会终止。作业终止后，您仍然可以使用 Spark UI 对其进行调试。
+=====
+Question: 我可以在 EKS 上的 Amazon EMR 中使用哪些 AWS 计算服务？
+Answer: 
+您可以将Amazon EMR for EKS 与两种 Amazon Elastic Compute Cloud (EC2) 实例一起使用以支持更广泛的自定义选项，也可以与无服务器的AWS Fargate 服务一起使用，以处理您的分析而无需预置或管理 EC2 实例。通过将您的分析工作分散在多个 AWS 可用区 (AZ, Availability Zone) 中，可以自动提高应用程序的可用性。
+=====
+Question: 我如何开始使用 EKS 上的 EMR？
+Answer: 
+首先，向Amazon EMR 注册 Amazon EKS 集群。 注册后，通过将工作负载提交给 EMR进行执行，从而在您的作业定义（包括应用程序依赖项和框架参数）中引用此注册。使用 EKS 上的 EMR，您可以为运行在同一 EKS 集群上的分析应用程序使用不同的开源大数据分析框架、版本和配置。 有关更多信息，请参阅我们的文档。
+=====
+Question: 如何向 EKS 上的 EMR 提交分析应用程序？
+Answer: 
+您可以使 AWS SDK / CLI、Amazon EMR Studio 笔记本以及工作流编排服务（例如 Apache Airflow 和 Amazon Managed Workflows forApache Airflow）提交分析应用程序。 可以从 S3 下载 EKS 上的 AWS EMR 的 Airflow 插件。要为 Amazon Managed Workflows for Apache Airflow 安装 EMR 容器插件，请参阅我们的 文档
+=====
+Question: 能否对在 EKS 上运行的 EMR 集群和应用程序使用相同的 EMR 发行版？
+Answer: 可以。您可以对在 EMR 集群上运行的应用程序和在 EKS 上运行的应用程序使用相同的 EMR 发行版。
+=====
+Question: 如何排除分析应用程序的故障？
+Answer: 
+您可以使 Amazon EMR Spark UI 来诊断 Spark 应用程序并进行故障排除。对于所有分析应用程序，EMR 可以在完成后长达 30天的时间内提供对应用程序详细信息、关联日志和指标的访问。可以单独配置作业，以将日志发送到 Amazon S3 位置或 Amazon CloudWatch。
+=====
+Question: 我可以在 EKS 中看到 EMR 应用程序吗？
+Answer: 
+可以。EM 应用程序会作为 Kubernetes 作业和部署显示在 EKS 控制台中
+=====
+Question: 我可以在同一 EKS 集群上将多个作业或应用程序彼此隔离吗？
+Answer: 
+可以。Kuernetes 本机提供作业隔离。此外，可以将每个作业配置为使用其自己的执行角色运行，以限制作业可以访问哪些 AWS 资源
+=====
+Question: EKS 上的 EMR 如何有助于降低成本？
+Answer: 
+EKS 上的EMR 消除了运行专用集群的必要性，从而降低了成本。您可以使用公用的共享 EKS集群来运行需要不同版本的开源大数据分析框架的分析应用程序。您也可以使用相同的 EKS 集群来运行其他容器化的非 EMR 应用程序。
+=====
+Question: 如何对 EKS 上的 EMR 收取费用？
+Answer: 
+EKS 上的Amazon EMR 定价是基于运行您作业的 Pod 所请求的 vCPU 和内存资源来计算，细粒度为每分钟。有关定价信息，请访问 Amazon EMR定价页面。
+=====
+Question: 什么是 Pod 模板？
+Answer: EKS 上的 EMR 使您可以使用 Kubernetes Pod 模板来定制作业在 Kubernetes 集群中运行的位置和方式。Kubernetes Pod 模板提供可重复使用的设计模式或样板文件，以声明方式表示 Kubernetes Pod 应该如何部署到您的 EKS 集群。
+=====
+Question: 我为什么应该将 Pod 模板用于 EKS 上的 EMR 作业？
+Answer: Pod Templates 可以对作业在 Kubernetes 中的安排方式提供更多控制。例如，您可以通过在 Amazon EC2 Spot 实例上运行 Spark 驱动程序任务或只允许需要 SSD 的作业在启用 SSD 的实例上运行来降低成本。将 Pod 模板与 EKS 上的 EMR 结合使用可对如何分配资源并在作业中运行自定义容器进行精细控制。因此，将会降低成本并提高作业的性能。
+=====
+Question: 什么是 Pod？
+Answer: Pods 是具有共享网络和存储资源的一个或多个容器，在 Kubernetes 工作线程节点上运行。EKS 上的 EMR 通过将 Spark 驱动程序和执行程序任务计划为单独的 Pod 来使用 Pod 运行作业。
+=====
+Question: Pod 模板有哪些使用案例？
+Answer: 您可以通过使用 Pod 模板同时优化性能和成本。例如，您可以通过定义在 EC2 Spot 实例上运行的作业来节省成本，或者通过在 GPU 或 SSD 支持的 EC2 实例上计划作业来提高性能。客户通常需要精细的工作负载控制，以在 EKS 上支持多个团队或组织，而 Pod 模板简化了在团队指定的节点组上运行作业的过程。此外，您还可以部署 Sidecar 容器来为作业运行初始化代码，或运行 Fluentd 等常用监控工具来转发日志。
+=====
+Question: 我是否能为我的 Spark 驱动程序和 Spark 执行程序指定不同的 Pod 模板？
+Answer: 可以，但您不需要为驱动程序和执行程序提供单独的模板。例如，您可以配置 nodeSelectors 和 tolerations 来指定 Spark 驱动程序只在 AWS EC2 按需实例上运行，Spark 执行程序只在 AWS Fargate 实例上运行。在提交作业时，配置 spark 属性 spark.kubernetes.driver.podTemplateFile 和 spark.kubernetes.executor.podTemplateFile 以引用模板的 S3 位置。
+=====
+Question: 我可以指定什么模板值？
+Answer: 您可以同时指定 Pod 级字段（包括 Volumes、Pod Affinity、Init Containers、Node Selector）和 Spark 主容器级字段（包括 EnvFrom、Working Directory、Lifecycle、Container Volume Mounts）。允许值的完整列表提供在我们的文档中。
+=====
+Question: 在何处可以找到有关 Pod 模板的更多信息？
+Answer: Amazon EKS 已经支持 Pod 模板，有关 EKS 上的 Amazon EMR 对 Pod 模板的支持的更多信息，请参阅我们的文档和 Apache Spark Pod 模板文档。
+=====
+Question: 为什么我应通过 EKS 上的 EMR 使用自定义镜像？
+Answer: 如果没有自定义镜像，要使用 EKS 上的 EMR 管理应用程序依赖项，则需要您在运行时从 Amazon S3 等外部存储服务进行引用。现在，在自定义镜像的支持下，您可以创建一个包含应用程序及其依赖项的自包含的 Docker 镜像。您不再需要维护、更新外部存储的库或对其进行版本控制，并且可以使用与其他容器化应用程序所用的相同 DevOps 流程开发大数据应用程序。只需指向您的镜像并运行。
+=====
+Question: 什么是自定义镜像？
+Answer: 自定义镜像是 EKS 上的 EMR 提供的 Docker 镜像（“基础镜像”），包含 EMR 运行时和其他 AWS 服务的连接器，您可以对这些服务进行修改，以包括您的应用程序所需的应用程序依赖项或其他包。新镜像可以存储在 Amazon Elastic Container Registry (ECR) 或您自己的 Docker 容器注册表中。
+=====
+Question: 自定义镜像有哪些使用案例？
+Answer: 客户可以创建基础镜像，添加其公司标准库，然后将其存储在 Amazon Elastic Container Registry (Amazon ECR) 中。其他客户可以自定义镜像以包括与应用程序特定相关的依赖项。可以对生成的不可改变镜像进行漏洞扫描，并部署到测试和生产环境中。您可以添加的依赖项示例包括 Java SDK、Python 或 R 库，您可以将它们直接添加到镜像中，就像使用其他容器化应用程序一样。
+=====
+Question: 基础镜像中包含什么？
+Answer: 对于基础镜像中包含的 性能优化 Spark 运行时和组件，与您在没有自定义镜像的情况下提交作业时所获得的相同
+=====
+Question: 我应何时为我的 Spark 驱动程序和 Spark 执行程序指定不同的自定义镜像？
+Answer: 在您想要包含不同的依赖项或库时，您可以为 Spark 驱动程序和执行程序指定单独的镜像。删除两个镜像中都不需要的库可以缩小镜像，进而缩短作业启动时间。您可以为驱动程序和执行程序 (spark.kubernetes.container.image) 指定同一个镜像，也可以为驱动程序 (spark.kubernetes.driver.container.image) 和执行程序 (spark.kubernetes.executor.container.image) 指定不同的镜像
+=====
+Question: 在何处可以找到有关自定义镜像的更多信息？
+Answer: 有关 EKS 上的 Amazon EMR 对自定义镜像的支持的更多信息，请参阅我们的文档或 Apache Spark 文档
+=====
+Question: 自定义镜像是否需要额外收费？
+Answer: 使用自定义镜像功能不收取费用。
+AWS Outposts 上的 Amazon EM
+=====
+Question: 什么是 AWS Outposts？
+Answer: AWS Outposts 可将本地 AWS 服务、基础设施和运营模式引入绝大部分数据中心、主机托管空间或本地设施。使用 Outposts 上的 EMR，您可以像在云中一样在本地部署、管理和扩展 EMR 集群。
+=====
+Question: 何时应该使用 Outposts 上的 EMR？
+Answer: 如果您现在有本地的 Apache Hadoop 部署，并且仍在努力满足高峰使用率期间的容量需求，则可以在使用 Outposts 上的 EMR 来增强处理能力，而不必将数据移至云中。利用 Outposts 上的 EMR，您只需几分钟即可在本地启动新的 EMR 集群，并连接到本地 HDFS 存储中的现有数据集以满足此需求，同时仍符合 SLA 要求。
+
+对于因管理、合规性或其他原因而保留在本地的数据，如果需要处理，您可以使用 Outposts 上的 EMR 在本地部署并运行应用程序（如 Apache Hadoop 和 Apache Spark），与数据距离更近。这样便无需将大量本地数据移动到云中，减少了处理这些数据所需的总体时间。
+
+如果您正在将数据和 Apache Hadoop 工作负载迁移到云中，并且想在迁移完成前开始使用 EMR，您可以使用 AWS Outposts 来启动连接到现有本地 HDFS 存储的 EMR 集群。然后，您可以逐渐将数据迁移到 Amazon S3，作为云架构演变的一部分。
+=====
+Question: Outposts 上的 EMR 支持哪些 EMR 版本？
+Answer: 支持的最低 Amazon EMR 版本为 5.28.0。
+=====
+Question: 使用 Outposts 时有哪些 EMR 应用程序可用？
+Answer: EMR 5.28.0 及更高版本中的所有应用程序均支持。请参阅我们的发布说明，获取完整的 EMR 应用程序列表。
+=====
+Question: Outposts 上的 EMR 不支持哪些 EMR 功能？
+Answer: 在 AWS Outposts 中不提供 EC2 Spot 实例。创建集群时，必须选择 EC2 按需实例。
+AWS Outposts 中提供一部分 EC2 实例类型。有关 EMR 和 Outposts 支持的实例类型的列表，请参阅我们的文档。
+将 Amazon EBS 卷添加到实例时，AWS Outposts 仅支持通用SSD (GP2) 存储类型
+=====
+Question: 可以使用 Outpost 中的 EMR 集群从我现有的本地 Apache Hadoop 集群中读取数据吗？
+Answer: 在 Outpost 的 EMR 上运行的工作负载可以在现有 HDFS 存储中读写数据，因而您可以与现有的本地 Apache Hadoop 部署轻松集成。这使您能够使用 EMR 更好地满足数据处理需求，而无需迁移数据。
+=====
+Question: 可以选择在哪里存储数据吗？
+Answer: 在 Outpost 启动 EMR 集群时，所有计算和数据存储资源都将部署在 Outpost 中。本地写入 EMR 集群的数据存储在 Outpost 中的本地 EBS 卷上。Apache Hive、Apache Spark、Presto 和其他 EMR 应用程序之类的工具均可配置为在本地 Outpost 中、外部文件系统（例如现有的 HDFS 安装）中或 Amazon S3 中写入数据。使用 Outposts 上的 EMR，您可以完全控制将数据存储在 Amazon S3 中还是本地存储在 Outpost 中。
+=====
+Question: 是否有任何 EMR 功能需要将数据上传到 S3？
+Answer: 在 Outpost 中启动 EMR 集群时，您可以选择是否启用日志记录。启用日志记录后，集群日志将被上传到您指定的 S3 存储桶。这些日志用于简化集群终止后的调试。禁用后，日志不会上传到 S3。
+=====
+Question: Outpost 容量不足时会怎样？
+Answer: 在 Outpost 中启动集群时，EMR 会尝试启动您请求的 EC2 按需实例的数量和类型。如果 Outpost 上的容量不足，则 EMR 将收到容量不足通知。EMR 将在一段时间内重试，如果没有可用容量，则集群将无法启动。在调整集群大小时，将应用相同的过程。如果对于所请求的实例类型，Outpost 上的容量不足，则 EMR 将无法扩展集群。您可以轻松设置 Amazon CloudWatch 提醒，以监视 Outpost 上的容量利用率，并在实例容量低于所需阈值时收到提醒。
+=====
+Question: 如果 Outpost 和 AWS 之间的网络连接中断会怎样？
+Answer: 如果 Outpost 及其 AWS 区域之间的网络连接丢失，则 Outpost 中的集群将继续运行，但是在连接恢复之前，您将无法执行某些操作。在连接恢复之前，无法创建新集群或对现有集群执行新操作。如果实例发生故障，不会自动替换该实例。此外，诸如向运行中的集群添加步骤、检查步骤执行状态以及发送 CloudWatch 指标和事件之类的操作将发生延迟，直到连接恢复。
+
+我们建议在 Outpost 与 AWS 区域之间提供可靠的高可用性网络连接。如果 Outpost 与其 AWS 区域之间的网络连接丢失超过数小时，则已启用终止保护的集群将继续运行，而已禁用终止保护的集群可能会终止。如果网络连接因例行维护而受到影响，建议您主动启用终止保护。
+使用 EBS 
+=====
+Question: 可以做到哪些之前我无法做到的事情？
+Answer: 大部分 EC2 实例都附带固定的存储容量，称为“实例存储”。现在，您可以向 Amazon EMR 群集中的实例添加 EBS 卷，以便在实例上自定义存储。利用此功能，您还可以在仅限 EBS 的实例系列（如 M4 和 C4）上运行 Amazon EMR 群集。
+=====
+Question: 向运行于 Amazon EMR 的实例添加 EBS 卷有何好处？
+Answer: 在以下场景中，您可以通过向实例添加 EBS 卷来获得好处：
+
+您的处理要求如下：您需要当前某个实例提供的大量 HDFS（或本地）存储。借助 EBS 卷方面的支持，您将能够对与某个实例提供的计算容量相关的实例上的存储容量进行自定义。优化实例上的存储可帮助您节约成本。
+您正在运行较旧的实例系列（如 M1 和 M2 系列），希望迁移到最新一代的实例系列，但受到新一代实例类型的每个节点提供的存储的限制。现在，您可以轻松使用任何新一代实例类型，并添加 EBS 卷以优化存储。内部基准表明，您可以通过从较旧的实例系列（M1 或 M2）迁移到新一代实例系列（M4、C4 和 R3）来实现成本节约并提升性能。Amazon EMR 团队建议您运行应用程序以得出正确的结论。
+您希望使用或迁移到仅限 EBS 的新一代 M4 和 C4 系列
+=====
+Question: 是否可以在群集终止后保留 EBS 卷上的数据？
+Answer: 目前，Amazon EMR 将在群集终止后删除卷。如果您希望在群集生命周期外保留数据，不妨考虑将 Amazon S3 作为数据存储使用。
+=====
+Question: 我可以向实例附加哪些类型的 EBS 卷？
+Answer: Amazon EMR 允许您使用不同的 EBS 卷类型：通用型 SSD (GP2)、磁性和预置 IOPS (SSD)。
+=====
+Question: 终止群集后，EBS 卷会发生什么？
+Answer: Amazon EMR 将在 EMR 群集终止后删除卷。
+=====
+Question: 是否可以将 EBS 与已经具有实例存储的实例结合使用？
+Answer: 可以，您可以向具有实例存储的实例添加 EBS 卷。
+=====
+Question: 是否可以向正在运行的集群附加 EBS 卷？
+Answer: 不可以，当前您只能在启动群集时添加 EBS 卷。
+=====
+Question: 是否可以拍摄群集中的卷的快照？
+Answer: EBS API 允许您拍摄群集的快照。但是，当前 Amazon EMR 不允许您从快照进行恢复。
+=====
+Question: 是否可以使用加密的 EBS 卷？
+Answer: 您可以使用 AWS KMS 作为密钥提供程序来加密 EBS 根设备和存储卷。有关更多信息，请参阅本地磁盘加密
+=====
+Question: 如果我从正在运行的集群删除附加卷，会发生什么？
+Answer: 如果从正在运行的群集删除附加卷，系统会将其作为节点故障进行处理。Amazon EMR 会将节点和 EBS 卷各替换为相同的节点和 EBS 卷。
+
+EMR 工作负载
+Hive | Hudi | Impala | Pig | HBase
+=====
+Question: 什么是 Apache Spark？
+Answer: Apache SparkTM 是一款用于大数据工作负载的分布式开源处理系统。它使用内存中缓存和优化的查询执行方式，可针对任何规模的数据进行快速分析查询。Amazon EMR 是在云中部署 Apache Spark 的最佳位置，因为它既具备商用 Spark 分配的集成和测试严谨性，又兼有云的规模、简单性和成本效益。它让您可以在几分钟内启动 Spark 集群，而无需执行节点预置、集群设置、Spark 配置或集群优化。EMR 具有适用于 Apache Spark 的 Amazon EMR 运行时，这是一种针对 Apache Spark 进行性能优化的运行时环境，默认情况下在 Amazon EMR 集群上处于活动状态。适用于 Apache Spark 的 Amazon EMR 运行时的速度可比没有 EMR 运行时的集群快 3 倍以上，并且与标准 Apache Spark 具有 100% 的 API 兼容性。详细了解 Spark 和 Amazon EMR 上的 Spark。
+=====
+Question: 什么是 Presto？
+Answer: Presto 是一种开源的分布式 SQL 查询引擎，它从零开始设计，用于针对任何规模的数据进行快速分析查询。使用 Amazon EMR，您可以在几分钟内启动 Presto 集群，而无需执行节点预置、集群设置、Presto 配置或集群优化。EMR 让您可以在短短几分钟内预置一个、上百个或成千上万个计算实例。Presto 拥有两个社区项目 – PrestoDB 和 PrestoSQL。Amazon EMR 同时支持这两个项目。详细了解 Presto 和 Amazon EMR 上的 Presto。
+
+使用 Hiv
+=====
+Question: 什么是 Apache Hive？
+Answer: Hive 是在 Hadoop 顶部运行的一种开源数据仓库和分析软件包。Hive 由基于 SQL 的语言 Hive QL 操作，允许用户构建、汇总和查询 Amazon S3 中存储的数据源。Hive QL 的功能超出标准 SQL，支持一流的 map/reduce 函数和 Json 与 Thrift 等复杂的由用户定义的可扩展数据类型。该功能能够处理复杂的甚至非结构化的数据源，如文本文档和日志文件。Hive 允许用户通过以 Java 编写和通过 Amazon S3 中的存储部署的用户自定义函数执行扩展。您可以在此处了解有关 Apache Hive 的更多信息。
+=====
+Question: 我用 Amazon EMR 中运行的 Hive 可以做什么？
+Answer: 当 Pig 与 Amazon EMR 搭配使用时，您可以通过 Amazon EMR 中熟悉的 SQL 之类的语言和易用的工具执行复杂的数据处理应用程序。借助 Amazon EMR，您可以将 Hive 应用程序转换为可靠的数据仓库来执行任务，如数据分析、监控和业务智能任务。
+=====
+Question: Hive 与传统的 RDBMS 系统有何不同？
+Answer: 传统 RDBMS 系统提供事务语义和 ACID 属性。它们还允许检索和缓存表，以便少量的数据也能很快被检索到。它们可快速更新少量数据，并可强制执行参考完整性限制。通常，它们在单一大型机器中运行，不支持在表中执行 map 和 reduce 函数，也不支持对复杂的由用户定义的数据类型执行操作。
+
+相比之下，Hive 可使用 MapReduce 执行 SQL 之类的查询。因此，它针对在机器群集中运行时执行全面的表扫描进行了优化，由此能够处理超大量的数据。Hive 提供分区表，如果执行的查询适合，它能够扫描表的分区，而不只是整个表。
+
+传统 RDMS 系统比较适合要求事务语义和参考完整性以及时常执行少量更新的情况。Hive 比较适合脱机报告、转换和分析大型数据集；例如，对大型网站或网站集合执行点击流分析。
+
+一种常见的做法是从 RDBMS 系统导出数据到 Amazon S3，从中可以使用运行 Hive 的 Amazon EMR 群集执行脱机分析。
+=====
+Question: 如何开始使用 Amazon EMR 中运行的 Hive？
+Answer: 要开始使用，您最好先查看此处的书面文档。
+=====
+Question: 特定于 Amazon EMR 的 Hive 是否有新功能？
+Answer: 可以。有关更多详情，请参阅我们的文档：
+
+您可以启动一个带有多个主节点的 EMR 集群，以支持 Apache Hive 的高可用性。如果主要主节点出现故障或者 Resource Manager 或 Name Node 等关键进程崩溃，Amazon EMR 会自动将故障转移到备用主节点。这意味着您可以在 EMR 集群上运行 Apache Hive 而不会中断。
+Amazon EMR 允许您为 Apache Hive 集群定义 EMR 托管扩展，以帮助您优化资源使用。借助 EMR 托管扩展，您可以自动调整集群大小，以尽可能低的成本获得最佳性能。通过 EMR 托管扩展，可以为集群指定最小和最大计算限制，Amazon EMR 会自动调整其大小，以实现最佳性能和资源利用率。EMR 托管扩展针对与集群上运行的工作负载相关的关键指标连续进行采样。
+Amazon EMR 6.0.0 增加了对 Hive LLAP 的支持，相比 EMR 5.29 提供平均 2 倍的性能提升。您可以单击此处了解更多信息。
+现在可以将 S3 Select 与 Amazon EMR 上的 Hive 结合使用来提高性能。S3 Select 允许应用程序仅从对象检索数据子集，这样可减少 Amazon EMR 与 Amazon S3 之间传输的数据量。
+Amazon EMR 还支持在复杂的 Apache Hive 查询中实现快速性能。EMR 默认使用 Apache Tez，它比 Apache MapReduce 快得多。Apache MapReduce 使用多个阶段，所以一个复杂的 Apache Hive 查询会被分解成四到五个作业。Apache Tez 专为更复杂的查询而设计，因此同一作业在 Apache Tez 上将在一个作业中运行，从而使其速度比 Apache MapReduce 快得多。
+使用 Amazon EMR，您可以选择将元存储保留在本地或将其外部化。EMR 提供与 AWS Glue Data Catalog、Amazon Aurora、Amazon RDS 和 AWS Lake Formation 的集成。Amazon EMR 可以直接从 Glue 或 Lake Formation 中提取信息来填充元存储。
+您可以自动从 Amazon S3 加载表分区。以前，要导入分区的表，您需要单独更改表中每个独立分区的表语句。现在，Amazon EMR 包含适用于 Hive 语言的新语句类型：“alter table recover partitions”。 该语句让您能够轻松地将表并发导入多个群集，而不必保留共享的元数据存储。使用此功能，可从外部进程保存数据的表（例如日志文件）进行读取。
+您可以直接向 Amazon S3 写入数据。向 Amazon S3 中的表写入数据时，Amazon EMR 中安装的 Hive 版本将不使用临时文件，而直接写入 Amazon S3。这样可大大提高性能，但从 Hive 角度意味着 HDFS 和 S3 的操作方式不同。如果表位于 Amazon S3，则无法在相同语句内对同一表进行读取和写入。如果要更新 S3 中的表，则会在集群的本地 HDFS 文件系统中创建一个临时表，将结果写入该表，然后将它们复制到 Amazon S3。
+您可以访问 Amazon S3 中的资源。Amazon EMR 中安装的 Hive 版本允许您直接从 Hive 脚本内引用自定义 map 和 reduce 操作或 Amazon S3 中其他库的脚本（例如，add jar s3://elasticmapreduce/samples/hive-ads/libs/jsonserde.jar）。
+=====
+Question: 支持哪些类型的 Hive 群集？
+Answer: Hive 支持两类群集：交互式和批处理。在交互式模式下，客户可以直接在主节点上交互启动群集和运行 Hive 脚本。通常，该模式用来执行特别数据分析和应用程序开发。在批处理模式下，Hive 脚本存储在 Amazon S3 中，在启动群集时引用。通常，批处理模式用于报告生成等重复性运行。
+=====
+Question: 如何启动 Hive 群集？
+Answer: 批处理和交互式群集都可从 AWS 管理控制台、EMR 命令行客户端或 API 启动。请参阅发布指南中的 Hive 部分，了解有关启动 Hive 群集的更多详细信息。
+=====
+Question: 何时应使用 Hive与 PIG？
+Answer: Hive 和 PIG 都提供高水平的数据处理语言，支持在大型数据集中操作的复杂数据类型。Hive 语言是 SQL 的变体，更适合供已熟悉 SQL 和关系数据库的用户访问。Hive 支持分区的表，它们使 Amazon EMR 群集只提取与执行的查询相关的表分区，而不会执行全面的表扫描。PIG 和 Hive 都有查询计划优化功能。PIG 能在整个脚本范围内进行优化，而 Hive 查询仅在语句级别进行优化。
+
+最终，使用 Hive 还是 PIG 则取决于应用程序域的精确要求及执行人员和这些写入查询的首选项。
+=====
+Question: Amazon EMR 支持哪些版本的 Hive？
+Answer: 有关最新版本的 Amazon EMR 上的 Hive，请参阅文档
+=====
+Question: 是否可以从两个集群并发写入表？
+Answer: Hive 不支持并发写入表。应避免并发写入同一个表，或在向表写入时从中进行读取。Hive 在同时读取和写入或同时写入时会出现不确定性的行为。
+=====
+Question: 是否可以在不同的群集之间共享数据？
+Answer: 是的。您可以在 Hive 脚本内，通过在脚本顶部写入“create external table”语句，读取 Amazon S3 中的数据。对于要访问的每个外部资源，您需要执行 create table 语句。
+=====
+Question: 我应该运行一个大型群集在多个用户之间共享，还是运行许多较小的群集？
+Answer: Amazon EMR 提供独特的功能，使您能够同时使用两种方法。一方面，大型群集对于处理普通的批处理工作负载可能更为有效。另一方面，如果您需要执行随时间变化的特别查询或工作负载，可以选择创建若干独立的群集，以便于调整使其适合共享 Amazon S3 中所存储数据源的特定任务。 您可以使用 EMR 托管扩展来优化资源使用率。
+=====
+Question: 是否可以访问本地文件系统中的脚本或 Jar 资源？
+Answer: 必须将脚本或 Jar 上传到 Amazon S3 或群集的主节点，才能对其引用。要上传到 Amazon S3，您可以使用 s3cmd、jets3t 或 S3Organizer 等工具。
+=====
+Question: 是否可运行执行多个 Hive 查询的持续性群集？
+Answer: 可以。在手动终止模式下运行群集，它们则不会在各个 Hive 步骤中终止。要降低数据丢失的风险，我们建议您定期在 Amazon S3 中保存所有重要的数据。最好定期将工作传输到新的群集，以便测试从主节点故障中恢复的过程。
+=====
+Question: 多个用户是否可基于同一源数据执行 Hive 步骤？
+Answer: 可以。多个用户在不同群集中执行的 Hive 脚本可能包括 create external table 语句，以并发导入 Amazon S3 中驻留的源数据。
+=====
+Question: 多个用户是否可在同一群集中运行查询？
+Answer: 可以。在批处理模式下，步骤呈序列化状态。多个用户可以将 Hive 步骤添加到同一集群；但将按顺序执行步骤。在交互式模式下，若干用户可以登录到同一集群，并发执行 Hive 语句。
+=====
+Question: 是否可以在多个 AWS 用户之间共享数据？
+Answer: 可以。可以使用此处介绍的标准 Amazon S3 共享机制来共享数据。
+=====
+Question: Hive 是否支持从 JDBC 进行访问？
+Answer: 是的。Hive 提供 JDBC 驱动器，可用来以编程方式执行 Hive 语句。要在群集中启动 JDBC 服务，您需要在 Amazon EMR 命令行客户端中传递可选参数。此外，还需要建立一个 SSH 隧道，因为安全组不允许外部连接。
+=====
+Question: 在 EMR AMI 中更新软件包的流程是什么？
+Answer: 首次启动时，适用于 EMR 的 Amazon Linux AMI 会连接到 Amazon Linux AMI yum 存储库，以安装安全更新。使用自定义 AMI 时，您可以禁用此功能。但出于安全考虑，我们不建议这样做。
+=====
+Question: 我是否可以在 EMR 群集中更新自己的软件包？
+Answer: 可以。您可以使用引导操作向群集中的软件包安装更新。
+=====
+Question: 是否可以使用 Hive 处理 DynamoDB 数据？
+Answer: 可以。只需根据您的 DynamoDB 表定义一个外部 Hive 表。然后，即可使用 Hive 来分析 DynamoDB 中存储的数据，并将结果加载回 DynamoDB 或在 Amazon S3 中缓存它们。有关更多信息，请访问我们的开发人员指南。
+使用 Hud
+=====
+Question: 什么是 Apache Hudi？
+Answer: Apache Hudi 是一种开源数据管理框架，用于简化增量数据处理和数据管道开发工作。借助 Apache Hudi，您可以在 Amazon S3 中管理记录级别的数据，从而简化变更数据捕获 (CDC) 和流式数据摄入操作，为处理需要记录级别更新和删除的数据隐私使用案例提供了框架。Apache Hudi 管理的数据集将使用开放存储格式存储在 S3 中，并且通过与 Presto、Apache Hive、Apache Spark 和 AWS Glue 数据目录集成，让您可以使用熟悉的工具几乎实时访问更新的数据。
+=====
+Question: 何时应使用 Apache Hudi？
+Answer: Apache Hudi 有助于您处理需要在 S3 上进行记录级别数据管理的使用案例。有五种常见使用案例可以从这些能力中获益：
+遵守数据隐私法律，这类法律要求组织删除用户数据或在用户选择更改其对于数据使用方式的首选项时更新用户首选项。Apache Hudi 可使您使用 Apache Parquet 和 Apache Avro 等开源数据格式对存储在 S3 中的数据执行记录级别插入、更新和删除操作。
+使用实时数据流并应用企业系统中的变更数据捕获日志。很多组织要求在 Amazon S3 中提供企业数据仓库 (EDW) 和运营数据存储 (ODS) 数据，以便 Apache Hive 和 Presto 等 SQL 引擎可以访问它们进行数据处理和分析。Apache Hudi 简化了变更日志的应用过程，使用户能够近乎实时地访问数据。
+恢复延迟到达或不正确的数据。延迟到达或不正确的数据需要对数据进行恢复，并需要更新现有数据集以合并新的或更新的记录。Apache Hudi 允许您将记录“更新插入”到现有数据集中，从而依靠框架基于它们存在于数据集中的情况来插入或更新记录。
+追踪数据集的变更并提供回滚变更的能力。利用 Apache Hudi，可以将数据集的每次变更作为提交内容进行追踪，并且可以轻松回滚变更，从而使您能够查找数据集的特定变更和“撤销”变更。
+简化 S3 上的文件管理。为确保数据文件的有效大小，客户必须构建自定义解决方案来监控和将很多小文件重新写入较少的大文件中。利用 Apache Hudi，可以管理 S3 上的数据文件，且用户只需配置最佳文件大小来存储器数据，Hudi 将合并文件来创建有效大小的文件。
+将增量写入目标 Hudi 数据集。Hudi 数据集能够以增量方式提取，这意味着您可以获得自指定时刻以后的全部（及仅）已更新和新行
+=====
+Question: 如何创建 Apache Hudi 数据集？
+Answer: 使用 Apache Spark 创建 Apache Hudi 数据集。创建数据集像编写 Apache Spark DataFrame 一样简单。可以选择将 Apache Hudi 数据集的元数据存储在 AWS Glue Data Catalog 或 Hive 元存储中，以简化数据发现过程以及与 Apache Hive 和 Presto 集成。
+=====
+Question: Apache Hudi 如何管理数据集？
+Answer: 使用 Apache Hudi 创建数据集时，您可以选择数据集应针对哪种类型的数据访问模式进行优化。对于读取密集型使用案例，您可以选择“写入时复制”数据管理策略来优化数据集的频繁读取。此策略使用分列存储格式组织数据，并在写入更新时合并现有的数据和新的更新。对于写入密集型工作负载，Apache Hudi 使用“读取时合并”数据管理策略，该策略使用分栏式和行存储格式的组合来组织数据，其中更新以基于行的存储格式附加到文件，而在读取时执行合并以提供更新的结果。
+=====
+Question: 如何写入到 Apache Hudi 数据集？
+Answer: 使用 Apache Spark 对 Apache Hudi 数据集进行更改。使用 Apache Spark 时，Apache Hudi 数据集通过 Spark DataSource API 运行，从而使您能够写入和读取数据。可以使用相同的 DataSource API 编写包含新添加的数据或对现有数据进行更新的 DataFrame。您也可以使用 Hudi DeltaStreamer 实用程序。
+=====
+Question: 如何从 Apache Hudi 数据集中进行读取？
+Answer: 您可以使用 Apache Spark、Apache Hive、Presto、Amazon Redshift Spectrum 或 Amazon Athena 读取数据。当您创建数据集时，您可以选择在 AWS Glue Data Catalog 或 Hive 元存储中发布该数据集的元数据。如果您选择在元存储中发布元数据，您的数据集看起来就像一个普通的表格，您可以使用 Apache Hive 和 Presto 查询该表格。
+=====
+Question: 我在使用 Apache Hudi 时应注意哪些注意事项或限制？
+Answer: 有关使用 Amazon EMR 上的 Apache Hudi 时要注意的注意事项和限制的完整列表，请参阅我们的 Amazon EMR 文档。
+=====
+Question: 如何用 Apache Hudi 处理我的现有数据？
+Answer: 如果拥有想要现在使用 Apache Hudi 进行管理的数据，您可以使用 Amazon EMR 上的 Apache Hudi 提供的导入工具将您的 Apache Parquet 数据轻松转换为 Apache Hudi 数据集，或者使用 Hudi DeltaStreamer 实用程序或 Apache Spark 将您的现有数据重写为 Apache Hudi 数据集。
+使用 Impal
+=====
+Question: 什么是 Impala？
+Answer: Impala 是 Hadoop 生态系统的开源工具，方便使用 SQL 语法进行交互式即席查询。它不使用 MapReduce，而是利用与传统关系数据库管理系统 (RDBMS) 中的引擎类似的大规模并行处理 (MPP) 引擎。利用此架构，可以非常快速地查询 HDFS 或 HBase 表中的数据，并利用 Hadoop 的功能来处理不同数据类型并在运行时提供架构。这让 Impala 适合于进行交互式、低延迟分析。Impala 使用 Hive 元存储来保留有关输入数据的信息，包括分区名称和数据类型。另外，Amazon EMR 上的 Impala 要求 AMI 运行 Hadoop 2.x 或更高版本。单击此处可以了解有关 Impala 的更多信息。
+=====
+Question: 使用 Amazon EMR 中运行的 Impala 可以执行哪些操作？
+Answer: 与将 Hive 和 Amazon EMR 一起使用类似，利用 Impala 和 Amazon EMR 可以通过 SQL 语法实施复杂的数据处理应用程序。但是，在某些使用案例中，Impala 专用于提高执行速度（参阅下文）。借助 Amazon EMR，您可以将 Impala 用作可靠的数据仓库来执行数据分析、监控和业务智能等任务。下面是三个使用案例：
+
+在长期运行的群集中使用 Impala 代替 Hive 来执行临时查询。Impala 将交互式查询时间缩短为数秒，是一种优秀的快速调查工具。可以在运行批处理 MapReduce 工作流的同一群集上运行 Impala，在长时间运行的分析群集上将 Impala 与 Hive 和 Pig 一起使用，也可以创建专门针对 Impala 查询调整的群集。
+使用 Impala 而非 Hive 在临时 Amazon EMR 群集上运行批处理 ETL 任务。对于许多查询而言，Impala 比 Hive 更快，可以这些工作负载提供更好的性能。与 Hive 一样，Impala 使用 SQL，因此可以方便地将查询从 Hive 修改为 Impala。
+将 Impala 与第三方商业智能工具一起使用。将客户端 ODBC 或 JDBC 驱动程序与群集连接，使用 Impala 作为强大可视化工具和控制面板的引擎。
+可以在 Amazon EMR 中创建批处理和交互式 Impala 群集。例如，您可以使长时间运行的 Amazon EMR 群集运行 Impala 来执行专门的交互式查询，或使用临时 Impala 群集执行快速的 ETL 工作流。
+=====
+Question: Impala 与传统的 RDBMS 有何区别？
+Answer: 传统关系数据库系统具有事务语义和数据库原子性、一致性、隔离性和持久性 (ACID) 属性。它们还允许对表进行索引和缓存，以便少量的数据也能很快被检索到，可快速更新少量数据，并可强制执行参考完整性限制。通常，它们在单个大型计算机上运行，不支持对用户定义的复杂数据类型进行操作。Impala 使用与 RDBMS 中类似的分布式查询系统，但查询 HDFS 中存储的数据，并使用 Hive 元存储来保存有关输入数据的信息。与 Hive 一样，在运行时提供查询的架构，可以更方便地更改架构。另外，Impala 可以查询各种复杂数据类型并执行用户定义函数。但是，因为 Impala 在内存中处理数据，所以了解群集的硬件限制并优化查询实现最佳性能非常重要。
+=====
+Question: Impala 与 Hive 有何区别？
+Answer: Impala 使用大规模并行处理 (MPP) 引擎执行 SQL 查询，而 Hive 使用 MapReduce 执行 SQL 查询。Impala 避免了 Hive 用于创建 MapReduce 任务的开销，其查询速度比 Hive 快数倍。但是，Impala 使用大量的内存资源，并且群集的可用内存为查询可以使用的内存量设定了限制。Hive 在这方面没有限制，使用相同的硬件可以成功地处理更大的数据集。通常，应将 Impala 用于快速、交互式查询，而 Hive 更适用于大数据集的 ETL 工作。Impala 旨在提高速度，非常适用于特殊调查，但需要大量内存来执行耗费大量资源的查询或处理非常大的数据集。因为存在这些限制，所以对于完成比速度更重要的工作负载，建议使用 Hive。单击此处查看 Impala 和 Hive 之间的性能基准。
+=====
+Question: 可以使用 Hadoop 1 吗？
+Answer: 不可以，Impala 需要 Hadoop 2，在使用运行 Hadoop 1.x 的 AMI 的群集上无法运行。
+=====
+Question: 应该对我的 Impala 群集使用什么实例类型？
+Answer: 为了获得 Impala 的最佳使用体验，我们推荐对您的群集使用经过内存优化的实例。但是，我们已经展示在使用标准实例类型时，获得的性能要优于 Hive。我们建议阅读“Amazon EMR 开发人员指南”的性能测试和查询优化部分，以更好地估计针对您的数据集和查询类型，群集所需的内存资源。压缩类型、分区和实际查询（连接数、结果大小等）都会影响所需内存。可以使用 EXPLAIN 语句估计 Impala 查询所需的内存和其他资源。
+=====
+Question: 如果查询时内存不足会发生什么？
+Answer: 如果内存不足，查询会失败，并且受影响节点上安装的 Impala 守护程序会关闭。然后，Amazon EMR 重新启动该节点上的守护程序，以便 Impala 准备好运行其他查询。此节点上 HDFS 中的数据仍然可用，因为关闭的仅是该节点上运行的守护程序，而非整个节点本身。对于使用 Impala 的专门分析，查询时间通常可以按秒计；因此，如果某个查询失败，您可以快速发现问题，并且可以迅速接着提交新查询。
+=====
+Question: Impala 支持用户定义的函数吗？
+Answer: 是，Impala 支持用户定义的函数 (UDF)。可以用 Java 或 C++ 编写专用于 Impala 的 UDF。另外，可以修改为 Hive 创建的 UDF 或用户定义的聚合函数，以便在 Impala 中使用。有关 Hive UDF 的信息，请单击此处。
+=====
+Question: 供 Impala 查询的数据存储在何处？
+Answer: Impala 会查询 HDFS 或 HBase 表中的数据。
+=====
+Question: 可以在群集上同时运行 Impala 和 MapReduce 吗？
+Answer: 是的，您可以设置具有 Impala 和 MapReduce 的多租户群集。但是，您应确保使用 Hadoop 2.x 上的 YARN 将资源（内存、磁盘和 CPU）分配给每个应用程序。分配的资源应取决于您计划在每个应用程序上所运行任务的需要。
+=====
+Question: Impala 支持 ODBC 和 JDBC 驱动程序吗？
+Answer: 虽然您可以使用 ODBC 驱动程序，但 Impala 也是一款优质引擎，适用于通过 JDBC 连接的第三方工具。可以从以下位置下载和安装 Impala 客户端 JDBC 驱动程序：http://elasticmapreduce.s3.amazonaws.com/libs/impala/1.2.1/impala-jdbc-1.2.1.zip。在安装了商业智能工具的客户端计算机中，使用 SSH 或 VPN 在端口 21050 上将 JDBC 驱动程序连接到 Impala 群集的主节点。有关更多信息，请参阅打开到主节点的 SSH 隧道。
+使用 Pi
+=====
+Question: 什么是 Apache Pig？
+Answer: Pig 是在 Hadoop 顶部运行的一种开源分析软件包。Pig 由类似 SQL 的语言 Pig Latin 操作，允许用户构建、汇总和查询 Amazon S3 中存储的数据源。与 SQL 操作类似，Pig Latin 也支持一流的 map/reduce 函数及复杂的由用户定义的可扩展数据类型。该功能能够处理复杂的甚至非结构化的数据源，如文本文档和日志文件。Pig 允许用户通过以 Java 编写和通过 Amazon S3 中的存储部署的用户自定义函数执行扩展。
+=====
+Question: 我该如何使用 Amazon EMR 中运行的 Pig？
+Answer: 对于 Amazon EMR 使用 Pig，您可以通过 Amazon EMR 中熟悉的 SQL 之类的语言和易用的工具执行复杂的数据处理应用程序。借助 Amazon EMR，您可以将 Pig 应用程序转换为可靠的数据仓库来执行任务，如数据分析、监控和业务智能任务。
+=====
+Question: 如何开始使用 Amazon EMR 中运行的 Pig？
+Answer: 要开始使用，您最好先查看此处的书面文档。
+=====
+Question: 特定于 Amazon EMR 的 Pig 是否有新功能？
+Answer: 可以。用于 Amazon EMR 时，有三项新功能可使得 Pig 更加强大，包括：
+
+a/ 访问多个文件系统。默认情况下，无论是用于输入、输出和临时数据的 HDFS 存储还是 S3 存储段，Pig 任务只能访问一个远程文件系统。EMR 对 Pig 进行了扩展，使任何任务都能根据需要访问任意数量的文件系统。这样做的一个好处是，任务内的临时数据将始终存储在本地 HDFS 中，从而令性能提高。
+
+b/ 从 S3 加载资源。EMR 对 Pig 进行了扩展，使自定义的 JAR 和脚本可以来自 S3 文件系统，例如“REGISTER s3:///my-bucket/piggybank.jar”
+
+c/ 更多用于处理字符串和日期时间的 Piggybank 功能。
+=====
+Question: 支持哪些类型的 Pig 群集？
+Answer: Pig 支持两类群集：交互式和批处理。在交互式模式下，客户可以直接在主节点上交互启动群集和运行 Pig 脚本。通常，该模式用来执行特别数据分析和应用程序开发。在批处理模式下，Pig 脚本存储在 Amazon S3 中，在启动群集时引用。通常，批处理模式用于报告生成等重复性运行。
+=====
+Question: 如何启动 Pig 群集？
+Answer: 批处理和交互式群集都可从 AWS 管理控制台、EMR 命令行客户端或 API 启动。
+=====
+Question: Amazon EMR 支持哪些版本的 Pig？
+Answer: Amazon EMR 支持多个版本的 Pig。
+=====
+Question: 是否可以从两个群集并发写入 S3 存储段？
+Answer: 是的，可以从两个并发群集写入同一个存储段。
+=====
+Question: 是否可以在不同的群集之间共享 S3 中的输入数据？
+Answer: 是的，可以从两个并发群集读取 S3 中的相同数据。
+=====
+Question: 是否可以在多个 AWS 用户之间共享数据？
+Answer: 可以。可以使用此处 http://docs.amazonwebservices.com/AmazonS3/latest/index.html?S3_ACLs.html 描述的标准 Amazon S3 共享机制共享数据
+=====
+Question: 我应该运行一个大型群集在多个用户之间共享，还是运行许多较小的群集？
+Answer: Amazon EMR 提供独特的功能，使您能够同时使用两种方法。一方面，大型群集对于处理普通的批处理工作负载可能更为有效。另一方面，如果您需要执行随时间变化的特别查询或工作负载，可以选择创建若干独立的群集，以便于调整使其适合共享 Amazon S3 中所存储数据源的特定任务。
+=====
+Question: 是否可以访问本地文件系统中的脚本或 Jar 资源？
+Answer: 必须将脚本或 Jar 上传到 Amazon S3 或群集的主节点，才能对其引用。要上传到 Amazon S3，您可以使用 s3cmd、jets3t 或 S3Organizer 等工具。
+=====
+Question: 是否可运行执行多个 Pig 查询的持续性群集？
+Answer: 可以。在手动终止模式下运行群集，它们则不会在各个 Pig 步骤中终止。要降低数据丢失的风险，我们建议您定期在 Amazon S3 中保存所有重要的数据。最好定期将工作传输到新的群集，以测试从主节点故障进行恢复的进程。
+=====
+Question: Pig 是否支持从 JDBC 进行访问？
+Answer: Pig 不支持通过 JDBC 进行访问。
+=====
+Question: 什么是 Apache HBase？
+Answer: HBase 是一种仿效 Google BigTable 的开源、非关系型分布式数据库。它是 Apache 软件基金会 Hadoop 项目的一部分，基于 Hadoop 分布式文件系统 (HDFS) 运行，为 Hadoop 生态系统提供非关系数据库功能。HBase 为您提供了一种用列式压缩和存储方式来存储大量稀疏数据的高效容错方法。此外，因为数据存储在内存中而非磁盘上，所以还可以通过 HBase 快速查找数据。在连续写入操作方面对 HBase 进行了优化，批量插入、更新和删除等操作的效率很高。HBase 可与 Hadoop 无缝配合，从而共享其文件系统并用作 Hadoop 工作的直接输入和输出。HBase 还与 Apache Hive 集成，支持对 HBase 表进行类似 SQL 的查询、与基于 Hive 的表结合并支持 Java 数据库连接 (JDBC)。您可以在此处了解有关 Apache HBase 的更多信息
+=====
+Question: 特定于 Amazon EMR 的 HBase 是否有新功能？
+Answer: 借助 Amazon EMR，您可以在 Amazon S3 上使用 HBase 将集群的 HBase 根目录和元数据直接存储到 Amazon S3，并创建只读副本和快照。要了解更多信息，请参阅我们的文档。
+=====
+Question: Amazon EMR 支持哪些版本的 HBase？
+Answer: 您可以在此处查看 Amazon EMR 支持的最新 HBase 版本
+=====
+Question: 添加到 Kinesis 上去的 EMR 连接器支持什么功能？
+Answer: 该连接器支持 EMR 直接从 Kinesis 串流读取和查询数据。现在，您可以使用现有的 Hadoop 生态系统工具，如 Hive、Pig、MapReduce、Hadoop Streaming 和 Cascading，来执行 Kinesis 串流的批处理。
+=====
+Question: 添加到 Kinesis 上去的 EMR 连接器能支持我完成哪些之前无法完成的任务？
+Answer: 读取和处理来自 Kinesis 串流的数据要求您编写、部署和维持独立的流式处理应用程序。这些需要耗费大量的时间和精力。但是，使用此连接器，您编写一个简单的 Hive 或 Pig 脚本就可以开始读取和分析 Kinesis 串流。这意味着，您可以使用 SQL 来分析 Kinesis 串流。 当然，也可以使用其他 Hadoop 生态系统工具。您不必开发或维护一组新的处理应用程序。
+=====
+Question: 此功能对哪些人有用？
+Answer: 此功能对以下各类用户有用：
+
+对使用此广泛的 Hadoop 生态系统工具来分析 Kinesis 串流有兴趣的 Hadoop 用户。
+正在寻求简单地方法来增强性能和正在运行 Kinesis 数据的流处理和 ETL（提取、转换和加载）的 Kinesis 用户。
+希望使用熟悉的工具，如 SQL（通过 Hive）或脚本撰写语言，如 Pig，对 Kinesis 串流中的数据执行临时分析的商业分析师和 IT 专业人员
+=====
+Question: 这种集成有哪些使用案例？
+Answer: 以下为此集成支持的代表性使用案例：
+
+流处理日志分析：您可以按地区、浏览器和访问域分析流处理网页日志，以便每隔几分钟生成一个 10 大类错误列表。
+复杂数据处理工作流：您可以将存储在 S3、Dynamo DB 表和 HDFS 中的数据加入到 Kinesis 串流中。您可以编写加入了来自 Kinesis 的点击流数据并将广告活动信息存储在 DynamoDB 表中的查询，以识别各特定网站上显示的最有效的广告类别。
+临时查询：您可以定期将来自 Kinesis 的数据加载到 HDFS 中并作为本地 Impala 表推出，用于快速交互式分析查询
+=====
+Question: 要使用此连接器，我需要使用什么 EMR AMI 版本？
+Answer: 您需要使用 EMR AMI 的版本 3.0.4 和更新的版本。
+=====
+Question: 此连接器是独立的工具吗？
+Answer: 不是，它是 Amazon Hadoop 分配的内置组件，EMR AMI 的版本 3.0.4 及更新版本上提供此组件。客户只需使用版本 3.0.4 或更新版本的 AMI 快速构建一个群集就可以开始使用此功能。
+=====
+Question: 支持 EMR 从 Kinesis 串流读取数据需要哪种数据格式？
+Answer: EMR Kinesis 集成不指定数据格式。您可以读取任何格式的数据。个别 Kinesis 记录作为标准记录呈递给 Hadoop，该记录可使用任何 Hadoop MapReduce 框架进行读取。Hive、Pig 和 Cascading 等个别框架已内置在帮助序列化和还原序列化的组件中，从而使开发人员能够轻松查询多种格式的数据，而无需实施自定义代码。例如，Hive 用户可通过在定义表时指定适当的 Hive SerDe 来从 JSON 文件、XML 文件和 SEQ 文件读取数据。Pig 拥有的类似组件称为 Loadfunc/Evalfunc，而 Cascading 的类似组件称为 Tap。Hadoop 用户可以利用这种广泛的 Hadoop 适配器生态系统，无需编写格式专用代码。您还可以实施自定义还原序列化格式来读取其中任何一个工具的域专用数据。
+=====
+Question: 在 EMR 中，如何使用 Hive 来分析 Kinesis 串流？
+Answer: 创建一个引用 Kinesis 串流的表。然后，您可以像分析 Hive 中的其他任何表一样分析此表。请参阅我们的教程页面了解更多详情。
+=====
+Question: 使用 Hive 时，如何创建结合了 Kinesis 串流数据和其他数据源的查询？
+Answer: 首先，创建一个引用 Kinesis 串流的表。Hive 表创建好后，您可以将它与映射到其他数据源（如 Amazon S3、Amazon Dynamo DB 和 HDFS）的表结合起来。这会有效地将来自 Kinesis 串流的数据加入到其他数据源中。
+=====
+Question: 此集成仅用于 Hive 吗？
+Answer: 不是，您可以使用 Hive、Pig、MapReduce、Hadoop 流以及 Cascading。
+=====
+Question: 如何设置要在 Kinesis 串流上运行的既定任务？
+Answer: EMR Kinesis 输入连接器提供各种功能，帮助您配置和管理传统调度引擎（如 Cron）中的既定周期性任务。例如，您可以开发一个每 N 分钟运行一次的 Hive 脚本。在任务的配置参数中，您可以为任务指定一个逻辑名称。逻辑名称是一个标签，会通知 EMR Kinesis 输入连接器该任务的单个实例是同一周期性调度的成员。逻辑名称允许该过程利用迭代，我们接下来将对其予以解释。
+
+因为 MapReduce 是批处理框架，所以要使用 EMR 来分析 Kinesis 串流，连续的串流就需分割成数批。每个批次称为一个迭代。每个迭代分配一个以 0 开头的号码。每个迭代的边界由起始序列号和结尾序列号定义。然后 EMR 会按顺序处理迭代。
+
+如果一次尝试发生故障，EMR Kinesis 输入连接器将在逻辑名称内重试该迭代（从该迭代的已知起始序列号开始）。此功能确保同一迭代的连续尝试与之前的尝试具有准确相同的 Kinesis 串流输入记录。这就确保了 Kinesis 串流的幂等（一致性）处理。
+
+您可以在您相应的 Hadoop 工具中将逻辑名称和迭代指定为运行时参数。例如，在教程的“使用检查点运行查询”部分中，代码示例显示了一个预定的 Hive 查询，后者为查询指定逻辑名称，并且在每次运行任务后增加一个迭代。
+
+此外，该教程中还提供了一个示例 Cron 调度脚本。
+=====
+Question: 逻辑名称的元数据和迭代存储在何处？
+Answer: 允许 EMR Kinesis 输入连接器在既定的周期性工作流中使用的元数据存储在 Amazon DynamoDB 中。您必须预配置一个 Amazon Dynamo DB 表并指定其作为 Hadoop 任务的输入参数。注意：您要为该表配置合适的 IOPS 来支持此集成。请参阅入门教程，了解有关设置 Amazon Dynamo DB 表的更多信息。
+=====
+Question: 当迭代处理失败时，会出现什么情况？
+Answer: 在 Kinesis 串流中，迭代标识符是用户提供的映射到指定边界（开头和结尾序列号）的值。这些边界对应的数据位于 MapReduce 任务的映射相位。此相位由框架管理，如果任务发生故障，它将自动运行（默认情况下运行三次）。如果重试失败，您仍可以选择从最后一次成功或通过的数据边界开始重试处理过程。处理期间，此行为通过提供 kinesis.checkpoint.iteration.no 参数来控制。请参考入门教程了解更多有关如何为 Hadoop 生态系统中的不同工具配置该值的信息。
+=====
+Question: 是否能在同一迭代中运行多个查询？
+Answer: 可以，您可以通过在连续处理过程中设定 kinesis.checkpoint.iteration.no 参数来指定之前运行的迭代。该实施确保同一迭代的连续运行与之前的运行具有准确相同的 Kinesis 串流输入记录。
+=====
+Question: 如果迭代中的记录在 Kinesis 串流中到期失效，会出现什么情况？
+Answer: 如果迭代的开始序列号和/或结尾序列号属于已在 Kinesis 串流中到期失效的记录，则 Hadoop 任务会失败。您将需要使用其他逻辑名称来处理 Kinesis 串流的开始数据。
+=====
+Question: 能否将数据从 EMR 推送到 Kinesis 串流中？
+Answer: 目前，EMR Kinesis 连接器不支持将数据回写到 Kinesis 串流中。
+=====
+Question: Kinesis 的 EMR Hadoop 输入连接器支持连续流处理吗？
+Answer: Hadoop MapReduce 框架是一个批处理系统。因此，不支持连续查询。然而，有一组新兴的 Hadoop 生态系统框架，例如 Twitter Storm 和 Spark 流，可支持开发人员构建适用于连续流处理的应用程序。Kinesis 的 Storm 连接器可在此处的 GitHub 上获取，您还可以在此处找到解释如何在 EMR 上设置 Spark 流和运行连续查询的教程。
+
+此外，开发人员还可以利用 Kinesis 客户端库来开发实时流处理应用程序。您可以在此处的 Kinesis 文档中查找更多有关开发自定义 Kinesis 应用程序的信息。
+=====
+Question: 是否能指定访问凭证来读取由其他 AWS 账户管理的 Kinesis 串流？
+Answer: 可以。您可以通过为拥有该 Kinesis 串流的账户指定适当访问凭证来从其他 AWS 账户读取流数据。默认情况下，Kinesis 连接器使用的是用户在创建群集时指定的访问凭证。您可以通过设置 kinesis.accessKey 和 kinesis.secretKey 参数来覆盖这些凭证，以便从其他 AWS 账户访问流数据。以下示例显示了在 Hive 和 Pig 中如何设置 kinesis.accessKey 和 kinesis.secretKey 参数。
+
+Hive 代码示例：
+...
+STORED BY
+'com.amazon.emr.kinesis.hive.KinesisStorageHandler'
+TBLPROPERTIES(
+"kinesis.accessKey"="AwsAccessKey",
+"kinesis.secretKey"="AwsSecretKey",
+);
+
+Pig 代码示例：
+…
+raw_logs = LOAD 'AccessLogStream' USING com.amazon.emr.kinesis.pig.Kin
+esisStreamLoader('kinesis.accessKey=AwsAccessKey', 'kinesis.secretKey=AwsSecretKey'
+) AS (line:chararray);
+=====
+Question: 能否在一个 Kinesis 串流中运行多个并行查询？ 对性能是否有影响？
+Answer: 可以，客户通过为每个查询使用单独的逻辑名称，可以在同一流中运行多个并行查询。但是，从 Kinesis 串流内的碎片中读取数据受到每秒 2MB 的速率限制。因此，如果在同一串流内运行 N 个并行查询，则串流上的每个碎片的每个查询会获得每秒 (2/N) MB 的出站速率。这可能会降低处理速度，有些情况下，还会导致查询失败。
+=====
+Question: 能否在 EMR 中加入并分析多个 Kinesis 串流？
+Answer: 可以，例如在 Hive 中，您可以创建两个映射到不同 Kinesis 串流的表并在两个表之间创建连接。
+=====
+Question: EMR Kinesis 连接器是否处理 Kinesis 扩展活动，如合并和拆分活动？
+Answer: 是的。该实施处理拆分和合并活动。Kinesis 连接器将单个 Kinesis 碎片（Kinesis 流内的扩展逻辑单元）与 Hadoop MapReduce 映射任务相联系。在迭代的逻辑周期内，流内的每个唯一碎片都将生成一个确切的映射任务。如果发生碎片拆分或合并活动，Kinesis 将配置新的唯一碎片 ID。结果，MapReduce 框架将预配置更多映射任务，以便从 Kinesis 读取内容。所有这些对用户都是透明的。
+=====
+Question: 如果我的流中存在一些“静默”时段，会怎么样？
+Answer: 该实施允许您配置名为 kinesis.nodata.timeout 的参数。例如，考虑这样一个情况，其中 kinesis.nodata.timeout 设为 2 分钟，同时您希望每隔 10 分钟运行一次 Hive 查询。此外，考虑自上次迭代后（10 分钟之前），一些数据已写入串流中。然而，目前没有新的记录达到，也就是说，串流内是静默的。在这种情况下，当查询的当前迭代启动时，Kinesis 连接器将发现没有即将达到的新记录。连接器将使该串流保持轮询 2 分钟，如果该时间内记录没有达到，则停止轮询并仅处理流的当前批次已读取的记录。但是，如果新记录在 kinesis.nodata.timeout 时间间隔用完之前达到，那么，连接器将等待参数 kinesis.iteration.timeout 对应的额外时间间隔。请查阅教程了解如何定义这些参数。
+=====
+Question: 如何调试在每次迭代中持续失败的查询？
+Answer: 如果处理发生故障，您在调试 Hadoop 任务时可以利用他们当前所用的工具。包括帮助识别和访问错误日志的 Amazon EMR Web 控制台。可在此处找到更多有关调试 EMR 任务的详细信息。
+=====
+Question: 如果指定了没有访问权限的 DynamoDB 表，会出现什么情况？
+Answer: 任务会失败，此异常情况会显示任务的错误日志中。
+=====
+Question: 如果任务没有失败，但是 DynamoDB 的检查点出现故障，会出现什么情况？
+Answer: 任务会失败，此异常情况会显示任务的错误日志中。
+=====
+Question: 如何将从 Kinesis 串流到 EMR 的读取吞吐量最大化？
+Answer: Kinesis 串流的吞吐量的增长随所用实例的大小以及 Kinesis 流中的记录大小而定。我们建议您使用 m1.xlarge 以及更大的实例，以确保将主要节点和核心节点用于此功能。
+=====
+Question: 什么是 Amazon EMR 服务等级协议？
+Answer: 请参阅我们的服务等级协议。
+=====
+Question: Amazon EMR 服务等级协议提供了什么？
+Answer: AWS 将采取商业上合理的措施，以确保在每种情况下，每个 AWS 区域，每项 Amazon EMR 服务在任何月度结算周期的月度正常运行时间百分比至少达到 99.9%（“服务承诺”）
+=====
+Question: 如果您没有满足服务承诺会出现什么情况？
+Answer: 如有任何 Amazon EMR 服务没有满足服务承诺，您将有资格获得服务抵扣
+=====
+Question: 怎样确定我是否有资格获得服务抵扣？ 如何申请？
+Answer: 要获得服务积分，您需要 在 AWS Support Center 创建一个案例，以提交申请。要了解资格和申请格式，请参阅 https://aws.amazon.com/emr/sla/
