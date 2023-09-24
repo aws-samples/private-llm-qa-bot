@@ -82,31 +82,36 @@ def lambda_handler(event, context):
 #1
 {
   "fewshot_cnt": 5,
-  "query": "DynamoDB怎么计费"
+  "query": "DynamoDB怎么计费",
+  "use_bedrock" : "True"
 }
 
 #2
 {
   "fewshot_cnt": 5,
-  "query": "AWS Control Tower怎么用？"
+  "query": "AWS Control Tower怎么用？",
+  "use_bedrock" : "True"
 }
 
 #3
 {
   "fewshot_cnt": 5,
-  "query": "g5.2xlarge单价是多少？"
+  "query": "g5.2xlarge单价是多少？",
+  "use_bedrock" : "True"
 }
 
 #4
 {
   "fewshot_cnt": 5,
-  "query": "AWS 账户怎么加入到Organization？"
+  "query": "AWS 账户怎么加入到Organization？",
+  "use_bedrock" : "True"
 }
 
 #5
 {
   "fewshot_cnt": 5,
-  "query": "想出去玩吗"
+  "query": "想出去玩吗",
+  "use_bedrock" : "True"
 }
 ```
 

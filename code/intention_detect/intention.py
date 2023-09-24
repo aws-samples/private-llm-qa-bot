@@ -9,6 +9,8 @@ from langchain.llms.sagemaker_endpoint import LLMContentHandler
 from langchain import PromptTemplate, SagemakerEndpoint
 from typing import Any, Dict, List, Union,Mapping, Optional, TypeVar, Union
 from langchain.chains import LLMChain
+from langchain.llms.bedrock import Bedrock
+from botocore.exceptions import ClientError
 from opensearchpy import OpenSearch, RequestsHttpConnection, AWSV4SignerAuth, helpers
 import boto3
 
@@ -73,7 +75,28 @@ def create_intention_prompt_templete():
         input_variables=['fewshot','query', 'instruction', 'options']
     )
     return PROMPT
+    
+def get_bedrock_aksk(secret_name='chatbot_bedrock', region_name = "us-west-2"):
+    # Create a Secrets Manager client
+    session = boto3.session.Session()
+    client = session.client(
+        service_name='secretsmanager',
+        region_name=region_name
+    )
 
+    try:
+        get_secret_value_response = client.get_secret_value(
+            SecretId=secret_name
+        )
+    except ClientError as e:
+        # For a list of exceptions thrown, see
+        # https://docs.aws.amazon.com/secretsmanager/latest/apireference/API_GetSecretValue.html
+        raise e
+
+    # Decrypts secret using the associated KMS key.
+    secret = json.loads(get_secret_value_response['SecretString'])
+    return secret['BEDROCK_ACCESS_KEY'],secret['BEDROCK_SECRET_KEY']
+    
 @handle_error
 def lambda_handler(event, context):
     
@@ -83,6 +106,7 @@ def lambda_handler(event, context):
     index_name = os.environ.get('index_name')
     query = event.get('query')
     fewshot_cnt = event.get('fewshot_cnt')
+    use_bedrock = event.get('use_bedrock')
     llm_model_endpoint = os.environ.get('llm_model_endpoint')
     
     logger.info("embedding_endpoint: {}".format(embedding_endpoint))
@@ -134,13 +158,34 @@ def lambda_handler(event, context):
         "temperature": 0.01,
     }
 
-    llmcontent_handler = llmContentHandler()
-    llm=SagemakerEndpoint(
-            endpoint_name=llm_model_endpoint, 
-            region_name=region, 
-            model_kwargs={'parameters':parameters},
-            content_handler=llmcontent_handler
+    llm = None
+    if not use_bedrock:
+        llmcontent_handler = llmContentHandler()
+        llm=SagemakerEndpoint(
+                endpoint_name=llm_model_endpoint, 
+                region_name=region, 
+                model_kwargs={'parameters':parameters},
+                content_handler=llmcontent_handler
+            )
+    else:
+        ACCESS_KEY, SECRET_KEY=get_bedrock_aksk()
+    
+        boto3_bedrock = boto3.client(
+            service_name="bedrock",
+            region_name="us-east-1",
+            endpoint_url="https://bedrock.us-east-1.amazonaws.com",
+            aws_access_key_id=ACCESS_KEY,
+            aws_secret_access_key=SECRET_KEY
         )
+    
+        parameters = {
+            "max_tokens_to_sample": 20,
+            "stop_sequences": ["\n\n"],
+            "temperature":0.01,
+            "top_p":1
+        }
+        
+        llm = Bedrock(model_id="anthropic.claude-v1", client=boto3_bedrock, model_kwargs=parameters)
 
     prompt_template = create_intention_prompt_templete()
     prompt = prompt_template.format(fewshot=fewshot_str, instruction=instruction, query=query, options=options_str)
@@ -155,6 +200,7 @@ def lambda_handler(event, context):
         
     llmchain = LLMChain(llm=llm, verbose=False, prompt=prompt_template)
     answer = llmchain.run({'fewshot':fewshot_str, "instruction":instruction, "query":query, "options": options_str})
+    answer = answer.strip()
 
     log_dict = { "prompt" : prompt, "answer" : answer , "examples": docs_simple }
     log_dict_str = json.dumps(log_dict, ensure_ascii=False)
