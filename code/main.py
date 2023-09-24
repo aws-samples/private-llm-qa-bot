@@ -387,10 +387,11 @@ class CustomDocRetriever(BaseRetriever,BaseModel):
         return recall_knowledge,opensearch_knn_respose,opensearch_query_response
 
 class ReplyStratgy(Enum):
-    WITH_LLM = 1
-    HINT_LLM_REFUSE = 2
-    RETURN_OPTIONS = 3
-    SAY_DONT_KNOW = 4
+    LLM_ONLY = 1
+    WITH_LLM = 2
+    HINT_LLM_REFUSE = 3
+    RETURN_OPTIONS = 4
+    SAY_DONT_KNOW = 5
 
 class APIException(Exception):
     def __init__(self, message, code: str = None):
@@ -952,6 +953,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
     logger.info(f'use QA: {use_qa}')
     final_prompt = ''
     if not use_qa:##如果不使用QA
+        reply_stratgy = ReplyStratgy.LLM_ONLY
         query_type = QueryType.Conversation
         # free_chat_coversions = [ (item[0],item[1]) for item in session_history if item[2] == str(query_type)]
         # chat_history= get_chat_history(free_chat_coversions[-2:])

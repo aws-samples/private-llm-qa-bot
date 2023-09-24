@@ -286,8 +286,6 @@ Answer: 要创建对 EMR CLI 中的所有 IAM 用户可见的新群集，请在�
 要使现有群集对所有 IAM 用户可见，您必须使用 EMR CLI。使用 --set-visible-to-all-users，并指定群集标识符。例如：elastic-mapreduce --set-visible-to-all-users true --jobflow j-xxxxxxx。此步骤只能由群集的创建者执行。
 
 有关更多信息，请参阅 EMR 开发人员指南中的配置用户权限部分。
-
-标记集
 =====
 Question: 可以标记哪些 Amazon EMR 资源？
 Answer: 可以将标记添加到活跃的 Amazon EMR 群集。Amazon EMR 群集由 Amazon EC2 实例组成，添加到 Amazon EMR 群集的标记将传播到该群集的每个活跃 Amazon EC2 实例中。无法在已终止的群集或者属于活跃群集一部分的已终止 Amazon EC2 实例中添加、编辑或删除标记。
