@@ -33,6 +33,7 @@ from langchain.schema import LLMResult
 from langchain.llms.base import LLM
 import io
 import math
+from enum import Enum
 
 
 credentials = boto3.Session().get_credentials()
