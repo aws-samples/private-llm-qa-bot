@@ -205,10 +205,14 @@ def get_cell_info(info_dict, id):
 
 def get_textline(info_dict, textline_id):
     textline_bbox = info_dict[textline_id]['Geometry']['BoundingBox']
-    textline_word_ids = info_dict[textline_id]['Relationships'][0]['Ids']
-    words = [ info_dict[word_id]['Text'] for word_id in textline_word_ids if info_dict[word_id]['BlockType'] == 'WORD']
+    title_text = ''
+    if 'Relationships' in info_dict[textline_id].keys():
+        textline_word_ids = info_dict[textline_id]['Relationships'][0]['Ids']
+        words = [ info_dict[word_id]['Text'] for word_id in textline_word_ids if info_dict[word_id]['BlockType'] == 'WORD']
+        title_text =  " ".join(words)
+
     obj = {
-        "text" : " ".join(words),
+        "text" : title_text,
         "bbox" : textline_bbox
     }
     return obj
