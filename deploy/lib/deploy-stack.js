@@ -153,9 +153,14 @@ export class DeployStack extends Stack {
         llm_other_stream_endpoint:process.env.llm_other_stream_endpoint,
         chat_session_table:chat_session_table.tableName,
         prompt_template_table:prompt_template_table.tableName,
-        knn_qq_threshold:0.5,
-        knn_qd_threshold:0.5,
-        inverted_theshold:process.env.inverted_theshold
+        bm25_qd_threshold_hard:7,
+        bm25_qd_threshold_soft:10,
+        knn_qq_threshold_hard:0.6,
+        knn_qq_threshold_soft:0.8,
+        knn_qd_threshold_hard:0.6,
+        knn_qd_threshold_soft:0.8,
+        neighbors:1,
+        TOP_K:3
       },
     });
 
