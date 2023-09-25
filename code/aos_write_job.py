@@ -85,6 +85,36 @@ def batch_generator(generator, batch_size):
             break
         yield batch
 
+def iterate_paragraph_blog(content_json, object_key,smr_client, index_name, endpoint_name):
+    doc_title = object_key
+    text_splitter = RecursiveCharacterTextSplitter(        
+        chunk_size = CHUNK_SIZE,
+        chunk_overlap  = CHUNK_OVERLAP,
+        length_function = len,
+    )
+    def chunk_generator(json_arr):
+        for blog in json_arr:
+            idx = 0
+            doc_title = blog['doc_title']
+            content_summary = blog['content_summary']
+            texts = text_splitter.split_text(f"{content_summary}")
+            for parag in blog['content']:
+                texts += text_splitter.split_text(f"{parag['title']}\n{parag['content']}")
+            for paragraph_content in texts:
+                idx += 1
+                yield (idx, doc_title, 'Paragraph', paragraph_content,doc_title)
+
+    generator = chunk_generator(content_json)
+    batches = batch_generator(generator, batch_size=EMB_BATCH_SIZE)
+    for batch in batches:
+        if batch is not None:
+            emb_src_texts = [item[3] for item in batch] ##对content向量化
+            print("len of emb_src_texts :{}".format(len(emb_src_texts)))
+            embeddings = get_embedding(smr_client, emb_src_texts, endpoint_name)
+            for i, emb in enumerate(embeddings):
+                document = { "publish_date": publish_date, "idx": batch[i][0], "doc" : batch[i][1], "doc_type" : batch[i][2], "content" : batch[i][3], "doc_title": doc_title, "doc_category": batch[i][4], "embedding" : emb}
+                yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document['content']).encode('utf-8')).hexdigest()}
+                
 
 def iterate_paragraph_wiki(content_json, object_key,smr_client, index_name, endpoint_name):
     doc_title = object_key
@@ -423,8 +453,9 @@ def load_content_json_from_s3(bucket, object_key, content_type, credentials):
             json_content = file_content
         elif content_type == 'example':
             json_content = file_content
-        elif content_type =='wiki':
+        elif content_type in ['wiki','blog']:
             json_content = json.loads(file_content)
+
         else:
             raise RuntimeError("unsupport content type...(pdf, faq, txt, pdf.json,wiki,example are supported.)")
         
@@ -541,6 +572,8 @@ def WriteVecIndexToAOS(bucket, object_key, content_type, smr_client, aos_endpoin
             gen_aos_record_func = iterate_examples(file_content,object_key, smr_client, index_name, EMB_MODEL_ENDPOINT)
         elif content_type in ['wiki']:
             gen_aos_record_func = iterate_paragraph_wiki(file_content,object_key, smr_client, index_name, EMB_MODEL_ENDPOINT)
+        elif content_type in ['blog']:
+            gen_aos_record_func = iterate_paragraph_blog(file_content,object_key, smr_client, index_name, EMB_MODEL_ENDPOINT)
         else:
             raise RuntimeError('No Such Content type supported') 
 
@@ -565,9 +598,12 @@ def process_s3_uploaded_file(bucket, object_key):
     elif object_key.endswith(".txt"):
         print("********** pre-processing text file")
         content_type = 'txt'
-    elif object_key.endswith(".wiki"):
+    elif object_key.endswith(".wiki.json"):
         print("********** pre-processing wiki file")
         content_type = 'wiki'
+    elif object_key.endswith(".blog.json"):
+        print("********** pre-processing blog file")
+        content_type = 'blog'
     elif object_key.endswith(".pdf.json"):
         print("********** pre-processing pdf.json file")
         content_type = 'pdf.json'
