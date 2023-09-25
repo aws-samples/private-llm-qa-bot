@@ -55,11 +55,16 @@ Fewshot_prefix_A="回答"
 RESET = '/rs'
 openai_api_key = None
 STOP=[f"\n{A_Role_en}", f"\n{A_Role}", f"\n{Fewshot_prefix_Q}"]
+CHANNEL_RET_CNT = 10
 
-KNN_QQ_THRESHOLD = float(os.environ.get('knn_qq_threshold',0.5))
-KNN_QD_THRESHOLD = float(os.environ.get('knn_qd_threshold',0.5))
+BM25_QD_THRESHOLD_HARD_REFUSE = float(os.environ.get('bm25_qd_threshold_hard',15.0))
+BM25_QD_THRESHOLD_SOFT_REFUSE = float(os.environ.get('bm25_qd_threshold_soft',20.0))
+KNN_QQ_THRESHOLD_HARD_REFUSE = float(os.environ.get('knn_qq_threshold_hard',0.6))
+KNN_QQ_THRESHOLD_SOFT_REFUSE = float(os.environ.get('knn_qq_threshold_soft',0.8))
+KNN_QD_THRESHOLD_HARD_REFUSE = float(os.environ.get('knn_qd_threshold_hard',0.6))
+KNN_QD_THRESHOLD_SOFT_REFUSE = float(os.environ.get('knn_qd_threshold_soft',0.8))
+
 TOP_K = int(os.environ.get('TOP_K',4))
-INVERTED_HRESHOLD =float(os.environ.get('inverted_theshold',10.0))
 NEIGHBORS = int(os.environ.get('neighbors',1))
 
 
@@ -84,13 +89,14 @@ class StreamScanner:
 
 class CustomStreamingOutCallbackHandler(BaseCallbackHandler):
     """Callback handler for streaming. Only works with LLMs that support streaming."""
-    def __init__(self,wsclient:str,msgid:str,connectionId:str ,model_name:str, **kwargs: Any) -> None:
+    def __init__(self,wsclient:str,msgid:str,connectionId:str ,model_name:str,hide_ref:bool, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.wsclient = wsclient
         self.connectionId = connectionId
         self.msgid = msgid
         self.model_name= model_name,
-        self.recall_knowledge = None
+        self.recall_knowledge = None,
+        self.hide_ref = hide_ref
 
     def add_recall_knowledge(self,recall_knowledge):
 
@@ -127,9 +133,10 @@ class CustomStreamingOutCallbackHandler(BaseCallbackHandler):
         # data = json.dumps({ 'msgid':self.msgid, 'role': "AI", 'text': {'content':f' [{self.model_name}]' } })
         # self.postMessage(data)
         # if self.recall_knowledge:
-        text = format_reference(self.recall_knowledge)
-        data = json.dumps({ 'msgid':self.msgid, 'role': "AI", 'text': {'content':f'{text}```'} })
-        self.postMessage(data)
+        if not self.hide_ref:
+            text = format_reference(self.recall_knowledge)
+            data = json.dumps({ 'msgid':self.msgid, 'role': "AI", 'text': {'content':f'{text}```'} })
+            self.postMessage(data)
 
         
 
@@ -359,13 +366,13 @@ class CustomDocRetriever(BaseRetriever,BaseModel):
                 verify_certs=True,
                 connection_class=RequestsHttpConnection
             )
-        opensearch_knn_respose = search_using_aos_knn(aos_client,query_embedding[0], self.aos_index)
+        opensearch_knn_respose = search_using_aos_knn(aos_client,query_embedding[0], self.aos_index,size=CHANNEL_RET_CNT)
         elpase_time = time.time() - start
         logger.info(f'runing time of opensearch_knn : {elpase_time}s seconds')
         
         # 4. get AOS invertedIndex recall
         start = time.time()
-        opensearch_query_response = aos_search(aos_client, self.aos_index, "doc", query_input)
+        opensearch_query_response = aos_search(aos_client, self.aos_index, "doc", query_input,size=CHANNEL_RET_CNT)
         # logger.info(opensearch_query_response)
         elpase_time = time.time() - start
         logger.info(f'runing time of opensearch_query : {elpase_time}s seconds')
@@ -423,11 +430,8 @@ class CustomDocRetriever(BaseRetriever,BaseModel):
                         break
 
                 return kg_combine_result
-
-            filter_knn_result = [ item for item in opensearch_knn_respose if (item['score'] > KNN_QQ_THRESHOLD and item['doc_type'] == 'Question') or  (item['score'] > KNN_QD_THRESHOLD and item['doc_type'] == 'Paragraph')]
-            filter_inverted_result = [ item for item in opensearch_query_response if item['score'] > INVERTED_HRESHOLD ]
             
-            ret_content = get_topk_items(filter_knn_result, filter_inverted_result, TOP_K)
+            ret_content = get_topk_items(opensearch_knn_respose, opensearch_query_response, TOP_K)
             logger.info(f'get_topk_items:{len(ret_content)}')
             return ret_content
         
@@ -439,12 +443,12 @@ class CustomDocRetriever(BaseRetriever,BaseModel):
         return recall_knowledge,opensearch_knn_respose,opensearch_query_response
 
 
-class ErrorCode:
-    DUPLICATED_INDEX_PREFIX = "DuplicatedIndexPrefix"
-    DUPLICATED_WITH_INACTIVE_INDEX_PREFIX = "DuplicatedWithInactiveIndexPrefix"
-    OVERLAP_INDEX_PREFIX = "OverlapIndexPrefix"
-    OVERLAP_WITH_INACTIVE_INDEX_PREFIX = "OverlapWithInactiveIndexPrefix"
-    INVALID_INDEX_MAPPING = "InvalidIndexMapping"
+class ReplyStratgy(Enum):
+    LLM_ONLY = 1
+    WITH_LLM = 2
+    HINT_LLM_REFUSE = 3
+    RETURN_OPTIONS = 4
+    SAY_DONT_KNOW = 5
 
 
 class APIException(Exception):
@@ -799,9 +803,22 @@ def create_baichuan_prompt_template(prompt_template):
     )
     return PROMPT
 
+def create_soft_refuse_template(prompt_template):
+    if prompt_template == '':
+        prompt_template_zh = """{system_role_prompt} {role_bot}\n请根据反引号中的内容提取相关信息回答问题:\n```\n{chat_history}{context}\n```\n如果反引号中信息不相关,则回答不知道.\n用户:{question}"""
+    else:
+        prompt_template_zh = prompt_template
+    PROMPT = PromptTemplate(
+        template=prompt_template_zh,
+        partial_variables={'system_role_prompt':SYSTEM_ROLE_PROMPT},
+        input_variables=["context",'question','chat_history','role_bot']
+    )
+    return PROMPT
+
+
 def create_qa_prompt_templete(prompt_template):
     if prompt_template == '':
-        prompt_template_zh = """{system_role_prompt} {role_bot}\n请根据反括号中的内容提取相关信息回答问题:\n```\n{chat_history}{context}\n```\n如果反括号中的内容为空,则回答不知道.\n用户:{question}"""
+        prompt_template_zh = """{system_role_prompt} {role_bot}\n请根据反引号中的内容提取相关信息回答问题:\n```\n{chat_history}{context}\n```\n如果反引号中的内容为空,则回答不知道.\n用户:{question}"""
     else:
         prompt_template_zh = prompt_template
     PROMPT = PromptTemplate(
@@ -854,8 +871,8 @@ def format_reference(recall_knowledge):
     text += '\n```'
     return text
 
-def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str, llm_model_endpoint:str, llm_model_name:str, aos_endpoint:str, aos_index:str, aos_knn_field:str,
-                    aos_result_num:int, kendra_index_id:str, kendra_result_num:int,use_qa:bool,wsclient=None,msgid:str='',max_tokens:int = 2048,temperature:float = 0.01,template:str = '',imgurl:str = None,multi_rounds:bool = False):
+def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str, llm_model_endpoint:str, llm_model_name:str, aos_endpoint:str, aos_index:str, aos_knn_field:str, aos_result_num:int, kendra_index_id:str, 
+                   kendra_result_num:int,use_qa:bool,wsclient=None,msgid:str='',max_tokens:int = 2048,temperature:float = 0.1,template:str = '',imgurl:str = None,multi_rounds:bool = False, hide_ref:bool = False):
     """
     Entry point for the Lambda function.
 
@@ -897,11 +914,11 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         json_obj['log_type'] = "all"
         json_obj_str = json.dumps(json_obj, ensure_ascii=False)
         logger.info(json_obj_str)
-        return answer,use_stream
+        return answer,use_stream,'',[],[]
     
     logger.info("llm_model_name : {}".format(llm_model_name))
     llm = None
-    stream_callback = CustomStreamingOutCallbackHandler(wsclient,msgid, session_id,llm_model_name)
+    stream_callback = CustomStreamingOutCallbackHandler(wsclient,msgid, session_id,llm_model_name,hide_ref)
     if llm_model_name == 'claude':
         ACCESS_KEY, SECRET_KEY=get_bedrock_aksk()
 
@@ -984,6 +1001,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
     verbose = False
     logger.info(f'use QA: {use_qa}')
     if not use_qa:##如果不使用QA
+        reply_stratgy = ReplyStratgy.LLM_ONLY
         query_type = QueryType.Conversation
         # free_chat_coversions = [ (item[0],item[1]) for item in session_history if item[2] == str(query_type)]
         # chat_history= get_chat_history(free_chat_coversions[-2:])
@@ -1031,17 +1049,63 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
                 chat_history= get_chat_history(chat_coversions[-1:])
         else:
             chat_history=''
-            
+        def get_reply_stratgy(recall_knowledge):
+            global BM25_QD_THRESHOLD_HARD_REFUSE, BM25_QD_THRESHOLD_SOFT_REFUSE
+            global KNN_QQ_THRESHOLD_HARD_REFUSE, KNN_QQ_THRESHOLD_SOFT_REFUSE
+            global KNN_QD_THRESHOLD_HARD_REFUSE, KNN_QD_THRESHOLD_SOFT_REFUSE
+
+            stratgy = ReplyStratgy.RETURN_OPTIONS
+            for item in recall_knowledge:
+                if item['score'] > 1.0:
+                    if item['score'] > BM25_QD_THRESHOLD_SOFT_REFUSE:
+                        stratgy = ReplyStratgy.WITH_LLM
+                    elif item['score'] > BM25_QD_THRESHOLD_HARD_REFUSE:
+                        stratgy = ReplyStratgy(min(ReplyStratgy.HINT_LLM_REFUSE.value, stratgy.value))
+                    else:
+                        stratgy = ReplyStratgy(min(ReplyStratgy.RETURN_OPTIONS.value, stratgy.value))
+
+                elif item['score'] < 1.0:
+                    if item['score'] > KNN_QD_THRESHOLD_SOFT_REFUSE:
+                        stratgy = ReplyStratgy.WITH_LLM
+                    elif item['score'] > KNN_QD_THRESHOLD_HARD_REFUSE:
+                        stratgy = ReplyStratgy(min(ReplyStratgy.HINT_LLM_REFUSE.value, stratgy.value))
+                    else:
+                        stratgy = ReplyStratgy(min(ReplyStratgy.RETURN_OPTIONS.value, stratgy.value))
+            return stratgy
+
+        def choose_prompt_template(stratgy:Enum, template:str, llm_model_name:str):
+            if stratgy == ReplyStratgy.WITH_LLM:
+                return create_baichuan_prompt_template(template) if llm_model_name.startswith('baichuan') else create_qa_prompt_templete(template)
+            elif stratgy == ReplyStratgy.HINT_LLM_REFUSE:
+                return create_soft_refuse_template(template)
+            else:
+                raise RuntimeError(
+                    "unsupported startgy..."
+                )
+
+        reply_stratgy = get_reply_stratgy(recall_knowledge)
+
+        context = qa_knowledge_fewshot_build(recall_knowledge)
+        final_prompt = ''
         if exactly_match_result and recall_knowledge: 
             query_type = QueryType.KeywordQuery
             answer = exactly_match_result[0]["doc"]
-            final_prompt = ''
             use_stream = False ##如果是直接匹配则不需要走流
+            hide_ref= True ## 隐藏ref doc
+        elif reply_stratgy == ReplyStratgy.RETURN_OPTIONS:
+            some_reference = qa_knowledge_fewshot_build(recall_knowledge[::2])
+            answer = f"我不太确定，这有两条可能相关的信息，供参考：\n=====\n{some_reference}\n====="
+            use_stream = False ##如果是直接匹配则不需要走流
+            hide_ref= True ## 隐藏ref doc
+        elif reply_stratgy == ReplyStratgy.SAY_DONT_KNOW:
+            answer = "我不太清楚，问问人工吧。"
+            use_stream = False ##如果是直接匹配则不需要走流
+            hide_ref= True ## 隐藏ref doc
         else:      
             ##添加召回引用
             stream_callback.add_recall_knowledge(recall_knowledge)
             query_type = QueryType.KnowledgeQuery
-            prompt_template = create_baichuan_prompt_template(template) if llm_model_name.startswith('baichuan') else create_qa_prompt_templete(template) 
+            prompt_template = choose_prompt_template(reply_stratgy, template, llm_model_name)
             llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
             # context = "\n".join([doc['doc'] for doc in recall_knowledge])
             context = qa_knowledge_fewshot_build(recall_knowledge)
@@ -1054,7 +1118,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
 
     answer = enforce_stop_tokens(answer, STOP)
     ref_text = ''
-    if not use_stream and recall_knowledge:
+    if not use_stream and recall_knowledge and hide_ref == False:
         ref_text = format_reference(recall_knowledge)
 
     json_obj = {
@@ -1065,7 +1129,8 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         "knowledges" : recall_knowledge,
         "detect_query_type": str(query_type),
         "LLM_input": final_prompt,
-        "LLM_model_name": llm_model_name
+        "LLM_model_name": llm_model_name,
+        "reply_stratgy" : reply_stratgy.name
     }
 
     json_obj['session_id'] = session_id
@@ -1077,13 +1142,14 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
     logger.info(json_obj_str)
 
     start = time.time()
-    update_session(session_id=session_id, question=query_input, answer=answer, intention=str(query_type))
+    if session_id != 'OnlyForDEBUG':
+        update_session(session_id=session_id, question=query_input, answer=answer, intention=str(query_type))
     elpase_time = time.time() - start
     elpase_time1 = time.time() - start1
     logger.info(f'runing time of update_session : {elpase_time}s seconds')
     logger.info(f'runing time of all  : {elpase_time1}s seconds')
-
-    return answer+ f'{ref_text}```',use_stream
+    answer = answer if hide_ref else answer+ f'{ref_text}```'
+    return answer,use_stream,query_input,opensearch_query_response,opensearch_knn_respose
 
 def delete_doc_index(obj_key,embedding_model,index_name):
     def delete_aos_index(obj_key,index_name,size=50):
@@ -1222,6 +1288,10 @@ def lambda_handler(event, context):
     logger.info(f"event:{event}")
     method = event.get('method')
     resource = event.get('resource')
+    global CHANNEL_RET_CNT
+    CHANNEL_RET_CNT = event.get('channel_cnt', 10)
+    logger.info(f'channel_cnt:{CHANNEL_RET_CNT}')
+
     ##如果是删除doc index的操作
     if method == 'delete' and resource == 'docs':
         logger.info(f"delete doc index of:{event.get('filename')}/{event.get('embedding_model')}/{event.get('index_name')}")
@@ -1265,7 +1335,7 @@ def lambda_handler(event, context):
         wsclient = None
     global openai_api_key
     openai_api_key = event.get('OPENAI_API_KEY') 
-    
+    hide_ref = event.get('hide_ref',False)
     session_id = event['chat_name']
     question = event['prompt']
     model_name = event['model'] if event.get('model') else event.get('model_name','')
@@ -1364,8 +1434,8 @@ def lambda_handler(event, context):
     logger.info(f'use multiple rounds: {multi_rounds}')
     
     main_entry_start = time.time()  # 或者使用 time.time_ns() 获取纳秒级别的时间戳
-    answer,use_stream = main_entry_new(session_id, question, embedding_endpoint, llm_endpoint, model_name, aos_endpoint, aos_index, aos_knn_field, aos_result_num,
-                       Kendra_index_id, Kendra_result_num,use_qa,wsclient,msgid,max_tokens,temperature,prompt_template,image_path,multi_rounds)
+    answer,use_stream,query_input,opensearch_query_response,opensearch_knn_respose = main_entry_new(session_id, question, embedding_endpoint, llm_endpoint, model_name, aos_endpoint, aos_index, aos_knn_field, aos_result_num,
+                       Kendra_index_id, Kendra_result_num,use_qa,wsclient,msgid,max_tokens,temperature,prompt_template,image_path,multi_rounds,hide_ref)
     main_entry_elpase = time.time() - main_entry_start  # 或者使用 time.time_ns() 获取纳秒级别的时间戳
     logger.info(f'runing time of main_entry : {main_entry_elpase}s seconds')
     # 2. return rusult
@@ -1378,7 +1448,9 @@ def lambda_handler(event, context):
     # "model": "模型名称"
     # "choices": [{"text": "模型回答的内容"}]
     # "usage": {"prompt_tokens": 58, "completion_tokens": 15, "total_tokens": 73}}]
-
+    extra_info = {}
+    if session_id == 'OnlyForDEBUG':
+        extra_info = {"query_input": query_input, "opensearch_query_response" : opensearch_query_response, "opensearch_knn_respose": opensearch_knn_respose }
     return {
         'statusCode': 200,
         'headers': {'Content-Type': 'application/json'},
@@ -1389,6 +1461,7 @@ def lambda_handler(event, context):
                              "model": "main_brain",
                              "choices":
                              [{"text": "{}[{}]".format(answer, model_name)}],
+                             "extra_info" : extra_info,
                              "usage": {"prompt_tokens": 58, "completion_tokens": 15, "total_tokens": 73}},
                             # {"id": uuid.uuid4(),
                             #  "created": request_timestamp,
