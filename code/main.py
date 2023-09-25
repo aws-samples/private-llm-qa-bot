@@ -65,7 +65,7 @@ KNN_QD_THRESHOLD_HARD_REFUSE = float(os.environ.get('knn_qd_threshold_hard',0.6)
 KNN_QD_THRESHOLD_SOFT_REFUSE = float(os.environ.get('knn_qd_threshold_soft',0.8))
 
 TOP_K = int(os.environ.get('TOP_K',4))
-NEIGHBORS = int(os.environ.get('neighbors',1))
+NEIGHBORS = int(os.environ.get('neighbors',0))
 
 
 class StreamScanner:    
