@@ -25,7 +25,6 @@ object_key = args['object_key']
 QA_SEP = '=====' # args['qa_sep'] # 
 EXAMPLE_SEP = '\n\n'
 arg_chunk_size = 384
-
 CHUNK_SIZE=500
 CHUNK_OVERLAP=0
 
@@ -41,7 +40,7 @@ publish_date = args['PUBLISH_DATE'] if 'PUBLISH_DATE' in args.keys() else dateti
 
 INDEX_NAME = 'chatbot-index'
 EXAMPLE_INDEX_NAME = 'chatbot-example-index'
-EMB_BATCH_SIZE=50
+EMB_BATCH_SIZE=20
 Sentence_Len_Threshold=10
 Paragraph_Len_Threshold=20
 
@@ -84,68 +83,6 @@ def batch_generator(generator, batch_size):
         if not batch:
             break
         yield batch
-
-def iterate_paragraph_blog(content_json, object_key,smr_client, index_name, endpoint_name):
-    doc_title = object_key
-    text_splitter = RecursiveCharacterTextSplitter(        
-        chunk_size = CHUNK_SIZE,
-        chunk_overlap  = CHUNK_OVERLAP,
-        length_function = len,
-    )
-    def chunk_generator(json_arr):
-        for blog in json_arr:
-            idx = 0
-            doc_title = blog['doc_title']
-            content_summary = blog['content_summary']
-            texts = text_splitter.split_text(f"{content_summary}")
-            for parag in blog['content']:
-                texts += text_splitter.split_text(f"{parag['title']}\n{parag['content']}")
-            for paragraph_content in texts:
-                idx += 1
-                yield (idx, doc_title, 'Paragraph', paragraph_content,doc_title)
-
-    generator = chunk_generator(content_json)
-    batches = batch_generator(generator, batch_size=EMB_BATCH_SIZE)
-    for batch in batches:
-        if batch is not None:
-            emb_src_texts = [item[3] for item in batch] ##对content向量化
-            print("len of emb_src_texts :{}".format(len(emb_src_texts)))
-            embeddings = get_embedding(smr_client, emb_src_texts, endpoint_name)
-            for i, emb in enumerate(embeddings):
-                document = { "publish_date": publish_date, "idx": batch[i][0], "doc" : batch[i][1], "doc_type" : batch[i][2], "content" : batch[i][3], "doc_title": doc_title, "doc_category": batch[i][4], "embedding" : emb}
-                yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document['content']).encode('utf-8')).hexdigest()}
-                
-
-def iterate_paragraph_wiki(content_json, object_key,smr_client, index_name, endpoint_name):
-    doc_title = object_key
-    text_splitter = RecursiveCharacterTextSplitter(        
-        chunk_size = CHUNK_SIZE,
-        chunk_overlap  = CHUNK_OVERLAP,
-        length_function = len,
-    )
-    def chunk_generator(json_arr):
-        for page in json_arr:
-            idx = 0
-            for url,p in page.items():
-                texts = []
-                if len(p):
-                    print(f'page:{url}, size: {len(p[0])}')
-                    texts = text_splitter.split_text(p[0])
-                for paragraph_content in texts:
-                    idx += 1
-                    yield (idx, paragraph_content, 'Paragraph', paragraph_content,url)
-
-    generator = chunk_generator(content_json)
-    batches = batch_generator(generator, batch_size=EMB_BATCH_SIZE)
-    for batch in batches:
-        if batch is not None:
-            emb_src_texts = [item[1] for item in batch] ##对content向量化
-            print("len of emb_src_texts :{}".format(len(emb_src_texts)))
-            embeddings = get_embedding(smr_client, emb_src_texts, endpoint_name)
-            for i, emb in enumerate(embeddings):
-                document = { "publish_date": publish_date, "idx": batch[i][0], "doc" : batch[i][1], "doc_type" : batch[i][2], "content" : batch[i][3], "doc_title": doc_title, "doc_category": batch[i][4], "embedding" : emb}
-                yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document['doc']).encode('utf-8')).hexdigest()}
-
 
 def iterate_paragraph(file_content, object_key, smr_client, index_name, endpoint_name):
     json_arr = json.loads(file_content)
@@ -233,16 +170,17 @@ def iterate_QA(file_content, object_key,smr_client, index_name, endpoint_name):
     for idx, batch in enumerate(qa_batches):
         doc_template = "Question: {}\nAnswer: {}"
         questions = [ item['Question'] for item in batch ]
+        answers = [ item['Answer'] for item in batch ]
         docs = [ doc_template.format(item['Question'], item['Answer']) for item in batch ]
-        embeddings = get_embedding(smr_client, questions, endpoint_name)
+        embeddings_q = get_embedding(smr_client, questions, endpoint_name)
 
-        for i in range(len(embeddings)):
-            document = { "publish_date": publish_date, "doc" : questions[i], "idx": idx,"doc_type" : "Question", "content" : docs[i], "doc_title": doc_title, "doc_category": doc_category, "embedding" : embeddings[i]}
+        for i in range(len(embeddings_q)):
+            document = { "publish_date": publish_date, "doc" : questions[i], "idx": idx,"doc_type" : "Question", "content" : docs[i], "doc_title": doc_title, "doc_category": doc_category, "embedding" : embeddings_q[i]}
             yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document).encode('utf-8')).hexdigest()}
-        
-        embeddings_docs = get_embedding(smr_client, docs, endpoint_name)
-        for i in range(len(embeddings_docs)):
-            document = { "publish_date": publish_date, "doc" : docs[i], "idx": idx,"doc_type" : "Paragraph", "content" : docs[i], "doc_title": doc_title, "doc_category": doc_category, "embedding" : embeddings_docs[i]}
+
+        embeddings_a = get_embedding(smr_client, answers, endpoint_name)
+        for i in range(len(embeddings_a)):
+            document = { "publish_date": publish_date, "doc" : answers[i], "idx": idx,"doc_type" : "Paragraph", "content" : docs[i], "doc_title": doc_title, "doc_category": doc_category, "embedding" : embeddings_a[i]}
             yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document).encode('utf-8')).hexdigest()}
 
 def iterate_examples(file_content, object_key, smr_client, index_name, endpoint_name):
@@ -370,7 +308,7 @@ def parse_faq_to_json(file_content):
 
     qa_content = {
         "doc_title" : "",
-        "doc_category" : "",
+        "doc_category" : "FAQ",
         "qa_list" : json_arr
     }
     
@@ -455,11 +393,72 @@ def load_content_json_from_s3(bucket, object_key, content_type, credentials):
             json_content = file_content
         elif content_type in ['wiki','blog']:
             json_content = json.loads(file_content)
-
         else:
-            raise RuntimeError("unsupport content type...(pdf, faq, txt, pdf.json,wiki,example are supported.)")
+            raise RuntimeError("unsupport content type...(pdf, faq, txt, pdf.json are supported.)")
         
         return json_content
+
+def iterate_paragraph_blog(content_json, object_key,smr_client, index_name, endpoint_name):
+    doc_title = object_key
+    text_splitter = RecursiveCharacterTextSplitter(        
+        chunk_size = CHUNK_SIZE,
+        chunk_overlap  = CHUNK_OVERLAP,
+        length_function = len,
+    )
+    def chunk_generator(json_arr):
+        for blog in json_arr:
+            idx = 0
+            doc_title = blog['doc_title']
+            content_summary = blog['content_summary']
+            texts = text_splitter.split_text(f"{content_summary}")
+            for parag in blog['content']:
+                texts += text_splitter.split_text(f"{parag['title']}\n{parag['content']}")
+            for paragraph_content in texts:
+                idx += 1
+                yield (idx, doc_title, 'Paragraph', paragraph_content,doc_title)
+
+    generator = chunk_generator(content_json)
+    batches = batch_generator(generator, batch_size=EMB_BATCH_SIZE)
+    for batch in batches:
+        if batch is not None:
+            emb_src_texts = [item[3] for item in batch] ##对content向量化
+            print("len of emb_src_texts :{}".format(len(emb_src_texts)))
+            embeddings = get_embedding(smr_client, emb_src_texts, endpoint_name)
+            for i, emb in enumerate(embeddings):
+                document = { "publish_date": publish_date, "idx": batch[i][0], "doc" : batch[i][1], "doc_type" : batch[i][2], "content" : batch[i][3], "doc_title": doc_title, "doc_category": batch[i][4], "embedding" : emb}
+                yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document['content']).encode('utf-8')).hexdigest()}
+                
+
+def iterate_paragraph_wiki(content_json, object_key,smr_client, index_name, endpoint_name):
+    doc_title = object_key
+    text_splitter = RecursiveCharacterTextSplitter(        
+        chunk_size = CHUNK_SIZE,
+        chunk_overlap  = CHUNK_OVERLAP,
+        length_function = len,
+    )
+    def chunk_generator(json_arr):
+        for page in json_arr:
+            idx = 0
+            for url,p in page.items():
+                texts = []
+                if len(p):
+                    print(f'page:{url}, size: {len(p[0])}')
+                    texts = text_splitter.split_text(p[0])
+                for paragraph_content in texts:
+                    idx += 1
+                    yield (idx, paragraph_content, 'Paragraph', paragraph_content,url)
+
+    generator = chunk_generator(content_json)
+    batches = batch_generator(generator, batch_size=EMB_BATCH_SIZE)
+    for batch in batches:
+        if batch is not None:
+            emb_src_texts = [item[1] for item in batch] ##对content向量化
+            print("len of emb_src_texts :{}".format(len(emb_src_texts)))
+            embeddings = get_embedding(smr_client, emb_src_texts, endpoint_name)
+            for i, emb in enumerate(embeddings):
+                document = { "publish_date": publish_date, "idx": batch[i][0], "doc" : batch[i][1], "doc_type" : batch[i][2], "content" : batch[i][3], "doc_title": doc_title, "doc_category": batch[i][4], "embedding" : emb}
+                yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document['doc']).encode('utf-8')).hexdigest()}
+
 
 
 def put_idx_to_ddb(filename,username,index_name,embedding_model):
@@ -568,6 +567,8 @@ def WriteVecIndexToAOS(bucket, object_key, content_type, smr_client, aos_endpoin
             gen_aos_record_func = iterate_QA(file_content, object_key,smr_client, index_name, EMB_MODEL_ENDPOINT)
         elif content_type in ['txt', 'pdf', 'json']:
             gen_aos_record_func = iterate_paragraph(file_content,object_key, smr_client, index_name, EMB_MODEL_ENDPOINT)
+        elif content_type in [ 'pdf.json' ]:
+            gen_aos_record_func = iterate_pdf_json(file_content,object_key, smr_client, index_name, EMB_MODEL_ENDPOINT)
         elif content_type in ['example']:
             gen_aos_record_func = iterate_examples(file_content,object_key, smr_client, index_name, EMB_MODEL_ENDPOINT)
         elif content_type in ['wiki']:
