@@ -33,6 +33,7 @@ from langchain.schema import LLMResult
 from langchain.llms.base import LLM
 import io
 import math
+from enum import Enum
 
 
 credentials = boto3.Session().get_credentials()
@@ -65,7 +66,7 @@ KNN_QD_THRESHOLD_HARD_REFUSE = float(os.environ.get('knn_qd_threshold_hard',0.6)
 KNN_QD_THRESHOLD_SOFT_REFUSE = float(os.environ.get('knn_qd_threshold_soft',0.8))
 
 TOP_K = int(os.environ.get('TOP_K',4))
-NEIGHBORS = int(os.environ.get('neighbors',1))
+NEIGHBORS = int(os.environ.get('neighbors',0))
 
 
 class StreamScanner:    
@@ -524,6 +525,12 @@ def query_kendra(Kendra_index_id="", lang="zh", search_query_text="what is s3?",
     # 输出结果列表
     return results[:Kendra_result_num]
 
+def is_chinese(string):
+    for char in string:
+        if '\u4e00' <= char <= '\u9fff':
+            return True
+
+    return False
 
 
 # AOS
@@ -534,6 +541,11 @@ def get_vector_by_sm_endpoint(questions, sm_client, endpoint_name):
     instruction_zh = "为这个句子生成表示以用于检索相关文章："
     instruction_en = "Represent this sentence for searching relevant passages:"
 
+    if isinstance(questions, str):
+        instruction = instruction_zh if is_chinese(questions) else instruction_en
+    else:
+        instruction = instruction_zh
+
     response_model = sm_client.invoke_endpoint(
         EndpointName=endpoint_name,
         Body=json.dumps(
@@ -541,7 +553,7 @@ def get_vector_by_sm_endpoint(questions, sm_client, endpoint_name):
                 "inputs": questions,
                 "parameters": parameters,
                 "is_query" : True,
-                "instruction" :  instruction_zh
+                "instruction" :  instruction
             }
         ),
         ContentType="application/json",
@@ -570,7 +582,7 @@ def search_using_aos_knn(client, q_embedding, index, size=10):
         body=query,
         index=index
     )
-    opensearch_knn_respose = [{'idx':item['_source'].get('idx',1),'doc_category':item['_source']['doc_category'],'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc':item['_source']['content'],"doc_type":item["_source"]["doc_type"],"score":item["_score"]} for item in query_response["hits"]["hits"]]
+    opensearch_knn_respose = [{'idx':item['_source'].get('idx',1),'doc_category':item['_source']['doc_category'],'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc':item['_source']['content'],"doc_type":item["_source"]["doc_type"],"score":item["_score"]}  for item in query_response["hits"]["hits"]]
     return opensearch_knn_respose
     
 
@@ -1000,6 +1012,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
     # free_chat_coversions = []
     verbose = False
     logger.info(f'use QA: {use_qa}')
+    final_prompt = ''
     if not use_qa:##如果不使用QA
         reply_stratgy = ReplyStratgy.LLM_ONLY
         query_type = QueryType.Conversation
@@ -1086,7 +1099,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         reply_stratgy = get_reply_stratgy(recall_knowledge)
 
         context = qa_knowledge_fewshot_build(recall_knowledge)
-        final_prompt = ''
+
         if exactly_match_result and recall_knowledge: 
             query_type = QueryType.KeywordQuery
             answer = exactly_match_result[0]["doc"]
