@@ -10,7 +10,7 @@ from opensearchpy import OpenSearch, RequestsHttpConnection, AWSV4SignerAuth
 def create_aos_index(aos_endpoint, index_name, index_definition):
     sess = boto3.Session()
     credentials = sess.get_credentials()
-    current_region = 'us-east-1'#sess.region_name
+    current_region = sess.region_name
 
     auth = AWSV4SignerAuth(credentials, current_region)
 
