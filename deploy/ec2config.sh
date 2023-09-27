@@ -8,6 +8,7 @@ region=$2
 aos_endpoint=$3
 yum update -y
 amazon-linux-extras install nginx1 -y
+amazon-linux-extras install jq -y
 
 echo "start pip3 installation"
 pip3 install boto3
@@ -21,7 +22,8 @@ cd /home/ec2-user
 
 echo "execute init_aos_client.py"
 curl -LJO https://raw.githubusercontent.com/aws-samples/private-llm-qa-bot/JAM20230915/deploy/init_aos_client.py
-python3 init_aos_client.py $aos_endpoint
+region=$(curl -s http://169.254.169.254/latest/dynamic/instance-identity/document | jq -r .region)
+python3 init_aos_client.py $aos_endpoint $region
 echo "finish execute init_aos_client.py"
 
 echo "execute jam_deploy.py"

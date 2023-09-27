@@ -7,10 +7,10 @@ import boto3
 import json
 from opensearchpy import OpenSearch, RequestsHttpConnection, AWSV4SignerAuth
 
-def create_aos_index(aos_endpoint, index_name, index_definition):
+def create_aos_index(aos_endpoint, region, index_name, index_definition):
     sess = boto3.Session()
     credentials = sess.get_credentials()
-    current_region = sess.region_name
+    current_region = region
 
     auth = AWSV4SignerAuth(credentials, current_region)
 
@@ -29,6 +29,7 @@ def create_aos_index(aos_endpoint, index_name, index_definition):
         print(f"Failed to create index {index_name}")
 
 aos_endpoint = sys.argv[1] # "vpc-domain66ac69e0-7nk4nwvargjd-34nala5yssppv2ssbyl5ifco2y.us-east-1.es.amazonaws.com"
+region = sys.argv[2]
 
 index_name = 'chatbot-index'
 index_definition ={
@@ -85,4 +86,4 @@ index_definition ={
     }
 }
 
-create_aos_index(aos_endpoint, index_name, index_definition)
+create_aos_index(aos_endpoint, region, index_name, index_definition)
