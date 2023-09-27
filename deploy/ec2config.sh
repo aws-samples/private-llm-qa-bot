@@ -8,7 +8,7 @@ region=$2
 aos_endpoint=$3
 yum update -y
 amazon-linux-extras install nginx1 -y
-amazon-linux-extras install jq -y
+sudo yum install jq -y
 
 echo "start pip3 installation"
 pip3 install boto3
