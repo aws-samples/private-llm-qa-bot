@@ -1,4 +1,4 @@
-langchain==0.0.201
+langchain==0.0.305
 opensearch-py==2.2.0
 requests_aws4auth==1.2.2
 openai==0.27.6
