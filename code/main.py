@@ -18,13 +18,15 @@ from langchain.chains.question_answering import load_qa_chain
 from langchain.chat_models import ChatOpenAI
 from langchain.embeddings import SagemakerEndpointEmbeddings
 from langchain.embeddings.sagemaker_endpoint import EmbeddingsContentHandler
-from langchain.llms.sagemaker_endpoint import LLMContentHandler
-from langchain import PromptTemplate, SagemakerEndpoint
+from langchain.llms.sagemaker_endpoint import LLMContentHandler,SagemakerEndpoint
+from langchain.prompts import PromptTemplate
 from langchain.chains import LLMChain,ConversationalRetrievalChain,ConversationChain
 from langchain.schema import BaseRetriever
 from langchain.schema import Document
 from langchain.llms.bedrock import Bedrock
-from pydantic import BaseModel,Extra,root_validator
+from pydantic import BaseModel
+from langchain.pydantic_v1 import Extra, root_validator
+
 import openai
 from langchain.callbacks.base import BaseCallbackHandler
 from langchain.callbacks.manager import CallbackManagerForLLMRun
@@ -90,14 +92,15 @@ class StreamScanner:
 
 class CustomStreamingOutCallbackHandler(BaseCallbackHandler):
     """Callback handler for streaming. Only works with LLMs that support streaming."""
-    def __init__(self,wsclient:str,msgid:str,connectionId:str ,model_name:str,hide_ref:bool, **kwargs: Any) -> None:
+    def __init__(self,wsclient:str,msgid:str,connectionId:str ,model_name:str,hide_ref:bool,use_stream:bool, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.wsclient = wsclient
         self.connectionId = connectionId
         self.msgid = msgid
-        self.model_name= model_name,
-        self.recall_knowledge = None,
+        self.model_name= model_name
+        self.recall_knowledge = []
         self.hide_ref = hide_ref
+        self.use_stream = use_stream
 
     def add_recall_knowledge(self,recall_knowledge):
 
@@ -131,12 +134,9 @@ class CustomStreamingOutCallbackHandler(BaseCallbackHandler):
 
     def on_llm_end(self, response: LLMResult, **kwargs: Any) -> None:
         """Run when LLM ends running."""
-        # data = json.dumps({ 'msgid':self.msgid, 'role': "AI", 'text': {'content':f' [{self.model_name}]' } })
-        # self.postMessage(data)
-        # if self.recall_knowledge:
-        if not self.hide_ref:
+        if (not self.hide_ref) and self.use_stream:
             text = format_reference(self.recall_knowledge)
-            data = json.dumps({ 'msgid':self.msgid, 'role': "AI", 'text': {'content':f'{text}```'} })
+            data = json.dumps({ 'msgid':self.msgid, 'role': "AI", 'text': {'content':f'{text}'} })
             self.postMessage(data)
 
         
@@ -280,7 +280,7 @@ class llmContentHandler(LLMContentHandler):
         response_json = json.loads(output.read().decode("utf-8"))
         return response_json["outputs"]
 
-class CustomDocRetriever(BaseRetriever,BaseModel):
+class CustomDocRetriever(BaseRetriever):
     embedding_model_endpoint :str
     aos_endpoint: str
     aos_index: str
@@ -884,7 +884,7 @@ def format_reference(recall_knowledge):
     return text
 
 def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str, llm_model_endpoint:str, llm_model_name:str, aos_endpoint:str, aos_index:str, aos_knn_field:str, aos_result_num:int, kendra_index_id:str, 
-                   kendra_result_num:int,use_qa:bool,wsclient=None,msgid:str='',max_tokens:int = 2048,temperature:float = 0.1,template:str = '',imgurl:str = None,multi_rounds:bool = False, hide_ref:bool = False):
+                   kendra_result_num:int,use_qa:bool,wsclient=None,msgid:str='',max_tokens:int = 2048,temperature:float = 0.1,template:str = '',imgurl:str = None,multi_rounds:bool = False, hide_ref:bool = False,use_stream:bool=False):
     """
     Entry point for the Lambda function.
 
@@ -904,7 +904,6 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
     """
     # STOP=[f"\n{A_Role}", f"\n{B_Role}"]
     global STOP
-    use_stream = False
     #如果是reset命令，则清空历史聊天
     if query_input == RESET:
         delete_session(session_id)
@@ -928,18 +927,15 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         logger.info(json_obj_str)
         return answer,use_stream,'',[],[]
     
-    logger.info("llm_model_name : {}".format(llm_model_name))
+    logger.info("llm_model_name : {} ,use_stream :{}".format(llm_model_name,use_stream))
     llm = None
-    stream_callback = CustomStreamingOutCallbackHandler(wsclient,msgid, session_id,llm_model_name,hide_ref)
-    if llm_model_name == 'claude':
-        ACCESS_KEY, SECRET_KEY=get_bedrock_aksk()
+    stream_callback = CustomStreamingOutCallbackHandler(wsclient,msgid, session_id,llm_model_name,hide_ref,use_stream)
+    if llm_model_name.startswith('claude'):
+        # ACCESS_KEY, SECRET_KEY=get_bedrock_aksk()
 
         boto3_bedrock = boto3.client(
-            service_name="bedrock",
-            region_name="us-east-1",
-            endpoint_url="https://bedrock.us-east-1.amazonaws.com",
-            aws_access_key_id=ACCESS_KEY,
-            aws_secret_access_key=SECRET_KEY
+            service_name="bedrock-runtime",
+            region_name="us-west-2"
         )
 
         parameters = {
@@ -948,20 +944,24 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
             "temperature":temperature,
             "top_p":0.95
         }
-        
-        llm = Bedrock(model_id="anthropic.claude-v1", client=boto3_bedrock, model_kwargs=parameters)
-        # print("llm is anthropic.claude-v1")
+
+        model_id ="anthropic.claude-instant-v1" if llm_model_name == 'claude-instant' else "anthropic.claude-v2"
+
+        llm = Bedrock(model_id=model_id, 
+                      client=boto3_bedrock,
+                      streaming=use_stream,
+                      callbacks=[stream_callback],
+                        model_kwargs=parameters)
+
     elif llm_model_name.startswith('gpt-3.5-turbo'):
-        use_stream = True
         global openai_api_key
         llm=ChatOpenAI(model = llm_model_name,
                        openai_api_key = openai_api_key,
-                       streaming = True,
+                       streaming = use_stream,
                        callbacks=[stream_callback],
                        temperature = temperature)
         
-    elif llm_model_name.endswith('stream'):
-        use_stream = True
+    elif use_stream:
         parameters = {
                 "max_length": max_tokens,
                 "temperature": temperature,
@@ -1148,6 +1148,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
 
     json_obj['session_id'] = session_id
     json_obj['chatbot_answer'] = answer
+    json_obj['ref_docs']= ref_text
     json_obj['conversations'] = chat_coversions[-1:]
     json_obj['timestamp'] = int(time.time())
     json_obj['log_type'] = "all"
@@ -1161,7 +1162,8 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
     elpase_time1 = time.time() - start1
     logger.info(f'runing time of update_session : {elpase_time}s seconds')
     logger.info(f'runing time of all  : {elpase_time1}s seconds')
-    answer = answer if hide_ref else answer+ f'{ref_text}```'
+    answer = answer if hide_ref else f'{answer}{ref_text}'
+    # logger.info(answer)
     return answer,use_stream,query_input,opensearch_query_response,opensearch_knn_respose
 
 def delete_doc_index(obj_key,embedding_model,index_name):
@@ -1355,6 +1357,7 @@ def lambda_handler(event, context):
     embedding_endpoint = event.get('embedding_model',os.environ.get("embedding_endpoint")) 
     use_qa = event.get('use_qa',False)
     multi_rounds = event.get('multi_rounds',False)
+    use_stream = event.get('use_stream',False)
     template_id = event.get('template_id')
     msgid = event.get('msgid')
     max_tokens = event.get('max_tokens',2048)
@@ -1448,7 +1451,7 @@ def lambda_handler(event, context):
     
     main_entry_start = time.time()  # 或者使用 time.time_ns() 获取纳秒级别的时间戳
     answer,use_stream,query_input,opensearch_query_response,opensearch_knn_respose = main_entry_new(session_id, question, embedding_endpoint, llm_endpoint, model_name, aos_endpoint, aos_index, aos_knn_field, aos_result_num,
-                       Kendra_index_id, Kendra_result_num,use_qa,wsclient,msgid,max_tokens,temperature,prompt_template,image_path,multi_rounds,hide_ref)
+                       Kendra_index_id, Kendra_result_num,use_qa,wsclient,msgid,max_tokens,temperature,prompt_template,image_path,multi_rounds,hide_ref,use_stream)
     main_entry_elpase = time.time() - main_entry_start  # 或者使用 time.time_ns() 获取纳秒级别的时间戳
     logger.info(f'runing time of main_entry : {main_entry_elpase}s seconds')
     # 2. return rusult
