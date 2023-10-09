@@ -108,6 +108,7 @@ def lambda_handler(event, context):
     fewshot_cnt = event.get('fewshot_cnt')
     use_bedrock = event.get('use_bedrock')
     llm_model_endpoint = os.environ.get('llm_model_endpoint')
+    llm_model_name = event.get('llm_model_name', None)
     
     logger.info("embedding_endpoint: {}".format(embedding_endpoint))
     logger.info("region:{}".format(region))
