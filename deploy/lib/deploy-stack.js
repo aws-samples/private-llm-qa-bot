@@ -167,6 +167,7 @@ export class DeployStack extends Stack {
           "es:*",
           "dynamodb:*",
           "secretsmanager:GetSecretValue",
+          "bedrock:*"
           ],
         effect: iam.Effect.ALLOW,
         resources: ['*'],
@@ -204,6 +205,7 @@ export class DeployStack extends Stack {
           "es:*",
           "dynamodb:*",
           "secretsmanager:GetSecretValue",
+          "bedrock:*"
           ],
         effect: iam.Effect.ALLOW,
         resources: ['*'],
