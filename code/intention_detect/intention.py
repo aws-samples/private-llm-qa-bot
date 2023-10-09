@@ -108,6 +108,7 @@ def lambda_handler(event, context):
     fewshot_cnt = event.get('fewshot_cnt')
     use_bedrock = event.get('use_bedrock')
     llm_model_endpoint = os.environ.get('llm_model_endpoint')
+    llm_model_name = event.get('llm_model_name', None)
     
     logger.info("embedding_endpoint: {}".format(embedding_endpoint))
     logger.info("region:{}".format(region))
@@ -171,11 +172,8 @@ def lambda_handler(event, context):
         ACCESS_KEY, SECRET_KEY=get_bedrock_aksk()
     
         boto3_bedrock = boto3.client(
-            service_name="bedrock",
-            region_name="us-east-1",
-            endpoint_url="https://bedrock.us-east-1.amazonaws.com",
-            aws_access_key_id=ACCESS_KEY,
-            aws_secret_access_key=SECRET_KEY
+            service_name="bedrock-runtime",
+            region_name=region
         )
     
         parameters = {
@@ -185,7 +183,8 @@ def lambda_handler(event, context):
             "top_p":1
         }
         
-        llm = Bedrock(model_id="anthropic.claude-v1", client=boto3_bedrock, model_kwargs=parameters)
+        model_id ="anthropic.claude-instant-v1" if llm_model_name == 'claude-instant' else "anthropic.claude-v2"
+        llm = Bedrock(model_id=model_id, client=boto3_bedrock, model_kwargs=parameters)
 
     prompt_template = create_intention_prompt_templete()
     prompt = prompt_template.format(fewshot=fewshot_str, instruction=instruction, query=query, options=options_str)
