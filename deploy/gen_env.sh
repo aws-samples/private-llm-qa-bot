@@ -43,6 +43,7 @@ echo "llm_vicuna_endpoint=${llm_vicuna_endpoint}" >> .env
 echo "llm_chatglm_stream_endpoint=${llm_chatglm_stream_endpoint}" >> .env
 echo "llm_visualglm_endpoint=" >> .env
 echo "llm_other_stream_endpoint=" >> .env
+echo "llm_other_endpoint=" >> .env
 echo "UPLOAD_BUCKET=${bucket}" >> .env
 echo "UPLOAD_OBJ_PREFIX=ai-content/" >> .env
 echo "wss_apiId=${wss_apiId}" >> .env
