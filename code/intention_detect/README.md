@@ -67,9 +67,9 @@ lambda_client = boto3_client('lambda')
 
 def lambda_handler(event, context):
   	question = event['prompt'] #"DynamoDB怎么计费"
-    msg = {"fewshot_cnt":5, "query": question }
-    invoke_response = lambda_client.invoke(FunctionName="QAChatDeployStack-lambdaintention**",
-                                           InvocationType='Event',
+    msg = {"fewshot_cnt":5, "query": question, "use_bedrock" : "True" }
+    invoke_response = lambda_client.invoke(FunctionName="Detect_Intention",
+                                           InvocationType='RequestResponse',
                                            Payload=json.dumps(msg))
     
 ```
