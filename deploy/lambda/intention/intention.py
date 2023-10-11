@@ -168,9 +168,7 @@ def lambda_handler(event, context):
                 model_kwargs={'parameters':parameters},
                 content_handler=llmcontent_handler
             )
-    else:
-        ACCESS_KEY, SECRET_KEY=get_bedrock_aksk()
-    
+    else:    
         boto3_bedrock = boto3.client(
             service_name="bedrock-runtime",
             region_name=region
