@@ -1,6 +1,7 @@
 import json
 import os
 import logging
+from collections import Counter
 
 from langchain.embeddings import SagemakerEndpointEmbeddings
 from langchain.embeddings.sagemaker_endpoint import EmbeddingsContentHandler
@@ -148,7 +149,9 @@ def lambda_handler(event, context):
 
     docs_simple = [ {"query" : doc[0].page_content, "intention" : doc[0].metadata['intention'], "score":doc[1]} for doc in docs]
 
-    options = set([doc['intention'] for doc in docs_simple ])
+    intention_list = [doc['intention'] for doc in docs_simple ]
+    intention_counter = Counter(intention_list)
+    options = set(intention_list)
     options_str = ", ".join(options)
 
     instruction = "参考下列Example，回答下列选择题："
@@ -204,9 +207,6 @@ def lambda_handler(event, context):
     logger.info(log_dict_str)
 
     if answer not in options:
-        answer = 'unknown'
-        for opt in options:
-            if opt in answer:
-                answer = opt
+        answer = intention_counter.most_common(1)[0]
     
     return answer
