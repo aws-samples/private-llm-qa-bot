@@ -1421,6 +1421,8 @@ def lambda_handler(event, context):
         llm_endpoint = os.environ.get('llm_visualglm_stream_endpoint')
     elif model_name == 'other-stream':
         llm_endpoint = os.environ.get('llm_other_stream_endpoint')
+    elif model_name == 'other':
+        llm_endpoint = os.environ.get('llm_other_endpoint')
     elif model_name == 'baichuan':
         llm_endpoint = os.environ.get('llm_baichuan_stream_endpoint')
     elif model_name == 'baichuan-stream':
