@@ -205,5 +205,8 @@ def lambda_handler(event, context):
 
     if answer not in options:
         answer = 'unknown'
+        for opt in options:
+            if opt in answer:
+                answer = opt
     
     return answer

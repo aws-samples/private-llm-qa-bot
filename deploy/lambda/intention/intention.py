@@ -68,7 +68,7 @@ class llmContentHandler(LLMContentHandler):
         return response_json["outputs"]
 
 def create_intention_prompt_templete():
-    prompt_template = """{instruction}\n\n{fewshot}\n\n"Q: \"{query}\"，这个问题的提问意图是啥？可选项[{options}]\nA: """
+    prompt_template = """{instruction}\n\n{fewshot}\n\nHuman: \"{query}\"，这个问题的提问意图是啥？可选项[{options}]\nAssistant: """
 
     PROMPT = PromptTemplate(
         template=prompt_template, 
@@ -151,9 +151,9 @@ def lambda_handler(event, context):
     options = set([doc['intention'] for doc in docs_simple ])
     options_str = ", ".join(options)
 
-    instruction = "回答下列选择题："
-    examples = [ "Q: \"{}\"，这个问题的提问意图是啥？可选项[{}]\nA: {}".format(doc['query'], options_str, doc['intention']) for doc in docs_simple ]
-    fewshot_str = "\n\n".join(examples)
+    instruction = "参考下列Example，回答下列选择题："
+    examples = [ "Human: \"{}\"，这个问题的提问意图是啥？可选项[{}]\nAssistant: {}".format(doc['query'], options_str, doc['intention']) for doc in docs_simple ]
+    fewshot_str = "{}\n{}\n{}".format("<example>", "\n\n".join(examples), "</example>")
     
     parameters = {
         "temperature": 0.01,
@@ -168,7 +168,7 @@ def lambda_handler(event, context):
                 model_kwargs={'parameters':parameters},
                 content_handler=llmcontent_handler
             )
-    else:    
+    else:
         boto3_bedrock = boto3.client(
             service_name="bedrock-runtime",
             region_name=region
@@ -205,5 +205,8 @@ def lambda_handler(event, context):
 
     if answer not in options:
         answer = 'unknown'
+        for opt in options:
+            if opt in answer:
+                answer = opt
     
     return answer
