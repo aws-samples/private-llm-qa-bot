@@ -178,7 +178,7 @@ def lambda_handler(event, context):
         )
     
         parameters = {
-            "max_tokens_to_sample": 40,
+            "max_tokens_to_sample": 20,
             "stop_sequences": ["\n\n"],
             "temperature":0.01,
             "top_p":1
@@ -208,5 +208,9 @@ def lambda_handler(event, context):
 
     if answer not in options:
         answer = intention_counter.most_common(1)[0]
-    
+        for opt in options:
+            if opt in answer:
+                answer = opt
+                break
+        
     return answer
