@@ -129,14 +129,14 @@ class CustomStreamingOutCallbackHandler(BaseCallbackHandler):
 
     def on_llm_new_token(self, token: str, **kwargs: Any) -> None:
         """Run on new LLM token. Only available when streaming is enabled."""
-        data = json.dumps({ 'msgid':self.msgid, 'role': "AI", 'text': {'content':token} })
+        data = json.dumps({ 'msgid':self.msgid, 'role': "AI", 'text': {'content':token},'connectionId':self.connectionId})
         self.postMessage(data)
 
     def on_llm_end(self, response: LLMResult, **kwargs: Any) -> None:
         """Run when LLM ends running."""
         if (not self.hide_ref) and self.use_stream:
             text = format_reference(self.recall_knowledge)
-            data = json.dumps({ 'msgid':self.msgid, 'role': "AI", 'text': {'content':f'{text}'} })
+            data = json.dumps({ 'msgid':self.msgid, 'role': "AI", 'text': {'content':f'{text}'},'connectionId':self.connectionId })
             self.postMessage(data)
 
         
@@ -144,7 +144,7 @@ class CustomStreamingOutCallbackHandler(BaseCallbackHandler):
     def on_chain_error(
         self, error: Union[Exception, KeyboardInterrupt], **kwargs: Any
     ) -> None:
-        data = json.dumps({ 'msgid':self.msgid, 'role': "AI", 'text': {'content':str(error[0])+'[DONE]'} })
+        data = json.dumps({ 'msgid':self.msgid, 'role': "AI", 'text': {'content':str(error[0])+'[DONE]'},'connectionId':self.connectionId})
         self.postMessage(data)
 
 class SagemakerStreamContentHandler(LLMContentHandler):
@@ -852,7 +852,7 @@ def create_chat_prompt_templete(prompt_template):
     )
     return PROMPT
 
-def get_bedrock_aksk(secret_name='chatbot_bedrock', region_name = "us-west-2"):
+def get_bedrock_aksk(secret_name='chatbot_bedrock', region_name = os.environ.get('bedrock_region',"us-west-2") ):
     # Create a Secrets Manager client
     session = boto3.session.Session()
     client = session.client(
@@ -925,6 +925,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         json_obj['log_type'] = "all"
         json_obj_str = json.dumps(json_obj, ensure_ascii=False)
         logger.info(json_obj_str)
+        use_stream = False
         return answer,use_stream,'',[],[]
     
     logger.info("llm_model_name : {} ,use_stream :{}".format(llm_model_name,use_stream))
@@ -935,7 +936,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
 
         boto3_bedrock = boto3.client(
             service_name="bedrock-runtime",
-            region_name="us-west-2"
+            region_name= os.environ.get('bedrock_region',"us-west-2")
         )
 
         parameters = {
@@ -1147,8 +1148,9 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
     }
 
     json_obj['session_id'] = session_id
+    json_obj['msgid'] = msgid
     json_obj['chatbot_answer'] = answer
-    json_obj['ref_docs']= ref_text
+    json_obj['ref_docs']= format_reference(recall_knowledge) if use_qa and recall_knowledge else ''
     json_obj['conversations'] = chat_coversions[-1:]
     json_obj['timestamp'] = int(time.time())
     json_obj['log_type'] = "all"
@@ -1244,7 +1246,7 @@ def get_template(id):
             return response['Item']
         except Exception as e:
             logger.info(str(e))
-            return {}   
+            return None   
     else:
         params = {
             'TableName': os.environ.get('prompt_template_table'),
@@ -1292,7 +1294,8 @@ def generate_s3_image_url(bucket_name, key, expiration=3600):
     )
     return url
 
-    
+
+
 @handle_error
 def lambda_handler(event, context):
     # "model": 模型的名称
@@ -1307,6 +1310,7 @@ def lambda_handler(event, context):
     CHANNEL_RET_CNT = event.get('channel_cnt', 10)
     logger.info(f'channel_cnt:{CHANNEL_RET_CNT}')
 
+    ###其他管理操作 start
     ##如果是删除doc index的操作
     if method == 'delete' and resource == 'docs':
         logger.info(f"delete doc index of:{event.get('filename')}/{event.get('embedding_model')}/{event.get('index_name')}")
@@ -1320,7 +1324,7 @@ def lambda_handler(event, context):
     if method == 'get' and resource == 'template':
         id = event.get('id')
         results = get_template(id)
-        return {'statusCode': 200,'body':results }
+        return {'statusCode': 200,'body': {} if results is None else results }
     ## 如果是add a template 操作
     if method == 'post' and resource == 'template':
         body = event.get('body')
@@ -1332,7 +1336,7 @@ def lambda_handler(event, context):
             'username':{'S':body.get('username','')}
         }
         result = add_template(item)
-        return {'statusCode': 200 if result else 500,'body':results }
+        return {'statusCode': 200 if result else 500,'body':result }
      ## 如果是delete a template 操作
     if method == 'delete' and resource == 'template':
         body = event.get('body')
@@ -1340,7 +1344,26 @@ def lambda_handler(event, context):
             'id': {'S': body.get('id')}
         }
         result = delete_template(key)
-        return {'statusCode': 200 if result else 500,'body':results }
+        return {'statusCode': 200 if result else 500,'body':result }
+
+    ## 如果是回传thumbs down or thumbs up feeback
+    ## thumbs-up,thumbs-down,cancel-thumbs-up,cancel-thumbs-down
+    if method == 'post' and resource == 'feedback':
+        body = event.get('body')
+        json_obj = {
+            "opensearch_doc":  [], #for kiness firehose log subscription filter name
+            "log_type":'feedback',
+            "msgid":body.get('msgid'),
+            "timestamp":time.time(),
+            "session_id":body.get('session_id'),
+            "action":body.get('action')  
+        }
+        json_obj_str = json.dumps(json_obj, ensure_ascii=False)
+        logger.info(json_obj_str)
+        return {'statusCode': 200}
+
+
+    ####其他管理操作 end
 
     # input_json = json.loads(event['body'])
     ws_endpoint = event.get('ws_endpoint')
@@ -1435,7 +1458,8 @@ def lambda_handler(event, context):
     ##如果指定了prompt 模板
     if template_id and template_id != 'default':
         prompt_template = get_template(template_id)
-        prompt_template = prompt_template['template']['S']
+        prompt_template = 'default' if prompt_template is None else prompt_template['template']['S']
+            
     logger.info(f'prompt_template_id : {template_id}')
     logger.info(f'prompt_template : {prompt_template}')
     logger.info(f'model_name : {model_name}')
