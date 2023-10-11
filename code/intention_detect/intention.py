@@ -151,9 +151,9 @@ def lambda_handler(event, context):
     options = set([doc['intention'] for doc in docs_simple ])
     options_str = ", ".join(options)
 
-    instruction = "回答下列选择题："
+    instruction = "参考下列Example，回答下列选择题："
     examples = [ "Human: \"{}\"，这个问题的提问意图是啥？可选项[{}]\nAssistant: {}".format(doc['query'], options_str, doc['intention']) for doc in docs_simple ]
-    fewshot_str = "\n\n".join(examples)
+    fewshot_str = "{}\n{}\n{}".format("<example>", "\n\n".join(examples), "</example>")
     
     parameters = {
         "temperature": 0.01,
