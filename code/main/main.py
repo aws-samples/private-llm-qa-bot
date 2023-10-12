@@ -936,7 +936,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
 
         boto3_bedrock = boto3.client(
             service_name="bedrock-runtime",
-            region_name= os.environ.get('bedrock_region',"us-west-2")
+            region_name= os.environ.get('bedrock_region',"us-east-1")
         )
 
         parameters = {
