@@ -122,7 +122,7 @@ export class DeployStack extends Stack {
 
     const lambda_main_brain = new DockerImageFunction(this,
       "lambda_main_brain", {
-      code: DockerImageCode.fromImageAsset(join(__dirname, "../lambda/main_brain")),
+      code: DockerImageCode.fromImageAsset(join(__dirname, "../../code/main")),
       timeout: Duration.minutes(15),
       memorySize: 1024,
       runtime: 'python3.9',
@@ -175,7 +175,7 @@ export class DeployStack extends Stack {
       
     const lambda_intention = new DockerImageFunction(this,
       "lambda_intention", {
-      code: DockerImageCode.fromImageAsset(join(__dirname, "../lambda/intention")),
+      code: DockerImageCode.fromImageAsset(join(__dirname, "../../code/intention_detect")),
       timeout: Duration.minutes(15),
       memorySize: 1024,
       runtime: 'python3.9',
@@ -214,7 +214,7 @@ export class DeployStack extends Stack {
 
     const lambda_query_rewrite = new DockerImageFunction(this,
       "lambda_query_rewrite", {
-      code: DockerImageCode.fromImageAsset(join(__dirname, "../../../code/query_rewriter")),
+      code: DockerImageCode.fromImageAsset(join(__dirname, "../../code/query_rewriter")),
       timeout: Duration.minutes(15),
       memorySize: 1024,
       runtime: 'python3.9',
