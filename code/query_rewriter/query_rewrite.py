@@ -73,7 +73,7 @@ def lambda_handler(event, context):
     logger.info("llm_model_name:{}".format(llm_model_name))
     logger.info("llm_model_endpoint:{}".format(llm_model_endpoint))
 
-    param_dict = json.loads(params)
+    param_dict = params
     query = param_dict["query"]
     history = param_dict["history"]
 
@@ -109,14 +109,14 @@ def lambda_handler(event, context):
         model_id ="anthropic.claude-instant-v1" if llm_model_name == 'claude-instant' else "anthropic.claude-v2"
         llm = Bedrock(model_id=model_id, client=boto3_bedrock, model_kwargs=parameters)
 
-    prompt_template = create_intention_prompt_templete()
-    prompt = prompt_template.format(history=history_str, query=query)
+    prompt_template = create_rewrite_prompt_templete()
+    prompt = prompt_template.format(history=history_str, cur_query=query)
     
     llmchain = LLMChain(llm=llm, verbose=False, prompt=prompt_template)
-    answer = llmchain.run({'history':history_str, "query":query})
+    answer = llmchain.run({'history':history_str, "cur_query":query})
     answer = answer.strip()
 
-    log_dict = { "history" : history, "answer" : answer , "query": query }
+    log_dict = { "history" : history, "answer" : answer , "cur_query": query }
     log_dict_str = json.dumps(log_dict, ensure_ascii=False)
     logger.info(log_dict_str)
         

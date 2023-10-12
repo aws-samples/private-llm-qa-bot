@@ -12,7 +12,13 @@ lambda_client = boto3_client('lambda')
 
 def lambda_handler(event, context):
   	question = event['prompt'] #"DynamoDB怎么计费"
-    msg = {"fewshot_cnt":5, "query": question, "use_bedrock" : "True" }
+    msg = {
+      "params": {
+        "history": ["有戴森的吹风机吗？","没有哦亲亲", "戴森都没有", "不好意思，看看其他品牌呢"],
+        "query": question
+      },
+      "use_bedrock" : "True"
+    }
     invoke_response = lambda_client.invoke(FunctionName="Detect_Intention",
                                            InvocationType='RequestResponse',
                                            Payload=json.dumps(msg))
@@ -25,18 +31,23 @@ def lambda_handler(event, context):
 ```json
 #1
 {
-  "history": ["有戴森的吹风机吗？","没有哦亲亲", "戴森都没有", "不好意思，看看其他品牌呢"],
-  "query": "那有松下的吗？",
+  "params": {
+    "history": ["有戴森的吹风机吗？","没有哦亲亲", "戴森都没有", "不好意思，看看其他品牌呢"],
+    "query": "那有松下的吗？"  
+  },
   "use_bedrock" : "True"
 }
 
 #2
 {
-  "history": ["你喜欢周杰伦吗", "我喜欢周杰伦"],
-  "query": "你喜欢他哪首歌",
-  "use_bedrock" : "True"
+  "params": {
+    "history": ["你喜欢周杰伦吗", "我喜欢周杰伦"],
+    "query": "你喜欢他哪首歌",
+  },
+  "use_bedrock" : "True",
+  "role_a" : "user",
+  "role_b" : "bot"
 }
-
 ```
 
 
