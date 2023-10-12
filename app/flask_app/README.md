@@ -110,10 +110,13 @@ aws ec2 run-instances --image-id $ami-id --count 2
 ### 2. 登入EC2，初始化conda环境&上传文件
 
 ```
+# 本地上传文件到EC2
+scp -i ec2_key.pem -r ./flask_app ubuntu@ec2_ip:/home/ubuntu/
+
+# 登入EC2，并初始化conda环境
 conda init
 source ~/.bashrc
 
-scp -i ec2_key.pem -r ./flask_app ubuntu@ec2_ip:/home/ubuntu/
 ```
 
 ### 3. 一键下载模型并启动Flask App
