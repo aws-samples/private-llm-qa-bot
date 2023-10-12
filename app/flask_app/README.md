@@ -59,8 +59,7 @@ flask_app
 
 ## 部署步骤:
 
-### 
-1. Start EC2 instances and Configure EC2
+### 1. Start EC2 instances and Configure EC2
 
 #### 方式1: 通过控制台创建EC2 （推荐）
 
@@ -73,6 +72,7 @@ flask_app
 * 在 "Network Settings" 中，选择计划使用的VPC与安全组。
 * 在 "Configure Storage" 中，选择对应容量的存储。
 * [Optional]如果客户需要用nginx进行其他配置，可以在 "Advanced Details" 中，在User Data部分完成。
+```
     `#!/bin/bash
     apt update -y
     apt install nginx -y
@@ -91,7 +91,7 @@ flask_app
     systemctl enable nginx
     systemctl start nginx
     echo 'initialization completed' >> /home/ubuntu/userdata.log
-    `
+```
 * 选择 "Launch Instance"。
 
 #### 方式2: 通过脚本创建EC2
@@ -127,12 +127,6 @@ scp -i ec2_key.pem -r ./flask_app ubuntu@ec2_ip:/home/ubuntu/
 bash start_app.sh -t hf_Chqy******************** -m LLM
 
 ```
-
-
-
-
-
-
 
 
 ### 
