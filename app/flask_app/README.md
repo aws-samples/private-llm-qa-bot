@@ -65,11 +65,11 @@ flask_app
 
 * 打开 Amazon EC2 控制台。
 * 选择 "Launch Instance（启动实例）"。
-* 命名实例，例如"LLMInferenceEC2"
+* 命名实例，例如"LLMInferenceEC2"。
 * 在 "Amazon Machine Image (AMI)" 中，选择 Deep Learning AMI GPU PyTorch 2.0.1 (Ubuntu 20.04) 20231003。
 * 在 "Instance Type" 中，选择 g4dn.4xlarge。
-* 在 "Key pair (login)" 中，选择计划使用的密钥对
-* 在 "Network Settings" 中，选择计划使用的VPC与安全组。
+* 在 "Key pair (login)" 中，选择计划使用的密钥对。
+* 在 "Network Settings" 中，选择计划使用的VPC与安全组。注意在这一步，需要确保安全组中开放了对应的端口。
 * 在 "Configure Storage" 中，选择对应容量的存储。
 * [Optional]如果客户需要用nginx进行其他配置，可以在 "Advanced Details" 中，在User Data部分完成。
 ```

@@ -11,8 +11,6 @@ import os
 import sys
 import json
 
-from infer.instruct_model import InternLM
-
 def getLogger(name, file_name, use_formatter=True):
     logger = logging.getLogger(name)
     logger.setLevel(logging.INFO)
@@ -42,11 +40,9 @@ def format_sse(data: str, event=None) -> str:
     return msg
 
 
-def start_server(quantize_level, http_address: str, port: int, gpu_id: str):
+def start_server(bot, http_address: str, port: int, gpu_id: str):
     os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'
     os.environ['CUDA_VISIBLE_DEVICES'] = gpu_id
-
-    bot = InternLM(gpu_id=gpu_id)
     
     app = Flask(__name__)
     cors = CORS(app, supports_credentials=True)
@@ -110,12 +106,6 @@ def start_server(quantize_level, http_address: str, port: int, gpu_id: str):
         except Exception as e:
             return Response(json.dumps({"success": False}, ensure_ascii=False), content_type="application/json")
 
-    @app.route("/score", methods=["GET"])
-    def score_answer():
-        score = request.get("score")
-        logger.info("score: {}".format(score))
-        return {'success': True}
-
     logger.info("starting server...")
     server = pywsgi.WSGIServer((http_address, port), app)
     server.serve_forever()
@@ -123,9 +113,17 @@ def start_server(quantize_level, http_address: str, port: int, gpu_id: str):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Stream API Service for InternLM')
-    parser.add_argument('--device', '-d', help='device，-1 means cpu, other means gpu ids', default='0')
-    parser.add_argument('--quantize', '-q', help='level of quantize, option：16, 8 or 4', default=16)
+    parser.add_argument('--device', '-d', help='device, -1 means cpu, other means gpu ids', default='0')
+    parser.add_argument('--model', '-m', help='type of model, option: InternLM, Qwen', default=16)
     parser.add_argument('--host', '-H', help='host to listen', default='0.0.0.0')
     parser.add_argument('--port', '-P', help='port of this service', default=8800)
     args = parser.parse_args()
-    start_server(args.quantize, args.host, int(args.port), args.device)
+
+    if args.model == 'InternLM':
+        from infer.instruct_model import InternLM
+        bot = InternLM(gpu_id=args.device)
+    elif args.model == 'Qwen':
+        from infer.instruct_model_qwen14b import Qwen14BInt4
+        bot = Qwen14BInt4(gpu_id=args.device)
+
+    start_server(bot, args.host, int(args.port), args.device)

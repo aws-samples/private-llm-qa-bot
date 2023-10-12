@@ -91,12 +91,6 @@ def start_server(http_address: str, port: int, gpu_id: str):
         except Exception as e:
             return Response(json.dumps({"success": False}, ensure_ascii=False), content_type="application/json")
 
-    @app.route("/score", methods=["GET"])
-    def score_answer():
-        score = request.get("score")
-        logger.info("score: {}".format(score))
-        return {'success': True}
-
     logger.info("starting server...")
     server = pywsgi.WSGIServer((http_address, port), app)
     server.serve_forever()

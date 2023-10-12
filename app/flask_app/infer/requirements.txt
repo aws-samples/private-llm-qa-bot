@@ -1,7 +1,11 @@
 flask==3.0.0
 transformers==4.33.1
-accelerate==0.20.3
+accelerate==0.21.0
 sentence-transformers==2.2.2
 transformers_stream_generator==0.0.4
 Flask-Cors==4.0.0
 gevent==23.9.1
+tiktoken==0.5.1
+einop==0.0.1
+auto-gptq==0.4.2
+optimum==1.13.2
