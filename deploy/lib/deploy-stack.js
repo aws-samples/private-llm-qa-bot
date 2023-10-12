@@ -211,6 +211,41 @@ export class DeployStack extends Stack {
         effect: iam.Effect.ALLOW,
         resources: ['*'],
         }))
+
+    const lambda_query_rewrite = new DockerImageFunction(this,
+      "lambda_query_rewrite", {
+      code: DockerImageCode.fromImageAsset(join(__dirname, "../../../code/query_rewriter")),
+      timeout: Duration.minutes(15),
+      memorySize: 1024,
+      runtime: 'python3.9',
+      functionName: 'Query_Rewrite',
+      vpc:vpc,
+      vpcSubnets:subnets,
+      securityGroups:securityGroups,
+      architecture: Architecture.X86_64,
+      environment: {
+        llm_model_endpoint:process.env.llm_chatglm_endpoint,
+        region:region
+      },
+    });
+
+    // Grant the Lambda function can invoke sagemaker
+    lambda_query_rewrite.addToRolePolicy(new iam.PolicyStatement({
+      // principals: [new iam.AnyPrincipal()],
+        actions: [ 
+          "sagemaker:InvokeEndpointAsync",
+          "sagemaker:InvokeEndpoint",
+          "s3:List*",
+          "s3:Put*",
+          "s3:Get*",
+          "es:*",
+          "dynamodb:*",
+          "secretsmanager:GetSecretValue",
+          "bedrock:*"
+          ],
+        effect: iam.Effect.ALLOW,
+        resources: ['*'],
+        }))
       
     chat_session_table.grantReadWriteData(lambda_main_brain);
     doc_index_table.grantReadWriteData(lambda_main_brain);
