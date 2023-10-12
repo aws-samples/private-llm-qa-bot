@@ -60,11 +60,10 @@ def create_rewrite_prompt_templete():
     
 @handle_error
 def lambda_handler(event, context):
-    embedding_endpoint = os.environ.get('embedding_endpoint')
     region = os.environ.get('region')
     llm_model_endpoint = os.environ.get('llm_model_endpoint')
     llm_model_name = event.get('llm_model_name', None)
-    param = event.get('params')
+    params = event.get('params')
     use_bedrock = event.get('use_bedrock')
     role_a = event.get('role_a', 'user')
     role_b = event.get('role_a', 'bot')
@@ -74,7 +73,7 @@ def lambda_handler(event, context):
     logger.info("llm_model_name:{}".format(llm_model_name))
     logger.info("llm_model_endpoint:{}".format(llm_model_endpoint))
 
-    param_dict = json.loads(param)
+    param_dict = json.loads(params)
     query = param_dict["query"]
     history = param_dict["history"]
 
