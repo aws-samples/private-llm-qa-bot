@@ -1,6 +1,7 @@
 import json
 import os
 import logging
+from collections import Counter
 
 from langchain.embeddings import SagemakerEndpointEmbeddings
 from langchain.embeddings.sagemaker_endpoint import EmbeddingsContentHandler
@@ -68,7 +69,7 @@ class llmContentHandler(LLMContentHandler):
         return response_json["outputs"]
 
 def create_intention_prompt_templete():
-    prompt_template = """{instruction}\n\n{fewshot}\n\n"Q: \"{query}\"，这个问题的提问意图是啥？可选项[{options}]\nA: """
+    prompt_template = """{instruction}\n\n{fewshot}\n\nHuman: \"{query}\"，这个问题的提问意图是啥？可选项[{options}]\nAssistant: """
 
     PROMPT = PromptTemplate(
         template=prompt_template, 
@@ -108,6 +109,7 @@ def lambda_handler(event, context):
     fewshot_cnt = event.get('fewshot_cnt')
     use_bedrock = event.get('use_bedrock')
     llm_model_endpoint = os.environ.get('llm_model_endpoint')
+    llm_model_name = event.get('llm_model_name', None)
     
     logger.info("embedding_endpoint: {}".format(embedding_endpoint))
     logger.info("region:{}".format(region))
@@ -147,12 +149,14 @@ def lambda_handler(event, context):
 
     docs_simple = [ {"query" : doc[0].page_content, "intention" : doc[0].metadata['intention'], "score":doc[1]} for doc in docs]
 
-    options = set([doc['intention'] for doc in docs_simple ])
+    intention_list = [doc['intention'] for doc in docs_simple ]
+    intention_counter = Counter(intention_list)
+    options = set(intention_list)
     options_str = ", ".join(options)
 
-    instruction = "回答下列选择题："
-    examples = [ "Q: \"{}\"，这个问题的提问意图是啥？可选项[{}]\nA: {}".format(doc['query'], options_str, doc['intention']) for doc in docs_simple ]
-    fewshot_str = "\n\n".join(examples)
+    instruction = "参考下列Example，回答下列选择题："
+    examples = [ "Human: \"{}\"，这个问题的提问意图是啥？可选项[{}]\nAssistant: {}".format(doc['query'], options_str, doc['intention']) for doc in docs_simple ]
+    fewshot_str = "{}\n{}\n{}".format("<example>", "\n\n".join(examples), "</example>")
     
     parameters = {
         "temperature": 0.01,
@@ -168,14 +172,9 @@ def lambda_handler(event, context):
                 content_handler=llmcontent_handler
             )
     else:
-        ACCESS_KEY, SECRET_KEY=get_bedrock_aksk()
-    
         boto3_bedrock = boto3.client(
-            service_name="bedrock",
-            region_name="us-east-1",
-            endpoint_url="https://bedrock.us-east-1.amazonaws.com",
-            aws_access_key_id=ACCESS_KEY,
-            aws_secret_access_key=SECRET_KEY
+            service_name="bedrock-runtime",
+            region_name=region
         )
     
         parameters = {
@@ -185,7 +184,8 @@ def lambda_handler(event, context):
             "top_p":1
         }
         
-        llm = Bedrock(model_id="anthropic.claude-v1", client=boto3_bedrock, model_kwargs=parameters)
+        model_id ="anthropic.claude-instant-v1" if llm_model_name == 'claude-instant' else "anthropic.claude-v2"
+        llm = Bedrock(model_id=model_id, client=boto3_bedrock, model_kwargs=parameters)
 
     prompt_template = create_intention_prompt_templete()
     prompt = prompt_template.format(fewshot=fewshot_str, instruction=instruction, query=query, options=options_str)
@@ -207,6 +207,10 @@ def lambda_handler(event, context):
     logger.info(log_dict_str)
 
     if answer not in options:
-        answer = 'unknown'
-    
+        answer = intention_counter.most_common(1)[0]
+        for opt in options:
+            if opt in answer:
+                answer = opt
+                break
+        
     return answer
