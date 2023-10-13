@@ -37,7 +37,8 @@ import io
 import math
 from enum import Enum
 
-
+lambda_client= boto3.client('lambda')
+dynamodb_client = boto3.resource('dynamodb')
 credentials = boto3.Session().get_credentials()
 region = boto3.Session().region_name
 awsauth = AWS4Auth(credentials.access_key, credentials.secret_key, region, 'es', session_token=credentials.token)
@@ -672,8 +673,8 @@ def aos_search(client, index_name, field, query_term, exactly_match=False, size=
     return result_arr
 
 def delete_session(session_id):
-    dynamodb = boto3.resource('dynamodb')
-    table = dynamodb.Table(chat_session_table)
+    # dynamodb = boto3.resource('dynamodb')
+    table = dynamodb_client.Table(chat_session_table)
     try:
         table.delete_item(
         Key={
@@ -686,10 +687,10 @@ def delete_session(session_id):
 def get_session(session_id):
 
     table_name = chat_session_table
-    dynamodb = boto3.resource('dynamodb')
+    # dynamodb = boto3.resource('dynamodb')
 
     # table name
-    table = dynamodb.Table(table_name)
+    table = dynamodb_client.Table(table_name)
     operation_result = ""
     try:
         response = table.get_item(Key={'session-id': session_id})
@@ -712,13 +713,13 @@ def get_session(session_id):
 #           answer
 # return:   success
 #           failed
-def update_session(session_id, question, answer, intention):
+def update_session(session_id,msgid, question, answer, intention):
 
     table_name = chat_session_table
-    dynamodb = boto3.resource('dynamodb')
+    # dynamodb = boto3.resource('dynamodb')
 
     # table name
-    table = dynamodb.Table(table_name)
+    table = dynamodb_client.Table(table_name)
     operation_result = ""
 
     response = table.get_item(Key={'session-id': session_id})
@@ -730,8 +731,8 @@ def update_session(session_id, question, answer, intention):
         # print("****** No result")
         chat_history = []
 
-    chat_history.append([question, answer, intention])
-    content = json.dumps(chat_history)
+    chat_history.append([question, answer, intention,msgid])
+    content = json.dumps(chat_history,ensure_ascii=False)
 
     # inserting values into table
     response = table.put_item(
@@ -1159,7 +1160,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
 
     start = time.time()
     if session_id != 'OnlyForDEBUG':
-        update_session(session_id=session_id, question=query_input, answer=answer, intention=str(query_type))
+        update_session(session_id=session_id, question=query_input, answer=answer, intention=str(query_type),msgid=msgid)
     elpase_time = time.time() - start
     elpase_time1 = time.time() - start1
     logger.info(f'runing time of update_session : {elpase_time}s seconds')
@@ -1294,6 +1295,31 @@ def generate_s3_image_url(bucket_name, key, expiration=3600):
     )
     return url
 
+def handle_feedback(event):
+    body = event.get('body')
+    ## actions types: thumbs-up,thumbs-down,cancel-thumbs-up,cancel-thumbs-down
+    json_obj = {
+            "opensearch_doc":  [], #for kiness firehose log subscription filter name
+            "log_type":'feedback',
+            "msgid":body.get('msgid'),
+            "timestamp":time.time(),
+            "username":body.get('username'),
+            "session_id":body.get('session_id'),
+            "action":body.get('action'),
+            "feedback":body.get('feedback') 
+        }
+    json_obj_str = json.dumps(json_obj, ensure_ascii=False)
+    logger.info(json_obj_str)
+
+    ##invoke feedback lambda to store in ddb
+    fn = os.environ.get('lambda_feedback')
+    if fn:
+        response = lambda_client.invoke(
+                FunctionName = fn,
+                InvocationType='Event',
+                Payload=json.dumps(json_obj)
+            )
+        logger.info(f"invoke lambda feedback StatusCode:{response['StatusCode']}")
 
 
 @handle_error
@@ -1346,20 +1372,9 @@ def lambda_handler(event, context):
         result = delete_template(key)
         return {'statusCode': 200 if result else 500,'body':result }
 
-    ## 如果是回传thumbs down or thumbs up feeback
-    ## thumbs-up,thumbs-down,cancel-thumbs-up,cancel-thumbs-down
+    ## 处理feedback action
     if method == 'post' and resource == 'feedback':
-        body = event.get('body')
-        json_obj = {
-            "opensearch_doc":  [], #for kiness firehose log subscription filter name
-            "log_type":'feedback',
-            "msgid":body.get('msgid'),
-            "timestamp":time.time(),
-            "session_id":body.get('session_id'),
-            "action":body.get('action')  
-        }
-        json_obj_str = json.dumps(json_obj, ensure_ascii=False)
-        logger.info(json_obj_str)
+        handle_feedback(event)
         return {'statusCode': 200}
 
 
@@ -1424,7 +1439,7 @@ def lambda_handler(event, context):
     elif model_name == 'other':
         llm_endpoint = os.environ.get('llm_other_endpoint')
     elif model_name == 'baichuan':
-        llm_endpoint = os.environ.get('llm_baichuan_stream_endpoint')
+        llm_endpoint = os.environ.get('llm_baichuan_endpoint')
     elif model_name == 'baichuan-stream':
         llm_endpoint = os.environ.get('llm_baichuan_stream_endpoint')
     else:
