@@ -127,6 +127,37 @@ export class DeployStack extends Stack {
       removalPolicy: RemovalPolicy.DESTROY, // NOT recommended for production code
     });
 
+    const user_feedback_table = new Table(this, "user_feedback_table", {
+      partitionKey: {
+        name: "session-id",
+        type: AttributeType.STRING,
+      },
+      sortKey: {
+        name: "msgid",
+        type: AttributeType.STRING,
+      },
+      tableName:"user_feedback_table",
+      removalPolicy: RemovalPolicy.DESTROY, // NOT recommended for production code
+    });
+
+    const fn_feedback = new lambda.Function(this,'lambda_feedback',{
+      environment: {
+        user_feedback_table:"user_feedback_table",
+        chat_session_table:chat_session_table.tableName,
+      },
+      functionName: 'lambda_feedback',
+      runtime: lambda.Runtime.PYTHON_3_9,
+      timeout: Duration.minutes(1),
+      memorySize: 256,
+      handler: 'app.lambda_handler',
+      code: lambda.Code.fromAsset(path.join(__dirname,'../../code/lambda_feedback')),
+      vpc:vpc,
+      vpcSubnets:subnets,
+    });
+    user_feedback_table.grantReadWriteData(fn_feedback);
+    chat_session_table.grantReadWriteData(fn_feedback);
+
+
     const lambda_main_brain = new DockerImageFunction(this,
       "lambda_main_brain", {
       code: DockerImageCode.fromImageAsset(join(__dirname, "../lambda/main_brain")),
@@ -153,14 +184,15 @@ export class DeployStack extends Stack {
         llm_other_stream_endpoint:process.env.llm_other_stream_endpoint,
         chat_session_table:chat_session_table.tableName,
         prompt_template_table:prompt_template_table.tableName,
-        bm25_qd_threshold_hard:7,
-        bm25_qd_threshold_soft:10,
-        knn_qq_threshold_hard:0.6,
-        knn_qq_threshold_soft:0.8,
-        knn_qd_threshold_hard:0.6,
-        knn_qd_threshold_soft:0.8,
-        neighbors:1,
-        TOP_K:3
+        bm25_qd_threshold_hard:process.env.bm25_qd_threshold_hard,
+        bm25_qd_threshold_soft:process.env.bm25_qd_threshold_soft,
+        knn_qq_threshold_hard:process.env.knn_qq_threshold_hard,
+        knn_qq_threshold_soft:process.env.knn_qq_threshold_soft,
+        knn_qd_threshold_hard:process.env.knn_qd_threshold_hard,
+        knn_qd_threshold_soft:process.env.knn_qd_threshold_soft,
+        neighbors:process.env.neighbors,
+        TOP_K:process.env.TOP_K,
+        lambda_feedback:"lambda_feedback"
       },
     });
 
@@ -174,6 +206,7 @@ export class DeployStack extends Stack {
           "s3:Put*",
           "s3:Get*",
           "es:*",
+          "bedrock:*",
           "dynamodb:*",
           "secretsmanager:GetSecretValue",
           ],
@@ -207,6 +240,7 @@ export class DeployStack extends Stack {
         actions: [ 
           "sagemaker:InvokeEndpointAsync",
           "sagemaker:InvokeEndpoint",
+          "lambda:InvokeFunction",
           "s3:List*",
           "s3:Put*",
           "s3:Get*",
@@ -231,7 +265,11 @@ export class DeployStack extends Stack {
         resources: [process.env.wss_resourceArn  ]
       })
     );
-    
+
+    //grant permission to invoke feedback lambda
+    fn_feedback.grantInvoke(lambda_main_brain);
+
+
     //glue job
     const gluestack = new GlueStack(this,'glue-stack',{opensearch_endpoint,region,vpc,subnets,securityGroups});
     new CfnOutput(this, `Glue Job name`,{value:`${gluestack.jobName}`});

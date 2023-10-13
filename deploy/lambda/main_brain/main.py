@@ -8,7 +8,7 @@ from botocore.exceptions import ClientError
 from datetime import datetime, timedelta
 import boto3
 import time
-import requests
+import hashlib
 import uuid
 # from transformers import AutoTokenizer
 from enum import Enum
@@ -18,13 +18,15 @@ from langchain.chains.question_answering import load_qa_chain
 from langchain.chat_models import ChatOpenAI
 from langchain.embeddings import SagemakerEndpointEmbeddings
 from langchain.embeddings.sagemaker_endpoint import EmbeddingsContentHandler
-from langchain.llms.sagemaker_endpoint import LLMContentHandler
-from langchain import PromptTemplate, SagemakerEndpoint
+from langchain.llms.sagemaker_endpoint import LLMContentHandler,SagemakerEndpoint
+from langchain.prompts import PromptTemplate
 from langchain.chains import LLMChain,ConversationalRetrievalChain,ConversationChain
 from langchain.schema import BaseRetriever
 from langchain.schema import Document
 from langchain.llms.bedrock import Bedrock
-from pydantic import BaseModel,Extra,root_validator
+from pydantic import BaseModel
+from langchain.pydantic_v1 import Extra, root_validator
+
 import openai
 from langchain.callbacks.base import BaseCallbackHandler
 from langchain.callbacks.manager import CallbackManagerForLLMRun
@@ -33,8 +35,10 @@ from langchain.schema import LLMResult
 from langchain.llms.base import LLM
 import io
 import math
+from enum import Enum
 
 
+dynamodb_client = boto3.resource('dynamodb')
 credentials = boto3.Session().get_credentials()
 region = boto3.Session().region_name
 awsauth = AWS4Auth(credentials.access_key, credentials.secret_key, region, 'es', session_token=credentials.token)
@@ -48,15 +52,25 @@ chat_session_table = os.environ.get('chat_session_table')
 QA_SEP = "=>"
 A_Role="用户"
 B_Role="AWSBot"
+A_Role_en="user"
 SYSTEM_ROLE_PROMPT = '你是云服务AWS的智能客服机器人AWSBot'
 Fewshot_prefix_Q="问题"
 Fewshot_prefix_A="回答"
 RESET = '/rs'
 openai_api_key = None
-STOP=[f"\n{A_Role}", f"\n{B_Role}", f"\n{Fewshot_prefix_Q}"]
-KNN_THRESHOLD = float(os.environ.get('knn_threshold',0.2))
-INVERTED_HRESHOLD =float(os.environ.get('inverted_theshold',1.0))
-NEIGHBORS = int(os.environ.get('neighbors',1))
+STOP=[f"\n{A_Role_en}", f"\n{A_Role}", f"\n{Fewshot_prefix_Q}"]
+CHANNEL_RET_CNT = 10
+
+BM25_QD_THRESHOLD_HARD_REFUSE = float(os.environ.get('bm25_qd_threshold_hard',15.0))
+BM25_QD_THRESHOLD_SOFT_REFUSE = float(os.environ.get('bm25_qd_threshold_soft',20.0))
+KNN_QQ_THRESHOLD_HARD_REFUSE = float(os.environ.get('knn_qq_threshold_hard',0.6))
+KNN_QQ_THRESHOLD_SOFT_REFUSE = float(os.environ.get('knn_qq_threshold_soft',0.8))
+KNN_QD_THRESHOLD_HARD_REFUSE = float(os.environ.get('knn_qd_threshold_hard',0.6))
+KNN_QD_THRESHOLD_SOFT_REFUSE = float(os.environ.get('knn_qd_threshold_soft',0.8))
+
+TOP_K = int(os.environ.get('TOP_K',4))
+NEIGHBORS = int(os.environ.get('neighbors',0))
+
 
 class StreamScanner:    
     def __init__(self):
@@ -79,13 +93,15 @@ class StreamScanner:
 
 class CustomStreamingOutCallbackHandler(BaseCallbackHandler):
     """Callback handler for streaming. Only works with LLMs that support streaming."""
-    def __init__(self,wsclient:str,msgid:str,connectionId:str ,model_name:str, **kwargs: Any) -> None:
+    def __init__(self,wsclient:str,msgid:str,connectionId:str ,model_name:str,hide_ref:bool,use_stream:bool, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.wsclient = wsclient
         self.connectionId = connectionId
         self.msgid = msgid
-        self.model_name= model_name,
-        self.recall_knowledge = None
+        self.model_name= model_name
+        self.recall_knowledge = []
+        self.hide_ref = hide_ref
+        self.use_stream = use_stream
 
     def add_recall_knowledge(self,recall_knowledge):
 
@@ -95,7 +111,8 @@ class CustomStreamingOutCallbackHandler(BaseCallbackHandler):
         try:
             self.wsclient.post_to_connection(Data = data.encode('utf-8'),  ConnectionId=self.connectionId)
         except Exception as e:
-            print (f'post {json.dumps(data)} to_wsconnection error:{str(e)}')
+            pass
+            # print (f'post {json.dumps(data)} to_wsconnection error:{str(e)}')
 
     def message_format(self,messages):
         """Format messages as ChatGPT who only accepts roles of ['system', 'assistant', 'user']"""
@@ -113,23 +130,22 @@ class CustomStreamingOutCallbackHandler(BaseCallbackHandler):
 
     def on_llm_new_token(self, token: str, **kwargs: Any) -> None:
         """Run on new LLM token. Only available when streaming is enabled."""
-        data = json.dumps({ 'msgid':self.msgid, 'role': "AI", 'text': {'content':token} })
+        data = json.dumps({ 'msgid':self.msgid, 'role': "AI", 'text': {'content':token},'connectionId':self.connectionId})
         self.postMessage(data)
 
     def on_llm_end(self, response: LLMResult, **kwargs: Any) -> None:
         """Run when LLM ends running."""
-        data = json.dumps({ 'msgid':self.msgid, 'role': "AI", 'text': {'content':f"[{self.model_name}]" } })
-        self.postMessage(data)
-        if self.recall_knowledge:
+        if (not self.hide_ref) and self.use_stream:
             text = format_reference(self.recall_knowledge)
-            data = json.dumps({ 'msgid':self.msgid, 'role': "AI", 'text': {'content':f'{text}```'} })
+            data = json.dumps({ 'msgid':self.msgid, 'role': "AI", 'text': {'content':f'{text}'},'connectionId':self.connectionId })
             self.postMessage(data)
+
         
 
     def on_chain_error(
         self, error: Union[Exception, KeyboardInterrupt], **kwargs: Any
     ) -> None:
-        data = json.dumps({ 'msgid':self.msgid, 'role': "AI", 'text': {'content':str(error[0])+'[DONE]'} })
+        data = json.dumps({ 'msgid':self.msgid, 'role': "AI", 'text': {'content':str(error[0])+'[DONE]'},'connectionId':self.connectionId})
         self.postMessage(data)
 
 class SagemakerStreamContentHandler(LLMContentHandler):
@@ -265,7 +281,7 @@ class llmContentHandler(LLMContentHandler):
         response_json = json.loads(output.read().decode("utf-8"))
         return response_json["outputs"]
 
-class CustomDocRetriever(BaseRetriever,BaseModel):
+class CustomDocRetriever(BaseRetriever):
     embedding_model_endpoint :str
     aos_endpoint: str
     aos_index: str
@@ -296,11 +312,12 @@ class CustomDocRetriever(BaseRetriever,BaseModel):
     def add_neighbours_doc(self,client,opensearch_respose):
         docs = []
         for item in opensearch_respose:
-            if item['doc_type'] == 'Paragraph' and item['doc_title'].endswith('wiki'):
+            ## only apply to wiki and blog.json file
+            if item['doc_type'] == 'Paragraph' and ( item['doc_title'].endswith('wiki') or item['doc_title'].endswith('.blog.json')):
                 doc = self.search_paragraph_neighbours(client,item['idx'],item['doc_title'],item['doc_category'])
                 docs.append({ "doc": doc, "score": item['score'], "doc_title": item['doc_title'],"doc_type": item['doc_type'],'doc_category':item['doc_category']} )
             else:
-                docs.append({ "doc": item['doc'], "score": item['score'], "doc_title": item['doc_title'],"doc_type": item['doc_type'] } )
+                docs.append({ "doc": item['doc'], "score": item['score'], "doc_title": item['doc_title'],"doc_type": item['doc_type'],'doc_category':item['doc_category'] } )
         
         return docs
 
@@ -311,7 +328,7 @@ class CustomDocRetriever(BaseRetriever,BaseModel):
                 "must": [
                     {
                     "terms": {
-                        "idx": [idx-NEIGHBORS,idx,idx+NEIGHBORS]
+                        "idx": [i for i in range(idx-NEIGHBORS,idx+NEIGHBORS+1)]
                     }
                     },
                     {
@@ -337,7 +354,7 @@ class CustomDocRetriever(BaseRetriever,BaseModel):
             body=query,
             index=self.aos_index
         )
-        doc = '\n'.join([item['_source']['doc'] for item in query_response["hits"]["hits"]])
+        doc = '\n'.join([item['_source']['content'] for item in query_response["hits"]["hits"]])
         return doc
 
     
@@ -351,13 +368,13 @@ class CustomDocRetriever(BaseRetriever,BaseModel):
                 verify_certs=True,
                 connection_class=RequestsHttpConnection
             )
-        opensearch_knn_respose = search_using_aos_knn(aos_client,query_embedding[0], self.aos_index)
+        opensearch_knn_respose = search_using_aos_knn(aos_client,query_embedding[0], self.aos_index,size=CHANNEL_RET_CNT)
         elpase_time = time.time() - start
         logger.info(f'runing time of opensearch_knn : {elpase_time}s seconds')
         
         # 4. get AOS invertedIndex recall
         start = time.time()
-        opensearch_query_response = aos_search(aos_client, self.aos_index, "doc", query_input)
+        opensearch_query_response = aos_search(aos_client, self.aos_index, "doc", query_input,size=CHANNEL_RET_CNT)
         # logger.info(opensearch_query_response)
         elpase_time = time.time() - start
         logger.info(f'runing time of opensearch_query : {elpase_time}s seconds')
@@ -367,55 +384,57 @@ class CustomDocRetriever(BaseRetriever,BaseModel):
             '''
             filter knn_result if the result don't appear in filter_inverted_result
             '''
-            def get_topk_items(opensearch_knn_respose, opensearch_query_response, doc_type, topk=1):
+            def get_topk_items(opensearch_knn_respose, opensearch_query_response, topk=1):
 
                 opensearch_knn_nodup = []
                 unique_ids = set()
                 for item in opensearch_knn_respose:
-                    if item['id'] not in unique_ids:
-                        opensearch_knn_nodup.append((item['doc'], item['score'],item['idx'], item['doc_title'], item['id'],item['doc_category']))
-                        unique_ids.add(item['id'])
+                    doc_hash = hashlib.md5(str(item['doc']).encode('utf-8')).hexdigest()
+                    if doc_hash not in unique_ids:
+                        opensearch_knn_nodup.append((item['doc'], item['score'],item['idx'], item['doc_title'], item['id'],item['doc_category'],item['doc_type']))
+                        unique_ids.add(doc_hash)
                 
                 opensearch_bm25_nodup = []
-                unique_ids = set()
                 for item in opensearch_query_response:
-                    if item['id'] not in unique_ids:
-                        opensearch_bm25_nodup.append((item['doc'], item['score'], item['idx'], item['doc_title'],item['id'],item['doc_category']))
-                        unique_ids.add(item['id'])
+                    doc_hash = hashlib.md5(str(item['doc']).encode('utf-8')).hexdigest()
+                    if doc_hash not in unique_ids:
+                        opensearch_bm25_nodup.append((item['doc'], item['score'], item['idx'], item['doc_title'],item['id'],item['doc_category'],item['doc_type']))
+                        doc_hash = hashlib.md5(str(item['doc']).encode('utf-8')).hexdigest()
+                        unique_ids.add(doc_hash)
 
                 opensearch_knn_nodup.sort(key=lambda x: x[1])
                 opensearch_bm25_nodup.sort(key=lambda x: x[1])
                 
                 half_topk = math.ceil(topk/2) 
     
-                kg_combine_result = [ { "doc": item[0], "score": item[1],"idx":item[2],"doc_title":item[3], "doc_type": doc_type,"doc_category":item[5] } for item in opensearch_knn_nodup[-1*half_topk:]]
+                kg_combine_result = [ { "doc": item[0], "score": item[1],"idx":item[2],"doc_title":item[3], "doc_category":item[5],"doc_type": item[6]  } for item in opensearch_knn_nodup[-1*half_topk:]]
                 knn_kept_doc = [ item[4] for item in opensearch_knn_nodup[-1*half_topk:] ]
 
-                count = len(kg_combine_result)
+                bm25_count = 0
                 for item in opensearch_bm25_nodup[::-1]:
                     if item[4] not in knn_kept_doc:
-                        kg_combine_result.append({ "doc": item[0], "score": item[1],"idx":item[2],"doc_title":item[3], "doc_type": doc_type ,"doc_category":item[5]})
-                        count += 1
-                    if count == topk:
+                        kg_combine_result.append({ "doc": item[0], "score": item[1],"idx":item[2],"doc_title":item[3],"doc_category":item[5],"doc_type": item[6] })
+                        bm25_count += 1
+                    if bm25_count+len(knn_kept_doc) >= topk:
+                        break
+                ##继续填补不足的召回
+                step_knn = 0
+                step_bm25 = 0
+                while topk - len(kg_combine_result)>0:
+                    if len(opensearch_knn_nodup) > half_topk and len(opensearch_knn_nodup[-1*half_topk-1-step_knn:-1*half_topk-step_knn]) > 0:
+                        kg_combine_result += [{ "doc": item[0], "score": item[1],"idx":item[2],"doc_title":item[3], "doc_category":item[5],"doc_type": item[6]  } for item in opensearch_knn_nodup[-1*half_topk-1-step_knn:-1*half_topk-step_knn]]
+                        kg_combine_result.sort(key=lambda x: x['score'])
+                        step_knn += 1
+                    elif len(opensearch_bm25_nodup) > half_topk and len(opensearch_bm25_nodup[-1*half_topk-1-step_bm25:-1*half_topk-step_bm25]) >0:
+                        kg_combine_result += [{ "doc": item[0], "score": item[1],"idx":item[2],"doc_title":item[3], "doc_category":item[5],"doc_type": item[6]  } for item in opensearch_bm25_nodup[-1*half_topk-1-step_bm25:-1*half_topk-step_bm25]]
+                        step_bm25 += 1
+                    else:
                         break
 
                 return kg_combine_result
-
-            knn_threshold = KNN_THRESHOLD
-            inverted_theshold = INVERTED_HRESHOLD
-            filter_knn_result = [ item for item in opensearch_knn_respose if item['doc_type'] in ['Paragraph','Sentence'] and item['score'] > knn_threshold ]
-            filter_inverted_result = [ item for item in opensearch_query_response if item['doc_type'] in ['Paragraph','Sentence'] and item['score'] > inverted_theshold ]
             
-            paragraph_content = get_topk_items(filter_knn_result, filter_inverted_result, "Paragraph", 2)
-
-            # knn_threshold = 0.2
-            # inverted_theshold = 1.0
-            filter_knn_result = [ item for item in opensearch_knn_respose if item['doc_type'] == 'Question' and item['score'] > knn_threshold ]
-            filter_inverted_result = [ item for item in opensearch_query_response if item['doc_type'] == 'Question' and item['score'] > inverted_theshold ]
-
-            qa_content = get_topk_items(filter_knn_result, filter_inverted_result, "Question", 4 - len(paragraph_content))
-
-            ret_content = paragraph_content + qa_content
+            ret_content = get_topk_items(opensearch_knn_respose, opensearch_query_response, TOP_K)
+            logger.info(f'get_topk_items:{len(ret_content)}')
             return ret_content
         
         recall_knowledge = combine_recalls(opensearch_knn_respose, opensearch_query_response)
@@ -424,13 +443,14 @@ class CustomDocRetriever(BaseRetriever,BaseModel):
         recall_knowledge = self.add_neighbours_doc(aos_client,recall_knowledge)
 
         return recall_knowledge,opensearch_knn_respose,opensearch_query_response
-    
-class ErrorCode:
-    DUPLICATED_INDEX_PREFIX = "DuplicatedIndexPrefix"
-    DUPLICATED_WITH_INACTIVE_INDEX_PREFIX = "DuplicatedWithInactiveIndexPrefix"
-    OVERLAP_INDEX_PREFIX = "OverlapIndexPrefix"
-    OVERLAP_WITH_INACTIVE_INDEX_PREFIX = "OverlapWithInactiveIndexPrefix"
-    INVALID_INDEX_MAPPING = "InvalidIndexMapping"
+
+
+class ReplyStratgy(Enum):
+    LLM_ONLY = 1
+    WITH_LLM = 2
+    HINT_LLM_REFUSE = 3
+    RETURN_OPTIONS = 4
+    SAY_DONT_KNOW = 5
 
 
 class APIException(Exception):
@@ -506,6 +526,12 @@ def query_kendra(Kendra_index_id="", lang="zh", search_query_text="what is s3?",
     # 输出结果列表
     return results[:Kendra_result_num]
 
+def is_chinese(string):
+    for char in string:
+        if '\u4e00' <= char <= '\u9fff':
+            return True
+
+    return False
 
 
 # AOS
@@ -516,6 +542,11 @@ def get_vector_by_sm_endpoint(questions, sm_client, endpoint_name):
     instruction_zh = "为这个句子生成表示以用于检索相关文章："
     instruction_en = "Represent this sentence for searching relevant passages:"
 
+    if isinstance(questions, str):
+        instruction = instruction_zh if is_chinese(questions) else instruction_en
+    else:
+        instruction = instruction_zh
+
     response_model = sm_client.invoke_endpoint(
         EndpointName=endpoint_name,
         Body=json.dumps(
@@ -523,7 +554,7 @@ def get_vector_by_sm_endpoint(questions, sm_client, endpoint_name):
                 "inputs": questions,
                 "parameters": parameters,
                 "is_query" : True,
-                "instruction" :  instruction_en
+                "instruction" :  instruction
             }
         ),
         ContentType="application/json",
@@ -552,7 +583,7 @@ def search_using_aos_knn(client, q_embedding, index, size=10):
         body=query,
         index=index
     )
-    opensearch_knn_respose = [{'idx':item['_source'].get('idx',1),'doc_category':item['_source']['doc_category'],'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc':"{}{}{}".format(item['_source']['doc'], QA_SEP, item['_source']['content']),"doc_type":item["_source"]["doc_type"],"score":item["_score"]}  for item in query_response["hits"]["hits"]]
+    opensearch_knn_respose = [{'idx':item['_source'].get('idx',1),'doc_category':item['_source']['doc_category'],'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc':item['_source']['content'],"doc_type":item["_source"]["doc_type"],"score":item["_score"]}  for item in query_response["hits"]["hits"]]
     return opensearch_knn_respose
     
 
@@ -600,7 +631,7 @@ def aos_search(client, index_name, field, query_term, exactly_match=False, size=
                                     },
                                     {
                                         "match": {
-                                            "doc": query_term
+                                            "content": query_term
                                         }
                                     }
                                 ]
@@ -638,13 +669,12 @@ def aos_search(client, index_name, field, query_term, exactly_match=False, size=
     if exactly_match:
         result_arr = [ {'idx':item['_source'].get('idx',0),'doc_category':item['_source']['doc_category'],'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc': item['_source']['content'], 'doc_type': item['_source']['doc_type'], 'score': item['_score']} for item in query_response["hits"]["hits"]]
     else:
-        result_arr = [ {'idx':item['_source'].get('idx',0),'doc_category':item['_source']['doc_category'],'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc':"{}{}{}".format(item['_source']['doc'], QA_SEP, item['_source']['content']), 'doc_type': item['_source']['doc_type'], 'score': item['_score']} for item in query_response["hits"]["hits"]]
-
+        result_arr = [ {'idx':item['_source'].get('idx',0),'doc_category':item['_source']['doc_category'],'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc':item['_source']['content'], 'doc_type': item['_source']['doc_type'], 'score': item['_score']} for item in query_response["hits"]["hits"]]
     return result_arr
 
 def delete_session(session_id):
-    dynamodb = boto3.resource('dynamodb')
-    table = dynamodb.Table(chat_session_table)
+    # dynamodb = boto3.resource('dynamodb')
+    table = dynamodb_client.Table(chat_session_table)
     try:
         table.delete_item(
         Key={
@@ -657,10 +687,10 @@ def delete_session(session_id):
 def get_session(session_id):
 
     table_name = chat_session_table
-    dynamodb = boto3.resource('dynamodb')
+    # dynamodb = boto3.resource('dynamodb')
 
     # table name
-    table = dynamodb.Table(table_name)
+    table = dynamodb_client.Table(table_name)
     operation_result = ""
     try:
         response = table.get_item(Key={'session-id': session_id})
@@ -683,13 +713,13 @@ def get_session(session_id):
 #           answer
 # return:   success
 #           failed
-def update_session(session_id, question, answer, intention):
+def update_session(session_id,msgid, question, answer, intention):
 
     table_name = chat_session_table
-    dynamodb = boto3.resource('dynamodb')
+    # dynamodb = boto3.resource('dynamodb')
 
     # table name
-    table = dynamodb.Table(table_name)
+    table = dynamodb_client.Table(table_name)
     operation_result = ""
 
     response = table.get_item(Key={'session-id': session_id})
@@ -701,8 +731,8 @@ def update_session(session_id, question, answer, intention):
         # print("****** No result")
         chat_history = []
 
-    chat_history.append([question, answer, intention])
-    content = json.dumps(chat_history)
+    chat_history.append([question, answer, intention,msgid])
+    content = json.dumps(chat_history,ensure_ascii=False)
 
     # inserting values into table
     response = table.put_item(
@@ -741,15 +771,16 @@ class QueryType(Enum):
 
 def qa_knowledge_fewshot_build(recalls):
     ret_context = []
-    for recall in recalls:
-        if recall['doc_type'] == 'Question':
-            q, a = recall['doc'].split(QA_SEP)
-            qa_example = "{}: {}\n{}: {}".format(Fewshot_prefix_Q, q, Fewshot_prefix_A, a)
-            ret_context.append(qa_example)
-        elif recall['doc_type'] == 'Paragraph':
-            ret_context.append(recall['doc'])
+    # for recall in recalls:
+    #     if recall['doc_type'] == 'Question':
+    #         q, a = recall['doc'].split(QA_SEP)
+    #         qa_example = "{}: {}\n{}: {}".format(Fewshot_prefix_Q, q, Fewshot_prefix_A, a)
+    #         ret_context.append(qa_example)
+    #     elif recall['doc_type'] == 'Paragraph':
+    #         ret_context.append(recall['doc'])
 
-    context_str = "\n\n".join(ret_context)
+    # context_str = "\n\n".join(ret_context)
+    context_str = "\n\n".join([ recall['doc'] for recall in recalls])
     return context_str
 
 
@@ -775,7 +806,7 @@ def create_baichuan_prompt_template(prompt_template):
     #template_1 = '以下context内的文本内容为背景知识：\n<context>\n{context}\n</context>\n请根据背景知识, 回答这个问题：{question}'
     #template_2 = '这是原始问题: {question}\n已有的回答: {existing_answer}\n\n现在context内的还有一些文本内容，（如果有需要）你可以根据它们完善现有的回答。\n<context>\n{context}\n</context>\n请根据新的文段，进一步完善你的回答。'
     if prompt_template == '':
-        prompt_template_zh = """{system_role_prompt} {role_bot}，以下context内的文本内容为背景知识：\n<context>\n{chat_history}{context}\n</context>\n请根据背景知识, 回答这个问题：{question}\n{role_bot}"""
+        prompt_template_zh = """{system_role_prompt} {role_bot}\n以下context内的文本内容为背景知识:\n<context>\n{chat_history}{context}\n</context>\n请根据背景知识, 回答这个问题,如果context内的文本内容为空，则回答不知道.\n{question}"""
     else:
         prompt_template_zh = prompt_template
     PROMPT = PromptTemplate(
@@ -785,9 +816,22 @@ def create_baichuan_prompt_template(prompt_template):
     )
     return PROMPT
 
+def create_soft_refuse_template(prompt_template):
+    if prompt_template == '':
+        prompt_template_zh = """{system_role_prompt} {role_bot}\n请根据反引号中的内容提取相关信息回答问题:\n```\n{chat_history}{context}\n```\n如果反引号中信息不相关,则回答不知道.\n用户:{question}"""
+    else:
+        prompt_template_zh = prompt_template
+    PROMPT = PromptTemplate(
+        template=prompt_template_zh,
+        partial_variables={'system_role_prompt':SYSTEM_ROLE_PROMPT},
+        input_variables=["context",'question','chat_history','role_bot']
+    )
+    return PROMPT
+
+
 def create_qa_prompt_templete(prompt_template):
     if prompt_template == '':
-        prompt_template_zh = """{system_role_prompt} {role_bot}，请严格根据反括号中的资料提取相关信息，回答用户的各种问题\n```\n{chat_history}{context}\n```\n\n用户: {question}\n{role_bot}: """
+        prompt_template_zh = """{system_role_prompt} {role_bot}\n请根据反引号中的内容提取相关信息回答问题:\n```\n{chat_history}{context}\n```\n如果反引号中的内容为空,则回答不知道.\n用户:{question}"""
     else:
         prompt_template_zh = prompt_template
     PROMPT = PromptTemplate(
@@ -799,7 +843,7 @@ def create_qa_prompt_templete(prompt_template):
 
 def create_chat_prompt_templete(prompt_template):
     if prompt_template == '':
-        prompt_template_zh = """{system_role_prompt} {role_bot}，能够回答用户的各种问题以及陪用户聊天,如:{chat_history}\n\n用户: {question}\n{role_bot}:"""
+        prompt_template_zh = """{system_role_prompt} {role_bot}\n {chat_history}\n\n用户: {question}"""
     else:
         prompt_template_zh = prompt_template.replace('{context}','') ##remove{context}
     PROMPT = PromptTemplate(
@@ -809,7 +853,7 @@ def create_chat_prompt_templete(prompt_template):
     )
     return PROMPT
 
-def get_bedrock_aksk(secret_name='chatbot_bedrock', region_name = "us-west-2"):
+def get_bedrock_aksk(secret_name='chatbot_bedrock', region_name = os.environ.get('bedrock_region',"us-west-2") ):
     # Create a Secrets Manager client
     session = boto3.session.Session()
     client = session.client(
@@ -833,15 +877,15 @@ def get_bedrock_aksk(secret_name='chatbot_bedrock', region_name = "us-west-2"):
 def format_reference(recall_knowledge):
     text = '\n```json\n#Reference\n'
     for sn,item in enumerate(recall_knowledge):
-        if 'doc_category' in item:
-            displaydata = { "doc": item['doc'], "score": item['score'], "doc_title": item['doc_category']}
-        else:
-            displaydata = { "doc": item['doc'], "score": item['score'], "doc_title": item['doc_title']}
-        text += f'Doc[{sn+1}]\n{json.dumps(displaydata,ensure_ascii=False)}\n'
+        displaydata = { "doc": item['doc'],"score": item['score']}
+        doc_category  = item['doc_category'] 
+        doc_title =  item['doc_title']
+        text += f'Doc[{sn+1}]:["{doc_title}"]-["{doc_category}"]\n{json.dumps(displaydata,ensure_ascii=False)}\n'
+    text += '\n```'
     return text
 
-def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str, llm_model_endpoint:str, llm_model_name:str, aos_endpoint:str, aos_index:str, aos_knn_field:str,
-                    aos_result_num:int, kendra_index_id:str, kendra_result_num:int,use_qa:bool,wsclient=None,msgid:str='',max_tokens:int = 2048,temperature:float = 0.01,template:str = '',imgurl:str = None):
+def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str, llm_model_endpoint:str, llm_model_name:str, aos_endpoint:str, aos_index:str, aos_knn_field:str, aos_result_num:int, kendra_index_id:str, 
+                   kendra_result_num:int,use_qa:bool,wsclient=None,msgid:str='',max_tokens:int = 2048,temperature:float = 0.1,template:str = '',imgurl:str = None,multi_rounds:bool = False, hide_ref:bool = False,use_stream:bool=False):
     """
     Entry point for the Lambda function.
 
@@ -861,7 +905,6 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
     """
     # STOP=[f"\n{A_Role}", f"\n{B_Role}"]
     global STOP
-    use_stream = False
     #如果是reset命令，则清空历史聊天
     if query_input == RESET:
         delete_session(session_id)
@@ -883,53 +926,55 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         json_obj['log_type'] = "all"
         json_obj_str = json.dumps(json_obj, ensure_ascii=False)
         logger.info(json_obj_str)
-        return answer,use_stream
+        use_stream = False
+        return answer,use_stream,'',[],[]
     
-    logger.info("llm_model_name : {}".format(llm_model_name))
+    logger.info("llm_model_name : {} ,use_stream :{}".format(llm_model_name,use_stream))
     llm = None
-    stream_callback = CustomStreamingOutCallbackHandler(wsclient,msgid, session_id,llm_model_name)
-    if llm_model_name == 'claude':
-        ACCESS_KEY, SECRET_KEY=get_bedrock_aksk()
+    stream_callback = CustomStreamingOutCallbackHandler(wsclient,msgid, session_id,llm_model_name,hide_ref,use_stream)
+    if llm_model_name.startswith('claude'):
+        # ACCESS_KEY, SECRET_KEY=get_bedrock_aksk()
 
         boto3_bedrock = boto3.client(
-            service_name="bedrock",
-            region_name="us-east-1",
-            endpoint_url="https://bedrock.us-east-1.amazonaws.com",
-            aws_access_key_id=ACCESS_KEY,
-            aws_secret_access_key=SECRET_KEY
+            service_name="bedrock-runtime",
+            region_name= os.environ.get('bedrock_region',"us-west-2")
         )
 
         parameters = {
             "max_tokens_to_sample": max_tokens,
             "stop_sequences":STOP,
             "temperature":temperature,
-            "top_p":1
+            "top_p":0.95
         }
-        
-        llm = Bedrock(model_id="anthropic.claude-v1", client=boto3_bedrock, model_kwargs=parameters)
-        # print("llm is anthropic.claude-v1")
+
+        model_id ="anthropic.claude-instant-v1" if llm_model_name == 'claude-instant' else "anthropic.claude-v2"
+
+        llm = Bedrock(model_id=model_id, 
+                      client=boto3_bedrock,
+                      streaming=use_stream,
+                      callbacks=[stream_callback],
+                        model_kwargs=parameters)
+
     elif llm_model_name.startswith('gpt-3.5-turbo'):
-        use_stream = True
         global openai_api_key
         llm=ChatOpenAI(model = llm_model_name,
                        openai_api_key = openai_api_key,
-                       streaming = True,
+                       streaming = use_stream,
                        callbacks=[stream_callback],
                        temperature = temperature)
         
-    elif llm_model_name.endswith('stream'):
-        use_stream = True
+    elif use_stream:
         parameters = {
                 "max_length": max_tokens,
                 "temperature": temperature,
-                "top_p":1
+                "top_p":0.95
                 }
         llmcontent_handler = SagemakerStreamContentHandler(
             callbacks=stream_callback
             )
-        # model_kwargs={'parameters':parameters,'history':[]}
-        # if imgurl:
-        model_kwargs={'parameters':parameters,'history':[],'image':imgurl}
+
+        model_kwargs={'parameters':parameters,'history':[],'image':imgurl,'stream':use_stream}
+        logging.info(f"model_kwargs:{model_kwargs}")
         llm = SagemakerStreamEndpoint(endpoint_name=llm_model_endpoint, 
                 region_name=region, 
                 model_kwargs=model_kwargs,
@@ -940,11 +985,11 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         parameters = {
             "max_length": max_tokens,
             "temperature": temperature,
-            "top_p":1
+            "top_p":0.95
         }
-        # model_kwargs={'parameters':parameters,'history':[]}
-        # if imgurl:
+
         model_kwargs={'parameters':parameters,'history':[],'image':imgurl}
+        logging.info(f"model_kwargs:{model_kwargs}")
         llmcontent_handler = llmContentHandler()
         llm=SagemakerEndpoint(
                 endpoint_name=llm_model_endpoint, 
@@ -954,7 +999,6 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
                 endpoint_kwargs={'CustomAttributes':'accept_eula=true'} ##for llama2
             )
     
-    # sm_client = boto3.client("sagemaker-runtime")
     
     # 1. get_session
     start1 = time.time()
@@ -970,17 +1014,22 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
     # free_chat_coversions = []
     verbose = False
     logger.info(f'use QA: {use_qa}')
+    final_prompt = ''
     if not use_qa:##如果不使用QA
+        reply_stratgy = ReplyStratgy.LLM_ONLY
         query_type = QueryType.Conversation
         # free_chat_coversions = [ (item[0],item[1]) for item in session_history if item[2] == str(query_type)]
         # chat_history= get_chat_history(free_chat_coversions[-2:])
         chat_coversions = [ (item[0],item[1]) for item in session_history]
-        ##add history parameter
-        if isinstance(llm,SagemakerStreamEndpoint) or isinstance(llm,SagemakerEndpoint):
-            chat_history=''
-            llm.model_kwargs['history'] = chat_coversions[-3:]
+        if multi_rounds:
+            ##add history parameter
+            if isinstance(llm,SagemakerStreamEndpoint) or isinstance(llm,SagemakerEndpoint):
+                chat_history=''
+                llm.model_kwargs['history'] = chat_coversions[-1:]
+            else:
+                chat_history= get_chat_history(chat_coversions[-1:])
         else:
-            chat_history= get_chat_history(chat_coversions[-3:])
+            chat_history=''
         
         prompt_template = create_chat_prompt_templete(template)
         llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
@@ -1006,24 +1055,72 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         elpase_time = time.time() - start
         logger.info(f'runing time of opensearch_query : {elpase_time}s seconds')
         
-        chat_history=''
         ##add history parameter
-        # if isinstance(llm,SagemakerStreamEndpoint) or isinstance(llm,SagemakerEndpoint):
-        #     chat_history=''
-        #     llm.model_kwargs['history'] = chat_coversions[-2:]
-        # else:
-        #     chat_history= get_chat_history(chat_coversions[-2:])
-            
+        if multi_rounds:
+            if isinstance(llm,SagemakerStreamEndpoint) or isinstance(llm,SagemakerEndpoint):
+                chat_history=''
+                llm.model_kwargs['history'] = chat_coversions[-1:]
+            else:
+                chat_history= get_chat_history(chat_coversions[-1:])
+        else:
+            chat_history=''
+        def get_reply_stratgy(recall_knowledge):
+            global BM25_QD_THRESHOLD_HARD_REFUSE, BM25_QD_THRESHOLD_SOFT_REFUSE
+            global KNN_QQ_THRESHOLD_HARD_REFUSE, KNN_QQ_THRESHOLD_SOFT_REFUSE
+            global KNN_QD_THRESHOLD_HARD_REFUSE, KNN_QD_THRESHOLD_SOFT_REFUSE
+
+            stratgy = ReplyStratgy.RETURN_OPTIONS
+            for item in recall_knowledge:
+                if item['score'] > 1.0:
+                    if item['score'] > BM25_QD_THRESHOLD_SOFT_REFUSE:
+                        stratgy = ReplyStratgy.WITH_LLM
+                    elif item['score'] > BM25_QD_THRESHOLD_HARD_REFUSE:
+                        stratgy = ReplyStratgy(min(ReplyStratgy.HINT_LLM_REFUSE.value, stratgy.value))
+                    else:
+                        stratgy = ReplyStratgy(min(ReplyStratgy.RETURN_OPTIONS.value, stratgy.value))
+
+                elif item['score'] < 1.0:
+                    if item['score'] > KNN_QD_THRESHOLD_SOFT_REFUSE:
+                        stratgy = ReplyStratgy.WITH_LLM
+                    elif item['score'] > KNN_QD_THRESHOLD_HARD_REFUSE:
+                        stratgy = ReplyStratgy(min(ReplyStratgy.HINT_LLM_REFUSE.value, stratgy.value))
+                    else:
+                        stratgy = ReplyStratgy(min(ReplyStratgy.RETURN_OPTIONS.value, stratgy.value))
+            return stratgy
+
+        def choose_prompt_template(stratgy:Enum, template:str, llm_model_name:str):
+            if stratgy == ReplyStratgy.WITH_LLM:
+                return create_baichuan_prompt_template(template) if llm_model_name.startswith('baichuan') else create_qa_prompt_templete(template)
+            elif stratgy == ReplyStratgy.HINT_LLM_REFUSE:
+                return create_soft_refuse_template(template)
+            else:
+                raise RuntimeError(
+                    "unsupported startgy..."
+                )
+
+        reply_stratgy = get_reply_stratgy(recall_knowledge)
+
+        context = qa_knowledge_fewshot_build(recall_knowledge)
+
         if exactly_match_result and recall_knowledge: 
             query_type = QueryType.KeywordQuery
             answer = exactly_match_result[0]["doc"]
-            final_prompt = ''
             use_stream = False ##如果是直接匹配则不需要走流
+            hide_ref= True ## 隐藏ref doc
+        elif reply_stratgy == ReplyStratgy.RETURN_OPTIONS:
+            some_reference = qa_knowledge_fewshot_build(recall_knowledge[::2])
+            answer = f"我不太确定，这有两条可能相关的信息，供参考：\n=====\n{some_reference}\n====="
+            use_stream = False ##如果是直接匹配则不需要走流
+            hide_ref= True ## 隐藏ref doc
+        elif reply_stratgy == ReplyStratgy.SAY_DONT_KNOW:
+            answer = "我不太清楚，问问人工吧。"
+            use_stream = False ##如果是直接匹配则不需要走流
+            hide_ref= True ## 隐藏ref doc
         else:      
             ##添加召回引用
             stream_callback.add_recall_knowledge(recall_knowledge)
             query_type = QueryType.KnowledgeQuery
-            prompt_template = create_baichuan_prompt_template(template) if llm_model_name.startswith('baichuan-finetune') else create_qa_prompt_templete(template) 
+            prompt_template = choose_prompt_template(reply_stratgy, template, llm_model_name)
             llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
             # context = "\n".join([doc['doc'] for doc in recall_knowledge])
             context = qa_knowledge_fewshot_build(recall_knowledge)
@@ -1035,10 +1132,9 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
             # print(answer)
 
     answer = enforce_stop_tokens(answer, STOP)
-
-    if not use_stream and recall_knowledge:
-        text = format_reference(recall_knowledge)
-        answer+= f'{text}```'
+    ref_text = ''
+    if not use_stream and recall_knowledge and hide_ref == False:
+        ref_text = format_reference(recall_knowledge)
 
     json_obj = {
         "query": query_input,
@@ -1048,25 +1144,30 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         "knowledges" : recall_knowledge,
         "detect_query_type": str(query_type),
         "LLM_input": final_prompt,
-        "LLM_model_name": llm_model_name
+        "LLM_model_name": llm_model_name,
+        "reply_stratgy" : reply_stratgy.name
     }
 
     json_obj['session_id'] = session_id
+    json_obj['msgid'] = msgid
     json_obj['chatbot_answer'] = answer
-    json_obj['conversations'] = chat_coversions
+    json_obj['ref_docs']= format_reference(recall_knowledge) if use_qa and recall_knowledge else ''
+    json_obj['conversations'] = chat_coversions[-1:]
     json_obj['timestamp'] = int(time.time())
     json_obj['log_type'] = "all"
     json_obj_str = json.dumps(json_obj, ensure_ascii=False)
     logger.info(json_obj_str)
 
     start = time.time()
-    update_session(session_id=session_id, question=query_input, answer=answer, intention=str(query_type))
+    if session_id != 'OnlyForDEBUG':
+        update_session(session_id=session_id, question=query_input, answer=answer, intention=str(query_type),msgid=msgid)
     elpase_time = time.time() - start
     elpase_time1 = time.time() - start1
     logger.info(f'runing time of update_session : {elpase_time}s seconds')
     logger.info(f'runing time of all  : {elpase_time1}s seconds')
-
-    return answer,use_stream
+    answer = answer if hide_ref else f'{answer}{ref_text}'
+    # logger.info(answer)
+    return answer,use_stream,query_input,opensearch_query_response,opensearch_knn_respose
 
 def delete_doc_index(obj_key,embedding_model,index_name):
     def delete_aos_index(obj_key,index_name,size=50):
@@ -1146,7 +1247,7 @@ def get_template(id):
             return response['Item']
         except Exception as e:
             logger.info(str(e))
-            return {}   
+            return None   
     else:
         params = {
             'TableName': os.environ.get('prompt_template_table'),
@@ -1194,7 +1295,8 @@ def generate_s3_image_url(bucket_name, key, expiration=3600):
     )
     return url
 
-    
+
+
 @handle_error
 def lambda_handler(event, context):
     # "model": 模型的名称
@@ -1205,6 +1307,11 @@ def lambda_handler(event, context):
     logger.info(f"event:{event}")
     method = event.get('method')
     resource = event.get('resource')
+    global CHANNEL_RET_CNT
+    CHANNEL_RET_CNT = event.get('channel_cnt', 10)
+    logger.info(f'channel_cnt:{CHANNEL_RET_CNT}')
+
+    ###其他管理操作 start
     ##如果是删除doc index的操作
     if method == 'delete' and resource == 'docs':
         logger.info(f"delete doc index of:{event.get('filename')}/{event.get('embedding_model')}/{event.get('index_name')}")
@@ -1218,7 +1325,7 @@ def lambda_handler(event, context):
     if method == 'get' and resource == 'template':
         id = event.get('id')
         results = get_template(id)
-        return {'statusCode': 200,'body':results }
+        return {'statusCode': 200,'body': {} if results is None else results }
     ## 如果是add a template 操作
     if method == 'post' and resource == 'template':
         body = event.get('body')
@@ -1230,7 +1337,7 @@ def lambda_handler(event, context):
             'username':{'S':body.get('username','')}
         }
         result = add_template(item)
-        return {'statusCode': 200 if result else 500,'body':results }
+        return {'statusCode': 200 if result else 500,'body':result }
      ## 如果是delete a template 操作
     if method == 'delete' and resource == 'template':
         body = event.get('body')
@@ -1238,7 +1345,27 @@ def lambda_handler(event, context):
             'id': {'S': body.get('id')}
         }
         result = delete_template(key)
-        return {'statusCode': 200 if result else 500,'body':results }
+        return {'statusCode': 200 if result else 500,'body':result }
+
+    ## 如果是回传thumbs down or thumbs up feeback
+    ## thumbs-up,thumbs-down,cancel-thumbs-up,cancel-thumbs-down
+    if method == 'post' and resource == 'feedback':
+        body = event.get('body')
+        json_obj = {
+            "opensearch_doc":  [], #for kiness firehose log subscription filter name
+            "log_type":'feedback',
+            "msgid":body.get('msgid'),
+            "timestamp":time.time(),
+            "username":body.get('username'),
+            "session_id":body.get('session_id'),
+            "action":body.get('action')  
+        }
+        json_obj_str = json.dumps(json_obj, ensure_ascii=False)
+        logger.info(json_obj_str)
+        return {'statusCode': 200}
+
+
+    ####其他管理操作 end
 
     # input_json = json.loads(event['body'])
     ws_endpoint = event.get('ws_endpoint')
@@ -1248,17 +1375,19 @@ def lambda_handler(event, context):
         wsclient = None
     global openai_api_key
     openai_api_key = event.get('OPENAI_API_KEY') 
-    
+    hide_ref = event.get('hide_ref',False)
     session_id = event['chat_name']
     question = event['prompt']
     model_name = event['model'] if event.get('model') else event.get('model_name','')
-    # embedding_endpoint = event['embedding_model'] 
+    embedding_endpoint = event.get('embedding_model',os.environ.get("embedding_endpoint")) 
     use_qa = event.get('use_qa',False)
+    multi_rounds = event.get('multi_rounds',False)
+    use_stream = event.get('use_stream',False)
     template_id = event.get('template_id')
     msgid = event.get('msgid')
     max_tokens = event.get('max_tokens',2048)
-    temperature =  event.get('temperature',0.01)
-    imgurl = event['imgurl']
+    temperature =  event.get('temperature',0.1)
+    imgurl = event.get('imgurl')
     image_path = ''
     if imgurl:
         if imgurl.startswith('https://'):
@@ -1270,8 +1399,10 @@ def lambda_handler(event, context):
 
     ##获取前端给的系统设定，如果没有，则使用lambda里的默认值
     global B_Role,SYSTEM_ROLE_PROMPT
-    B_Role = event.get('system_role') if event.get('system_role') else B_Role
-    SYSTEM_ROLE_PROMPT = event.get('system_role_prompt') if event.get('system_role_prompt') else SYSTEM_ROLE_PROMPT
+    B_Role = event.get('system_role',B_Role)
+    SYSTEM_ROLE_PROMPT = event.get('system_role_prompt',SYSTEM_ROLE_PROMPT)
+    
+    logger.info(f'system_role:{B_Role},system_role_prompt:{SYSTEM_ROLE_PROMPT}')
 
     llm_endpoint = None
     if model_name == 'chatglm':
@@ -1292,6 +1423,12 @@ def lambda_handler(event, context):
         llm_endpoint = os.environ.get('llm_visualglm_stream_endpoint')
     elif model_name == 'other-stream':
         llm_endpoint = os.environ.get('llm_other_stream_endpoint')
+    elif model_name == 'other':
+        llm_endpoint = os.environ.get('llm_other_endpoint')
+    elif model_name == 'baichuan':
+        llm_endpoint = os.environ.get('llm_baichuan_stream_endpoint')
+    elif model_name == 'baichuan-stream':
+        llm_endpoint = os.environ.get('llm_baichuan_stream_endpoint')
     else:
         llm_endpoint = os.environ.get('llm_default_endpoint')
         pass
@@ -1311,7 +1448,7 @@ def lambda_handler(event, context):
 
     # 1. 获取环境变量
 
-    embedding_endpoint = os.environ.get("embedding_endpoint", "")
+    # embedding_endpoint = os.environ.get("embedding_endpoint", "")
     aos_endpoint = os.environ.get("aos_endpoint", "")
     aos_index = os.environ.get("aos_index", "")
     aos_knn_field = os.environ.get("aos_knn_field", "")
@@ -1325,7 +1462,8 @@ def lambda_handler(event, context):
     ##如果指定了prompt 模板
     if template_id and template_id != 'default':
         prompt_template = get_template(template_id)
-        prompt_template = prompt_template['template']['S']
+        prompt_template = 'default' if prompt_template is None else prompt_template['template']['S']
+            
     logger.info(f'prompt_template_id : {template_id}')
     logger.info(f'prompt_template : {prompt_template}')
     logger.info(f'model_name : {model_name}')
@@ -1337,10 +1475,11 @@ def lambda_handler(event, context):
     logger.info(f'aos_result_num : {aos_result_num}')
     logger.info(f'Kendra_index_id : {Kendra_index_id}')
     logger.info(f'Kendra_result_num : {Kendra_result_num}')
+    logger.info(f'use multiple rounds: {multi_rounds}')
     
     main_entry_start = time.time()  # 或者使用 time.time_ns() 获取纳秒级别的时间戳
-    answer,use_stream = main_entry_new(session_id, question, embedding_endpoint, llm_endpoint, model_name, aos_endpoint, aos_index, aos_knn_field, aos_result_num,
-                       Kendra_index_id, Kendra_result_num,use_qa,wsclient,msgid,max_tokens,temperature,prompt_template,image_path)
+    answer,use_stream,query_input,opensearch_query_response,opensearch_knn_respose = main_entry_new(session_id, question, embedding_endpoint, llm_endpoint, model_name, aos_endpoint, aos_index, aos_knn_field, aos_result_num,
+                       Kendra_index_id, Kendra_result_num,use_qa,wsclient,msgid,max_tokens,temperature,prompt_template,image_path,multi_rounds,hide_ref,use_stream)
     main_entry_elpase = time.time() - main_entry_start  # 或者使用 time.time_ns() 获取纳秒级别的时间戳
     logger.info(f'runing time of main_entry : {main_entry_elpase}s seconds')
     # 2. return rusult
@@ -1353,7 +1492,9 @@ def lambda_handler(event, context):
     # "model": "模型名称"
     # "choices": [{"text": "模型回答的内容"}]
     # "usage": {"prompt_tokens": 58, "completion_tokens": 15, "total_tokens": 73}}]
-
+    extra_info = {}
+    if session_id == 'OnlyForDEBUG':
+        extra_info = {"query_input": query_input, "opensearch_query_response" : opensearch_query_response, "opensearch_knn_respose": opensearch_knn_respose }
     return {
         'statusCode': 200,
         'headers': {'Content-Type': 'application/json'},
@@ -1364,6 +1505,7 @@ def lambda_handler(event, context):
                              "model": "main_brain",
                              "choices":
                              [{"text": "{}[{}]".format(answer, model_name)}],
+                             "extra_info" : extra_info,
                              "usage": {"prompt_tokens": 58, "completion_tokens": 15, "total_tokens": 73}},
                             # {"id": uuid.uuid4(),
                             #  "created": request_timestamp,
@@ -1374,4 +1516,3 @@ def lambda_handler(event, context):
                             #  "usage": {"prompt_tokens": 58, "completion_tokens": 15, "total_tokens": 73}}
                             ]
     }
-
