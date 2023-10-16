@@ -1,16 +1,16 @@
 function usage {
   echo "Make sure Python installed properly. Usage: $0 -m MODEL_NAME [-t TOKEN] [-c COMMIT_HASH]"
   echo "  -m MODEL_NAME       Model name (default: Qwen)"
-  echo "  -t TOKEN            Hugging Face token "
+  echo "  -t TOKEN            ModelScope token "
   echo "  -c COMMIT_HASH      Commit hash "
   exit 1
 }
 
 # Default values
 declare -A LLM_model_dict
-LLM_model_dict=( ["InternLM"]="csdc-atl/buffer-instruct-InternLM-001" ["Qwen"]="Qwen/Qwen-14B-Chat-Int4" )
+LLM_model_dict=( ["Qwen"]="qwen/Qwen-7B-Chat-Int4" )
 declare -A LLM_commit_dict
-LLM_commit_dict=( ["InternLM"]="2da398b96f1617c22af037e9177940cc1c823fcf" ["Qwen"]="0f5e18f5f18b3ced68be965099f091189964ed85" )
+LLM_commit_dict=( ["Qwen"]="v1.1.4" )
 
 hf_token="NA"
 
@@ -31,7 +31,7 @@ if ! command -v python &> /dev/null; then
 fi
 
 # Install necessary packages
-pip install huggingface-hub -Uqq
+pip install modelscope -i https://pypi.tuna.tsinghua.edu.cn/simple
 
 # Define local model path
 local_model_path="."
@@ -40,20 +40,16 @@ local_model_path="."
 if [[ "${!LLM_model_dict[@]}" =~ "$model_name" ]]
 then
     echo "Downloading LLM model..."
-    hf_repo_id=${LLM_model_dict[$model_name]}
+    ms_repo_id=${LLM_model_dict[$model_name]}
     commit_hash=${LLM_commit_dict[$model_name]}
 elif [ -z "$model_name" ]
 then
     echo "Did not specify a model to download, downloading default Qwen model..."
-    hf_repo_id=${LLM_model_dict["Qwen"]}
+    ms_repo_id=${LLM_model_dict["Qwen"]}
     commit_hash=${LLM_commit_dict["Qwen"]}
 else
     echo "Downloading custom model. Please ensure you have commit hash as input."
-    hf_repo_id=$model_name
+    ms_repo_id=$model_name
 fi
 
-python -c "from huggingface_hub import snapshot_download; from pathlib import Path; snapshot_download(repo_id='$hf_repo_id', revision='$commit_hash', cache_dir=Path('$local_model_path'), token='$hf_token')"
-
-# Find model snapshot path with the first search result
-model_snapshot_path=$(find . -path '*/snapshots/*' -type d -print -quit)
-echo "Model snapshot path: $model_snapshot_path"
+python -c "from modelscope.hub.snapshot_download import snapshot_download; from pathlib import Path; snapshot_download('$ms_repo_id', revision='$commit_hash', cache_dir=Path('$local_model_path'))"

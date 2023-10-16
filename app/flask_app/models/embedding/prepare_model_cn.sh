@@ -1,16 +1,16 @@
 function usage {
   echo "Make sure Python installed properly. Usage: $0 -m MODEL_NAME [-t TOKEN] [-c COMMIT_HASH]"
   echo "  -m MODEL_NAME       Model name (default: BGE)"
-  echo "  -t TOKEN            Hugging Face token "
-  echo "  -c COMMIT_HASH      Commit hash"
+  echo "  -t TOKEN            ModelScope token "
+  echo "  -c COMMIT_HASH      Commit hash "
   exit 1
 }
 
 # Default values
 declare -A Embedding_model_dict
-Embedding_model_dict=( ["BGE"]="BAAI/bge-large-zh-v1.5" )
+Embedding_model_dict=( ["BGE"]="Xorbits/bge-large-zh-v1.5" )
 declare -A Embedding_commit_dict
-Embedding_commit_dict=( ["BGE"]="00f8ffc4928a685117583e2a38af8ebb65dcec2c" )
+Embedding_commit_dict=( ["BGE"]="master" )
 
 hf_token="NA"
 
@@ -31,29 +31,25 @@ if ! command -v python &> /dev/null; then
 fi
 
 # Install necessary packages
-pip install huggingface-hub -Uqq
+pip install modelscope -i https://pypi.tuna.tsinghua.edu.cn/simple
 
 # Define local model path
 local_model_path="."
 
-# Download model snapshot in current folder without model prefix added
+# Download model snapshot in current folder
 if [[ "${!Embedding_model_dict[@]}" =~ "$model_name" ]]
 then
     echo "Downloading Embedding model..."
-    hf_repo_id=${Embedding_model_dict[$model_name]}
+    ms_repo_id=${Embedding_model_dict[$model_name]}
     commit_hash=${Embedding_commit_dict[$model_name]}
 elif [ -z "$model_name" ]
 then
     echo "Did not specify a model to download, downloading default BGE model..."
-    hf_repo_id=${Embedding_model_dict["BGE"]}
+    ms_repo_id=${Embedding_model_dict["BGE"]}
     commit_hash=${Embedding_commit_dict["BGE"]}
 else
     echo "Downloading custom model. Please ensure you have commit hash as input."
-    hf_repo_id=$model_name
+    ms_repo_id=$model_name
 fi
 
-python -c "from huggingface_hub import snapshot_download; from pathlib import Path; snapshot_download(repo_id='$hf_repo_id', revision='$commit_hash', cache_dir=Path('$local_model_path'), token='$hf_token')"
-
-# Find model snapshot path with the first search result
-model_snapshot_path=$(find . -path '*/snapshots/*' -type d -print -quit)
-echo "Model snapshot path: $model_snapshot_path"
+python -c "from modelscope.hub.snapshot_download import snapshot_download; from pathlib import Path; snapshot_download('$ms_repo_id', revision='$commit_hash', cache_dir=Path('$local_model_path'))"

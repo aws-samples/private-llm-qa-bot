@@ -9,7 +9,7 @@ function usage {
 
 port=3000
 hf_token="NA"
-deploy_region="global_deploy"
+deploy_region="cn_deploy"
 
 # Parse command-line options
 while getopts ":t:m:p:" opt; do
@@ -31,39 +31,25 @@ eval "$(conda shell.bash hook)"
 source /opt/conda/etc/profile.d/conda.sh
 
 conda activate pytorch
-pip install -r /home/ubuntu/flask_app/infer/requirements.txt
+pip install -r /home/ubuntu/flask_app/infer/requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 
 # If model_type is LLM, download LLM model
-if [ "$model_type" = "InternLM" ] || [ "$model_type" = "Qwen" ]
+if [ "$model_type" = "Qwen" ]
 then
     # Download models from huggingface
     cd /home/ubuntu/flask_app/models/instruct
-    bash prepare_model.sh -t $hf_token -m $model_type
+    bash prepare_model_cn.sh -t $hf_token -m $model_type
 
     # Start App
     cd /home/ubuntu/flask_app
     # python instruct_app.py --model $model_type --host 0.0.0.0 --port $port --deploy_region $deploy_region
     pm2 start instruct_app.py --name llm-app --interpreter python -- --model $model_type --host 0.0.0.0 --port $port --deploy_region $deploy_region
     pm2 startup systemd
-elif [ "$model_type" = "BGECross" ]
-then 
-    # Download models from huggingface
-    cd /home/ubuntu/flask_app/models/embedding
-    bash prepare_model.sh -t $hf_token -m BGE
-
-    cd /home/ubuntu/flask_app/models/cross
-    bash prepare_model.sh -t $hf_token -m Cross
-
-    # Start App
-    cd /home/ubuntu/flask_app
-    # python embedding_app.py --host 0.0.0.0 --port $port --deploy_region $deploy_region --cross True
-    pm2 start embedding_app.py --name embedding-app --interpreter python -- --host 0.0.0.0 --port $port --cross True --deploy_region $deploy_region
-    pm2 startup systemd
 elif [ "$model_type" = "BGE" ]
 then 
     # Download models from huggingface
     cd /home/ubuntu/flask_app/models/embedding 
-    bash prepare_model.sh -t $hf_token -m $model_type
+    bash prepare_model_cn.sh -t $hf_token -m $model_type
 
     # Start App
     cd /home/ubuntu/flask_app

@@ -1,0 +1,14 @@
+{
+    "cn_deploy": {
+        "Cross": "",
+        "BGE": "models/embedding/Xorbits/bge-large-zh-v1.5",
+        "Qwen": "models/instruct/qwen/Qwen-7B-Chat-Int4",
+        "InternLM": ""
+    },
+    "global_deploy": {
+        "Cross": "models/cross/models--csdc-atl--buffer-cross-001/snapshots/46d270928463db49b317e5ea469a8ac8152f4a13",
+        "BGE": "models/embedding/models--BAAI--bge-large-zh-v1.5/snapshots/00f8ffc4928a685117583e2a38af8ebb65dcec2c",
+        "Qwen": "models/instruct/models--Qwen--Qwen-14B-Chat-Int4/snapshots/0f5e18f5f18b3ced68be965099f091189964ed85",
+        "InternLM": "models/instruct/models--csdc-atl--buffer-instruct-InternLM-001/snapshots/2da398b96f1617c22af037e9177940cc1c823fcf"
+    }
+}

@@ -32,13 +32,20 @@ logger = getLogger('InternLM', 'chatlog.log')
 
 MAX_HISTORY = 5
 
-
 def format_sse(data: str, event=None) -> str:
     msg = 'data: {}\n\n'.format(data)
     if event is not None:
         msg = 'event: {}\n{}'.format(event, msg)
     return msg
 
+def get_model_location(model_name, deploy_region):
+
+    base_path = os.path.dirname(os.path.realpath(__file__))
+    model_location_dict = json.load(open(os.path.join(base_path, "model_location.json"), "r"))
+    
+    model_location = model_location_dict[deploy_region][model_name]
+    return model_location
+    
 
 def start_server(bot, http_address: str, port: int, gpu_id: str):
     os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'
@@ -47,7 +54,7 @@ def start_server(bot, http_address: str, port: int, gpu_id: str):
     app = Flask(__name__)
     cors = CORS(app, supports_credentials=True)
     
-    @app.route("/")
+    @app.route("/ping")
     def index():
         return Response(json.dumps({'message': 'started', 'success': True}, ensure_ascii=False), content_type="application/json")
 
@@ -117,13 +124,16 @@ if __name__ == '__main__':
     parser.add_argument('--model', '-m', help='type of model, option: InternLM, Qwen', default=16)
     parser.add_argument('--host', '-H', help='host to listen', default='0.0.0.0')
     parser.add_argument('--port', '-P', help='port of this service', default=8800)
+    parser.add_argument('--deploy_region', '-R', help='region of EC2', default='cn_deploy')
     args = parser.parse_args()
 
+    model_location = get_model_location(args.model, args.deploy_region)
+
     if args.model == 'InternLM':
-        from infer.instruct_model import InternLM
-        bot = InternLM(gpu_id=args.device)
+        from infer.instruct_internlm import InternLM
+        bot = InternLM(gpu_id=args.device, model_location=model_location)
     elif args.model == 'Qwen':
-        from infer.instruct_model_qwen14b import Qwen14BInt4
-        bot = Qwen14BInt4(gpu_id=args.device)
+        from infer.qwen_14b_int4 import Qwen14BInt4
+        bot = Qwen14BInt4(gpu_id=args.device, model_location=model_location)
 
     start_server(bot, args.host, int(args.port), args.device)
