@@ -117,17 +117,28 @@ scp -i ec2_key.pem -r ./flask_app ubuntu@ec2_ip:/home/ubuntu/
 conda init
 source ~/.bashrc
 
+# 下载pm2
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.5/install.sh | bash
+. ~/.nvm/nvm.sh
+nvm install --lts
+npm install pm2 -g
+
 ```
 
 ### 3. 一键下载模型并启动Flask App
 
-```
 需要提供两个参数
     -t    对应的huggingface token
     -m    安装LLM App/Embedding App
 
 例：
-bash start_app.sh -t hf_Chqy******************** -m LLM
+```
+# global region
+bash start_app.sh -m Qwen/BGE
+
+# china region
+bash start_app_cn.sh -m Qwen/BGE
+```
 
 ```
 
