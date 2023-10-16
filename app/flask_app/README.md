@@ -18,11 +18,11 @@ Flask App 2：Embedding模型和Cross模型推理接口
 EC2：
 
 * LLM Instance:
-    * Instance type: g4dn.4xlarge
+    * Instance type: g4dn.2xlarge
     * AMI: Deep Learning AMI GPU PyTorch 2.0.1 (Ubuntu 20.04) 20231003
     * Storage: 200GB
 * Embedding & Cross Instance:
-    * Instance type: g4dn.2xlarge
+    * Instance type: g4dn.xlarge
     * AMI: Deep Learning AMI GPU PyTorch 2.0.1 (Ubuntu 20.04) 20231003
     * Storage: 100GB
 
@@ -69,7 +69,7 @@ flask_app
 * 在 "Amazon Machine Image (AMI)" 中，选择 Deep Learning AMI GPU PyTorch 2.0.1 (Ubuntu 20.04) 20231003。
 * 在 "Instance Type" 中，选择 g4dn.4xlarge。
 * 在 "Key pair (login)" 中，选择计划使用的密钥对。
-* 在 "Network Settings" 中，选择计划使用的VPC与安全组。注意在这一步，需要确保安全组中开放了对应的端口。
+* 在 "Network Settings" 中，选择计划使用的VPC与安全组。注意在这一步，需要确保安全组中开放了对应的端口。本App默认使用3000端口。
 * 在 "Configure Storage" 中，选择对应容量的存储。
 * [Optional]如果客户需要用nginx进行其他配置，可以在 "Advanced Details" 中，在User Data部分完成。
 ```
@@ -140,8 +140,4 @@ bash start_app.sh -m Qwen/BGE
 bash start_app_cn.sh -m Qwen/BGE
 ```
 
-```
-
-
-### 
 
