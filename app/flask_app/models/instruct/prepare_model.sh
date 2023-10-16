@@ -8,9 +8,9 @@ function usage {
 
 # Default values
 declare -A LLM_model_dict
-LLM_model_dict=( ["InternLM"]="csdc-atl/buffer-instruct-InternLM-001" ["Qwen"]="Qwen/Qwen-14B-Chat-Int4" )
+LLM_model_dict=( ["InternLM"]="csdc-atl/buffer-instruct-InternLM-001" ["Qwen"]="Qwen/Qwen-7B-Chat-Int4" )
 declare -A LLM_commit_dict
-LLM_commit_dict=( ["InternLM"]="2da398b96f1617c22af037e9177940cc1c823fcf" ["Qwen"]="0f5e18f5f18b3ced68be965099f091189964ed85" )
+LLM_commit_dict=( ["InternLM"]="2da398b96f1617c22af037e9177940cc1c823fcf" ["Qwen"]="246a75e127a52f6e8de2d5f594f239cf3dcc409d" )
 
 hf_token="NA"
 

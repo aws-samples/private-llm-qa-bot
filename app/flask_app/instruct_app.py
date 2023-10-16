@@ -133,7 +133,7 @@ if __name__ == '__main__':
         from infer.instruct_internlm import InternLM
         bot = InternLM(gpu_id=args.device, model_location=model_location)
     elif args.model == 'Qwen':
-        from infer.qwen_14b_int4 import Qwen14BInt4
-        bot = Qwen14BInt4(gpu_id=args.device, model_location=model_location)
+        from infer.qwen_int4 import QwenInt4
+        bot = QwenInt4(gpu_id=args.device, model_location=model_location)
 
     start_server(bot, args.host, int(args.port), args.device)
