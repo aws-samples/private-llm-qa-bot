@@ -42,14 +42,14 @@ class InternLM():
 
     def stream(self, query, history, params):
         if query is None or history is None:
-            yield {"query": "", "response": "", "history": [], "finished": True}
+            yield {"query": "", "outputs": "", "response": "", "history": [], "finished": True}
         size = 0
         response = ""
         for response in self.model.stream_chat(self.tokenizer, query, history, **params):
             this_response = response[size:]
             size = len(response)
-            yield {"delta": this_response, "response": response, "finished": False}
-        yield {"query": query, "delta": "[EOS]", "response": response[-1][-1], "history": response, "finished": True}
+            yield {"outputs": this_response, "response": response, "finished": False}
+        yield {"query": query, "outputs": "[EOS]", "response": response[-1][-1], "history": response, "finished": True}
 
 if __name__ == "__main__":
     model_name="models--csdc-atl--buffer-instruct-InternLM-001"

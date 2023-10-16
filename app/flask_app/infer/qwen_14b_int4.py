@@ -44,7 +44,7 @@ class Qwen14BInt4():
 
     def stream(self, query, history, params):
         if query is None or history is None:
-            yield {"query": "", "response": "", "history": [], "finished": True}
+            yield {"query": "", "outputs": "", "response": "", "history": [], "finished": True}
         size = 0
         self.config.max_new_tokens = params.get('max_length',1024)
         self.config.top_p = params.get('top_p',1)
@@ -52,9 +52,9 @@ class Qwen14BInt4():
         for response in self.model.chat_stream(self.tokenizer, query, history, generation_config=self.config):
             this_response = response[size:]
             size = len(response)
-            yield {"delta": this_response, "response": response, "finished": False}
+            yield {"outputs": this_response, "response": response, "finished": False}
         history.append([query, response])
-        yield {"query": query, "delta": "[EOS]", "response": response, "history": history, "finished": True}
+        yield {"query": query, "outputs": "[EOS]", "response": response, "history": history, "finished": True}
 
 if __name__ == "__main__":
     model_name="models--Qwen--Qwen-14B-Chat-Int4"

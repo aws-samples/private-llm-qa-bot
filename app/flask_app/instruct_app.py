@@ -76,7 +76,7 @@ def start_server(bot, http_address: str, port: int, gpu_id: str):
                 response, history = bot.answer(text, history, params)
                 logger.info("Answer - {}".format(response))
                 ori_history.append((text, response))
-                result = {"query": text, "response": response,
+                result = {"query": text, "outputs": response,
                           "history": ori_history, "success": True}
         except Exception as e:
             logger.error(f"error: {e}")
