@@ -162,7 +162,7 @@ export class DeployStack extends Stack {
 
     const lambda_main_brain = new DockerImageFunction(this,
       "lambda_main_brain", {
-      code: DockerImageCode.fromImageAsset(join(__dirname, "../lambda/main_brain")),
+      code: DockerImageCode.fromImageAsset(join(__dirname, "../../code/main")),
       timeout: Duration.minutes(15),
       memorySize: 1024,
       runtime: 'python3.9',
@@ -218,7 +218,7 @@ export class DeployStack extends Stack {
       
     const lambda_intention = new DockerImageFunction(this,
       "lambda_intention", {
-      code: DockerImageCode.fromImageAsset(join(__dirname, "../lambda/intention")),
+      code: DockerImageCode.fromImageAsset(join(__dirname, "../../code/intention_detect")),
       timeout: Duration.minutes(15),
       memorySize: 1024,
       runtime: 'python3.9',
@@ -253,6 +253,42 @@ export class DeployStack extends Stack {
         resources: ['*'],
         }))
       
+    
+        const lambda_query_rewrite = new DockerImageFunction(this,
+          "lambda_query_rewrite", {
+          code: DockerImageCode.fromImageAsset(join(__dirname, "../../code/query_rewriter")),
+          timeout: Duration.minutes(15),
+          memorySize: 1024,
+          runtime: 'python3.9',
+          functionName: 'Query_Rewrite',
+          vpc:vpc,
+          vpcSubnets:subnets,
+          securityGroups:securityGroups,
+          architecture: Architecture.X86_64,
+          environment: {
+            llm_model_endpoint:process.env.llm_chatglm_endpoint,
+            region:region
+          },
+        });
+        
+        // Grant the Lambda function can invoke sagemaker
+    lambda_query_rewrite.addToRolePolicy(new iam.PolicyStatement({
+      // principals: [new iam.AnyPrincipal()],
+        actions: [ 
+          "sagemaker:InvokeEndpointAsync",
+          "sagemaker:InvokeEndpoint",
+          "s3:List*",
+          "s3:Put*",
+          "s3:Get*",
+          "es:*",
+          "dynamodb:*",
+          "secretsmanager:GetSecretValue",
+          "bedrock:*"
+          ],
+        effect: iam.Effect.ALLOW,
+        resources: ['*'],
+        }))
+        
     chat_session_table.grantReadWriteData(lambda_main_brain);
     doc_index_table.grantReadWriteData(lambda_main_brain);
     prompt_template_table.grantReadWriteData(lambda_main_brain);
