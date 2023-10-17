@@ -120,6 +120,36 @@ export class DeployStack extends Stack {
       removalPolicy: RemovalPolicy.DESTROY, // NOT recommended for production code
     });
 
+    const user_feedback_table = new Table(this, "user_feedback_table", {
+      partitionKey: {
+        name: "session-id",
+        type: AttributeType.STRING,
+      },
+      sortKey: {
+        name: "msgid",
+        type: AttributeType.STRING,
+      },
+      tableName:"user_feedback_table",
+      removalPolicy: RemovalPolicy.DESTROY, // NOT recommended for production code
+    });
+
+    const fn_feedback = new lambda.Function(this,'lambda_feedback',{
+      environment: {
+        user_feedback_table:"user_feedback_table",
+        chat_session_table:chat_session_table.tableName,
+      },
+      functionName: 'lambda_feedback',
+      runtime: lambda.Runtime.PYTHON_3_9,
+      timeout: Duration.minutes(1),
+      memorySize: 256,
+      handler: 'app.lambda_handler',
+      code: lambda.Code.fromAsset(path.join(__dirname,'../../code/lambda_feedback')),
+      vpc:vpc,
+      vpcSubnets:subnets,
+    });
+    user_feedback_table.grantReadWriteData(fn_feedback);
+    chat_session_table.grantReadWriteData(fn_feedback);
+
     const lambda_main_brain = new DockerImageFunction(this,
       "lambda_main_brain", {
       code: DockerImageCode.fromImageAsset(join(__dirname, "../../code/main")),
@@ -151,7 +181,10 @@ export class DeployStack extends Stack {
         knn_qq_threshold_hard:'0.6',
         knn_qq_threshold_soft:'0.8',
         knn_qd_threshold_hard:'0.6',
-        knn_qd_threshold_soft:'0.8'
+        knn_qd_threshold_soft:'0.8',
+        lambda_feedback:"lambda_feedback",
+        neighbors:process.env.neighbors,
+        TOP_K:process.env.TOP_K
       },
     });
 
@@ -260,7 +293,9 @@ export class DeployStack extends Stack {
         resources: [process.env.wss_resourceArn  ]
       })
     );
-    
+    //grant permission to invoke feedback lambda
+    fn_feedback.grantInvoke(lambda_main_brain);
+
     //glue job
     const gluestack = new GlueStack(this,'glue-stack',{opensearch_endpoint,region,vpc,subnets,securityGroups});
     new CfnOutput(this, `Glue Job name`,{value:`${gluestack.jobName}`});
@@ -285,29 +320,29 @@ export class DeployStack extends Stack {
     //   layerVersionName:'AwsAuthLayer',
     // });
 
-    const plugins_table = new Table(this, "plugins_info", {
-      partitionKey: {
-        name: "name",
-        type: AttributeType.STRING,
-      },
-      removalPolicy: RemovalPolicy.DESTROY, // NOT recommended for production code
-    });
+    // const plugins_table = new Table(this, "plugins_info", {
+    //   partitionKey: {
+    //     name: "name",
+    //     type: AttributeType.STRING,
+    //   },
+    //   removalPolicy: RemovalPolicy.DESTROY, // NOT recommended for production code
+    // });
 
-    const fn_plugins_trigger = new lambda.Function(this,'plugins_trigger',{
-        environment: {
+    // const fn_plugins_trigger = new lambda.Function(this,'plugins_trigger',{
+    //     environment: {
           
-        },
-        // layers:[layer],
-        runtime: lambda.Runtime.PYTHON_3_9,
-        functionName: 'Agent_Plugin',
-        timeout: Duration.minutes(1),
-        memorySize: 256,
-        handler: 'app.lambda_handler',
-        code: lambda.Code.fromAsset(path.join(__dirname,'../../code/lambda_plugins_trigger')),
-        vpc:vpc,
-        vpcSubnets:subnets,
-    });
-    plugins_table.grantReadWriteData(fn_plugins_trigger);
+    //     },
+    //     // layers:[layer],
+    //     runtime: lambda.Runtime.PYTHON_3_9,
+    //     functionName: 'Agent_Plugin',
+    //     timeout: Duration.minutes(1),
+    //     memorySize: 256,
+    //     handler: 'app.lambda_handler',
+    //     code: lambda.Code.fromAsset(path.join(__dirname,'../../code/lambda_plugins_trigger')),
+    //     vpc:vpc,
+    //     vpcSubnets:subnets,
+    // });
+    // plugins_table.grantReadWriteData(fn_plugins_trigger);
 
     fn_plugins_trigger.addToRolePolicy(
       new iam.PolicyStatement({
