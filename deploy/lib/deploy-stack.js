@@ -137,6 +137,8 @@ export class DeployStack extends Stack {
       environment: {
         user_feedback_table:"user_feedback_table",
         chat_session_table:chat_session_table.tableName,
+        UPLOAD_BUCKET:process.env.UPLOAD_BUCKET,
+        UPLOAD_OBJ_PREFIX:process.env.UPLOAD_OBJ_PREFIX
       },
       functionName: 'lambda_feedback',
       runtime: lambda.Runtime.PYTHON_3_9,
@@ -312,13 +314,16 @@ export class DeployStack extends Stack {
       }]
     });
 
-    // const layer = new lambda.LayerVersion(this, 'ChatbotLayer', {
-    //   code: lambda.Code.fromAsset(path.join(__dirname,'../../code/layer_asset')),
-    //   description: 'ChatbotLayer Python helper utility',
-    //   compatibleRuntimes: [lambda.Runtime.PYTHON_3_9],
-    //   removalPolicy: RemovalPolicy.DESTROY,
-    //   layerVersionName:'AwsAuthLayer',
-    // });
+     //grant permission to upload file to s3 bucket
+     fn_feedback.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['s3:*'],
+        effect: iam.Effect.ALLOW,
+        resources: [
+          `${bucket.bucketArn}/*`,
+        `${bucket.bucketArn}`, ]
+      })
+    );
 
     // const plugins_table = new Table(this, "plugins_info", {
     //   partitionKey: {
@@ -344,13 +349,13 @@ export class DeployStack extends Stack {
     // });
     // plugins_table.grantReadWriteData(fn_plugins_trigger);
 
-    fn_plugins_trigger.addToRolePolicy(
-      new iam.PolicyStatement({
-        actions: ['lambda:InvokeFunction'],
-        effect: iam.Effect.ALLOW,
-        resources: [ '*']
-      })
-    );
+    // fn_plugins_trigger.addToRolePolicy(
+    //   new iam.PolicyStatement({
+    //     actions: ['lambda:InvokeFunction'],
+    //     effect: iam.Effect.ALLOW,
+    //     resources: [ '*']
+    //   })
+    // );
 
 
     const offline_trigger_lambda =  new lambda.Function(this, 'offline_trigger_lambda', {
