@@ -127,9 +127,8 @@ npm install pm2 -g
 
 ### 3. 一键下载模型并启动Flask App
 
-需要提供两个参数
-    -t    对应的huggingface token
-    -m    安装LLM App/Embedding App
+需要提供一个参数
+    -m    Qwen/BGE
 
 例：
 ```
@@ -140,3 +139,147 @@ bash start_app.sh -m Qwen/BGE
 bash start_app_cn.sh -m Qwen/BGE
 ```
 
+### 4. 发送请求调用推理接口
+
+#### 4.1 LLM推理接口
+
+##### 4.1.1 Health Check
+Endpoint: /ping
+Method: GET
+Description: 发送请求以检查Flask App的状态。
+Response:
+```
+{
+    "message": "started",
+    "success": true
+}
+```
+
+##### 4.1.2 推理(Chat)
+Endpoint: /chat
+Method: POST
+Description: 发送请求进行推理。
+Sample Input:
+```
+{
+    "inputs": "S3是怎么计价的？",
+    "parameters": {
+        "use_cache": true
+    },
+    "history": [
+        [
+            "你知道S3怎么用吗？",
+            "S3是亚马逊云存储服务，可以用来存储和备份数据，也可以...。"
+        ]
+    ]
+}
+```
+Sample Response:
+```
+{
+    "query": "S3是怎么计价的？",
+    "outputs": "AWS S3的计费政策基于某种“按量付费”或...。",
+    "history": [
+        [
+            "你知道S3怎么用吗？",
+            "S3是亚马逊云存储服务，...。"
+        ],
+        [
+            "S3是怎么计价的？",
+            "AWS S3的计费政策基于某种“按量付费”或...。"
+        ]
+    ],
+    "success": true
+}
+```
+
+##### 4.1.3 流式推理(Stream)
+Endpoint: /chat
+Method: POST
+Description: 发送请求进行流式推理。
+Sample Input: 同4.1.2
+Sample response:
+```
+# 推理过程中：
+{
+    "outputs": "每次",
+    "response": "亚马逊云存储服务提供三种收费模型：按需付费、容量付费和带宽付费。\n\n- 按需付费：这种模式允许您根据使用量付费，不适用于长期存储。\n- 容量付费：在这种模式中，每次",
+    "finished": false
+}
+
+# 推理完成
+{
+    "query": "S3是怎么计价的？",
+    "outputs": "[EOS]",
+    "response": "亚马逊云存储服务提供三种收费模型：按需付费、...。",
+    "history": [
+        [
+            "你知道S3怎么用吗？",
+            "S3是亚马逊云存储服务，...。"
+        ],
+        [
+            "S3是怎么计价的？",
+            "亚马逊云存储服务提供三种收费模型：按需付费、...。"
+        ]
+    ],
+    "finished": true
+}
+```
+
+##### 4.1.4 清空CUDA缓存
+Endpoint: /clear
+Method: GET/POST
+Description: 发送请求来清空CUDA缓存。
+Sample response:
+```
+{
+    "success": true
+}
+```
+
+#### 4.2 Embedding推理接口
+
+##### 4.2.1 Health Check
+Endpoint: /ping
+Method: GET
+Description: 发送请求以检查Flask App的状态。
+Response:
+```
+{
+    "message": "started",
+    "success": true
+}
+```
+
+##### 4.2.2 Embedding模型推理
+Endpoint: /ping
+Method: POST
+Description: 发送请求以检查Flask App的状态。
+Sample Input:
+```
+{
+    "inputs": [
+        "你好",
+        "你是谁"
+    ],
+    "is_query": true,
+    "instruction": "请向量化这句话："
+}
+```
+Response:
+```
+{
+    "sentence_embeddings": [[...], [...]]
+}
+```
+
+##### 4.2.3 清空CUDA缓存
+Endpoint: /clear
+Method: GET/POST
+Description: 发送请求来清空CUDA缓存。
+Sample response:
+```
+{
+    "success": true
+}
+```
