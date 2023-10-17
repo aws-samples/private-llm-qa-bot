@@ -8,23 +8,23 @@
   ![console](./console.png)
   
 - 部署方式
-  参考 [workshop](https://catalog.us-east-1.prod.workshops.aws/workshops/158a2497-7cbe-4ba4-8bee-2307cb01c08a/zh-CN)
-  注意事项:
-  + OpenSearch index的创建方法需要参见下文，不能用workshop中的代码
-  + 不要使用workshop中的前端链接，请使用[网页](http://chatbotfe-1170248869.us-west-2.elb.amazonaws.com/chat#)
+  - 参考 [workshop](https://catalog.us-east-1.prod.workshops.aws/workshops/158a2497-7cbe-4ba4-8bee-2307cb01c08a/en-US)
+  - 构建向量索引时的注意事项:
+      + 需要考虑knn_vector's dimension与向量模型输出纬度对齐，space_type 与向量模型支持的类型对齐
+      + 用户需要根据数据量自行决定是否开启ANN索引, 即("knn": "true")
+      + m, ef_consturtion 参数需要根据根据数据量进行调整
 
 - 代码介绍
 
   ```python
   .
   ├── code
-  │   ├── main.py                          # lambda 部署主文件
-  │   ├── aos_write_job.py                 # aos 倒排和knn索引构建脚本 (glue 部署)
-  │   ├── batch_upload_docs.py             # 批量倒入知识的脚本实现
-  │   ├── chatbot_logs_func.py             # 对Cloudwatch输出的日志解析，通过KDF同步到OpenSearch (lambda 脚本)
-  │   ├── offline_trigger_lambda.py        # 调度 glue 的 lambda 脚本
-  │   ├── QA_auto_generator.py             # 基于文档自动生成FAQ知识库 (离线前置处理)
-  │   └── build_and_push.sh                # 构建ECR Image 供部署后台主服务
+  │   ├── main/                            # 主逻辑对应的lambda代码目录
+  │   ├── offline_process/                 # 离线知识构建对应的执行代码目录
+  │   ├── lambda_offline_trigger/          # 启动离线知识摄入的lambda代码目录
+  │   ├── lambda_plugins_trigger/          # 暂不使用
+  │   ├── intention_detect/                # 意图识别lambda代码目录
+  │   └── query_rewriter/                  # 用户输入重写lambda代码目录
   ├── deploy
   │   ├── lib/                             # cdk 部署脚本目录
   │   └── gen_env.sh                       # 自动生成部署变量的脚本(for workshop)
@@ -36,12 +36,13 @@
   │   ├── aws-overview.pdf                 # pdf 知识库文件
   │   └── PMC10004510.txt                  # txt 纯文本文件
   ├── doc_preprocess/                      # 原始文件处理脚本
-  │   ├── ...                              
+  │   ├── pdf_spliter.py                   # pdf解析拆分脚本      
   │   └── ...                  
   ├── notebook/                            # 各类notebook
-  │   ├── embedding                        # 部署embedding模型的notebook，包括bge, text2vec, paraphrase-multilingual, 以及finetune embedding模型的脚本    
-  │   ├── llm                              # 部署LLM模型的notebook，包括chatglm, chatglm2, qwen, buffer-instruct-baichuan-001
-  │   ├── mutilmodal                       # 部署多模态模型的notebook，包括VisualGLM                         
+  │   ├── embedding/                       # 部署embedding模型的notebook，包括bge, paraphrase-multilingual, 以及finetune embedding模型的脚本    
+  │   ├── llm/                             # 部署LLM模型的notebook，包括chatglm2, qwen, buffer-instruct-baichuan-001
+  │   ├── mutilmodal/                      # 部署多模态模型的notebook，包括VisualGLM
+  │   ├── guidance/                        # 向量模型微调及效果可视化的若干notebook                         
   │   └── ...     
   ```
 
@@ -119,17 +120,4 @@
             }
         }
     }
-    ```
-  
-- Script/Notebook 使用方法
-  - QA_auto_generator.py 
-
-    ```shell
-    # step1: 设置openai key的环境变量
-    export OPENAI_API_KEY={key}
-    
-    # step2: 执行
-    python QA_auto_generator.py --input_file ./xx.pdf --output_file ./FAQ.txt \
-        --product "Midea Dishwasher" --input_format "pdf" --output_format "json" \
-        --lang zh
     ```
