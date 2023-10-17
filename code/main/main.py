@@ -360,6 +360,9 @@ class CustomDocRetriever(BaseRetriever):
 
     
     def get_relevant_documents_custom(self, query_input: str):
+        global BM25_QD_THRESHOLD_HARD_REFUSE, BM25_QD_THRESHOLD_SOFT_REFUSE
+        global KNN_QQ_THRESHOLD_HARD_REFUSE, KNN_QQ_THRESHOLD_SOFT_REFUSE
+        global KNN_QD_THRESHOLD_HARD_REFUSE, KNN_QD_THRESHOLD_SOFT_REFUSE
         start = time.time()
         query_embedding = get_vector_by_sm_endpoint(query_input, sm_client, self.embedding_model_endpoint)
         aos_client = OpenSearch(
@@ -438,7 +441,10 @@ class CustomDocRetriever(BaseRetriever):
             logger.info(f'get_topk_items:{len(ret_content)}')
             return ret_content
         
-        recall_knowledge = combine_recalls(opensearch_knn_respose, opensearch_query_response)
+        filter_knn_result = [ item for item in opensearch_knn_respose if (item['score'] > KNN_QQ_THRESHOLD_HARD_REFUSE and item['doc_type'] == 'Question') or  (item['score'] > KNN_QD_THRESHOLD_HARD_REFUSE and item['doc_type'] == 'Paragraph')]
+        filter_inverted_result = [ item for item in opensearch_query_response if item['score'] > BM25_QD_THRESHOLD_HARD_REFUSE ]
+
+        recall_knowledge = combine_recalls(filter_knn_result, filter_inverted_result)
 
         ##如果是段落类型，添加临近doc
         recall_knowledge = self.add_neighbours_doc(aos_client,recall_knowledge)
@@ -1080,7 +1086,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
                     else:
                         stratgy = ReplyStratgy(min(ReplyStratgy.RETURN_OPTIONS.value, stratgy.value))
 
-                elif item['score'] < 1.0:
+                elif item['score'] <= 1.0:
                     if item['score'] > KNN_QD_THRESHOLD_SOFT_REFUSE:
                         stratgy = ReplyStratgy.WITH_LLM
                     elif item['score'] > KNN_QD_THRESHOLD_HARD_REFUSE:
