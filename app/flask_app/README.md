@@ -144,10 +144,10 @@ bash start_app_cn.sh -m Qwen/BGE
 #### 4.1 LLM推理接口
 
 ##### 4.1.1 Health Check
-Endpoint: /ping
-Method: GET
-Description: 发送请求以检查Flask App的状态。
-Response:
+Endpoint: /ping  
+Method: GET  
+Description: 发送请求以检查Flask App的状态。  
+Response:  
 ```
 {
     "message": "started",
@@ -156,10 +156,10 @@ Response:
 ```
 
 ##### 4.1.2 推理(Chat)
-Endpoint: /chat
-Method: POST
-Description: 发送请求进行推理。
-Sample Input:
+Endpoint: /chat  
+Method: POST  
+Description: 发送请求进行推理。  
+Sample Input:  
 ```
 {
     "inputs": "S3是怎么计价的？",
@@ -174,7 +174,7 @@ Sample Input:
     ]
 }
 ```
-Sample Response:
+Sample Response:  
 ```
 {
     "query": "S3是怎么计价的？",
@@ -194,11 +194,11 @@ Sample Response:
 ```
 
 ##### 4.1.3 流式推理(Stream)
-Endpoint: /chat
-Method: POST
-Description: 发送请求进行流式推理。
-Sample Input: 同4.1.2
-Sample response:
+Endpoint: /chat  
+Method: POST  
+Description: 发送请求进行流式推理。  
+Sample Input: 同4.1.2  
+Sample response:  
 ```
 # 推理过程中：
 {
@@ -227,10 +227,10 @@ Sample response:
 ```
 
 ##### 4.1.4 清空CUDA缓存
-Endpoint: /clear
-Method: GET/POST
-Description: 发送请求来清空CUDA缓存。
-Sample response:
+Endpoint: /clear  
+Method: GET/POST  
+Description: 发送请求来清空CUDA缓存。  
+Sample response:  
 ```
 {
     "success": true
@@ -240,10 +240,10 @@ Sample response:
 #### 4.2 Embedding推理接口
 
 ##### 4.2.1 Health Check
-Endpoint: /ping
-Method: GET
-Description: 发送请求以检查Flask App的状态。
-Response:
+Endpoint: /ping  
+Method: GET  
+Description: 发送请求以检查Flask App的状态。  
+Response:  
 ```
 {
     "message": "started",
@@ -252,10 +252,10 @@ Response:
 ```
 
 ##### 4.2.2 Embedding模型推理
-Endpoint: /ping
-Method: POST
-Description: 发送请求以检查Flask App的状态。
-Sample Input:
+Endpoint: /ping  
+Method: POST  
+Description: 发送请求以检查Flask App的状态。  
+Sample Input:  
 ```
 {
     "inputs": [
@@ -274,10 +274,10 @@ Response:
 ```
 
 ##### 4.2.3 清空CUDA缓存
-Endpoint: /clear
-Method: GET/POST
-Description: 发送请求来清空CUDA缓存。
-Sample response:
+Endpoint: /clear  
+Method: GET/POST  
+Description: 发送请求来清空CUDA缓存。  
+Sample response:  
 ```
 {
     "success": true
