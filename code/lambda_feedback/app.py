@@ -1,15 +1,9 @@
 import json
 import logging
-import time
 import os
-import re
-from datetime import datetime
 import boto3
-import time
-import hashlib
-import uuid
 from enum import Enum
-
+import tempfile
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
@@ -17,14 +11,11 @@ dynamodb_client = boto3.resource('dynamodb')
 user_feedback_table = os.environ.get('user_feedback_table')
 chat_session_table = os.environ.get('chat_session_table')
 
-
 ## content  = [question, answer, intention,msgid]
 def get_session_by_msgid(session_id,msg_id):
 
-    table_name = chat_session_table
-
     # table name
-    table = dynamodb_client.Table(table_name)
+    table = dynamodb_client.Table(chat_session_table)
     operation_result = []
     try:
         response = table.get_item(Key={'session-id': session_id})
@@ -34,6 +25,51 @@ def get_session_by_msgid(session_id,msg_id):
     except Exception as e:
         logger.info(f"get session failed {str(e)}")
     return operation_result
+
+## content  = [question, answer, intention,msgid]
+def get_qa_by_msgid(session_id,msg_id):
+
+    # table name
+    table = dynamodb_client.Table(user_feedback_table)
+    operation_result = []
+    try:
+        response = table.get_item(Key={'session-id': session_id,'msgid':msg_id})
+        if "Item" in response.keys():
+            operation_result = json.loads(response["Item"]["content"])
+    except Exception as e:
+        logger.info(f"get session failed {str(e)}")
+    return operation_result
+
+
+## update feedback table 
+def update_qa_status(session_id,msg_id,status):
+    table = dynamodb_client.Table(user_feedback_table)
+    operation_result = False
+    try:
+        response = table.get_item(Key={'session-id': session_id,'msgid':msg_id})
+        if "Item" in response.keys():
+            result = json.loads(response["Item"]["content"])
+            content = json.dumps([{**result[0],"action":status}],ensure_ascii=False)
+
+            response2 = table.put_item(
+                Item={
+                    'session-id': session_id,
+                    'msgid':msg_id,
+                    'content': content
+                }
+            )
+            if "ResponseMetadata" in response2.keys():
+                if response["ResponseMetadata"]["HTTPStatusCode"] == 200:
+                    operation_result = True
+                else:
+                    operation_result = False
+            else:
+                operation_result = False
+
+    except Exception as e:
+        logger.info(f"get session failed {str(e)}")
+    return operation_result
+
 
 
 
@@ -52,12 +88,12 @@ def update_feedback(session_id,msgid,action,username,timestamp,feedback=''):
 
     response = table.get_item(Key={'session-id': session_id,"msgid":msgid})
 
-    if "Item" in response.keys():
-        chat_history = json.loads(response["Item"]["content"])
-    else:
-        # print("****** No result")
-        chat_history = []
-
+    # if "Item" in response.keys():
+    #     chat_history = json.loads(response["Item"]["content"])
+    # else:
+    #     # print("****** No result")
+        # chat_history = []
+    chat_history = []
     feedback = {
         "question":question,
         "answer":answer,
@@ -77,7 +113,7 @@ def update_feedback(session_id,msgid,action,username,timestamp,feedback=''):
             'content': content
         }
     )
-
+    operation_result = True
     if "ResponseMetadata" in response.keys():
         if response["ResponseMetadata"]["HTTPStatusCode"] == 200:
             operation_result = True
@@ -124,23 +160,124 @@ def filteringActionResults(items,filteringTokens,filteringOperation):
     return new_items
     
     
+##add new qa pair     
+def add_new_qa(session_id,msgid,action,username,timestamp,question,answer):
+    table = dynamodb_client.Table(user_feedback_table)
+    chat_history = []
+    feedback = {
+        "question":question,
+        "answer":answer,
+        "username":username,
+        "action":action,
+        "timestamp":timestamp,
+        "feedback":answer
+    }
+    chat_history.append(feedback)
+    content = json.dumps(chat_history,ensure_ascii=False)
+
+    # inserting values into table
+    response = table.put_item(
+        Item={
+            'session-id': session_id,
+            'msgid':msgid,
+            'content': content
+        }
+    )
+    operation_result = True
+    if "ResponseMetadata" in response.keys():
+        if response["ResponseMetadata"]["HTTPStatusCode"] == 200:
+            operation_result = True
+        else:
+            operation_result = False
+    else:
+        operation_result = False
+    return operation_result
+
+
+## save to s3 bucket to trigger glue job
+def save_string_to_s3_bucket(text_string, bucket_name, file_name,s3_prefix=""):
+    s3 = boto3.client('s3')
+    temp_file = tempfile.NamedTemporaryFile(delete=False)
+    temp_file_name = temp_file.name
+
+    s3_key = os.path.join(s3_prefix, file_name)
+    try:
+        temp_file.write(text_string.encode('utf-8'))
+        temp_file.close()
+        s3.upload_file(temp_file_name,bucket_name,s3_key)
+        logger.info(f"uploaded file to:{bucket_name}/{s3_key}")
+        if os.path.exists(temp_file_name):
+            os.remove(temp_file_name)
+        return True
+    except Exception as e:
+        logger.error(f"Error occurred: {str(e)}")
+        logger.error(f"faild to upload file to:{bucket_name}/{s3_key}")
+        if os.path.exists(file_name):
+            os.remove(file_name)
+        return False
+
+
+
+ ##把faq知识入库，从ddb中取出faq，写入到知识库中
+def inject_new_qa(session_id,msgid,bucket_name,s3_prefix,action):
+    chat_data = get_qa_by_msgid(session_id,msgid)
+    if not chat_data:
+        logger.error('No chat data found')
+        return False
+
+    question, answer,username = chat_data[0]['question'],chat_data[0]['answer'],chat_data[0]['username']
+    formatted_qa = 'Question: {}\nAnswer: {}\n'.format(question,answer)
+    logger.info(f"formatted_qa:{formatted_qa}")
+    bucket_name = os.environ.get('UPLOAD_BUCKET') if bucket_name == '' else bucket_name
+    s3_prefix = os.environ.get('UPLOAD_OBJ_PREFIX') if s3_prefix == '' else s3_prefix
+
+    temp_filename = f'{session_id}_{username}.faq'
+    operation_result = save_string_to_s3_bucket(
+        text_string=formatted_qa,
+        bucket_name = bucket_name,
+        file_name = temp_filename,
+        s3_prefix = s3_prefix
+    )
+    if operation_result:
+        operation_result = update_qa_status(session_id,msgid,status=action)
+
+    return operation_result
 
 def lambda_handler(event, context):
     logger.info(f"event:{event}")
     method = event.get('method')
+    
+    ##增加或者修改反馈
     if method == 'post':
         session_id = event.get('session_id')
         msgid = event.get('msgid')
         action = event.get('action')
+    
         username = event.get('username')
         timestamp = event.get('timestamp')
         feedback =  event.get('feedback')
-        ret = update_feedback(session_id,msgid,action,username,timestamp,feedback)
-        return {
-            'statusCode': 200 if ret else 500
-        }
-    elif method == 'get':
+        question = event.get('question')
+        answer = event.get('answer')
         
+        ret = True
+        ##增加一个FAQ，保存到ddb
+        if action == 'new-added':
+            ret = add_new_qa(session_id,msgid,action,username,timestamp,question,answer)
+
+        ##把faq知识入库，从ddb中取出faq，写入到知识库中
+        elif action == 'injected':
+            bucket_name = event.get('s3_bucket')
+            s3_prefix = event.get('obj_prefix')
+            ret = inject_new_qa(session_id,msgid,bucket_name,s3_prefix,action)
+
+        else:
+            ret = update_feedback(session_id,msgid,action,username,timestamp,feedback)
+        return {
+            'statusCode': 200 if ret else 500,
+        }
+        
+    ## 获取反馈
+    elif method == 'get':
         pageindex_key = None if event.get('pageindex_key') == 'undefined' else json.loads(event.get('pageindex_key'))
         textfilter = event.get('textfilter')
         pagesize = int(event.get('pagesize'))
