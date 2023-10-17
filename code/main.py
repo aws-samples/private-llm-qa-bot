@@ -6,6 +6,7 @@ import re
 from botocore import config
 from botocore.exceptions import ClientError
 from datetime import datetime, timedelta
+import pytz
 import boto3
 import time
 import hashlib
@@ -1296,30 +1297,53 @@ def generate_s3_image_url(bucket_name, key, expiration=3600):
     return url
 
 def handle_feedback(event):
-    body = event.get('body')
-    ## actions types: thumbs-up,thumbs-down,cancel-thumbs-up,cancel-thumbs-down
-    json_obj = {
-            "opensearch_doc":  [], #for kiness firehose log subscription filter name
-            "log_type":'feedback',
-            "msgid":body.get('msgid'),
-            "timestamp":time.time(),
-            "username":body.get('username'),
-            "session_id":body.get('session_id'),
-            "action":body.get('action'),
-            "feedback":body.get('feedback') 
-        }
-    json_obj_str = json.dumps(json_obj, ensure_ascii=False)
-    logger.info(json_obj_str)
-
+    method = event.get('method')
+    results = []
     ##invoke feedback lambda to store in ddb
     fn = os.environ.get('lambda_feedback')
-    if fn:
-        response = lambda_client.invoke(
-                FunctionName = fn,
-                InvocationType='Event',
-                Payload=json.dumps(json_obj)
-            )
-        logger.info(f"invoke lambda feedback StatusCode:{response['StatusCode']}")
+    if method == 'post':
+        body = event.get('body')
+        ## actions types: thumbs-up,thumbs-down,cancel-thumbs-up,cancel-thumbs-down
+        timestamp = time.time()
+        utc_datetime = datetime.utcfromtimestamp(timestamp)
+        # Set the timezone to UTC+8
+        utc8_timezone = pytz.timezone('Asia/Shanghai')
+        datetime_utc8 = utc_datetime.replace(tzinfo=pytz.utc).astimezone(utc8_timezone)
+        json_obj = {
+                "opensearch_doc":  [], #for kiness firehose log subscription filter name
+                "log_type":'feedback',
+                "msgid":body.get('msgid'),
+                "timestamp":str(datetime_utc8),
+                "username":body.get('username'),
+                "session_id":body.get('session_id'),
+                "action":body.get('action'),
+                "feedback":body.get('feedback')
+            }
+        json_obj_str = json.dumps(json_obj, ensure_ascii=False)
+        logger.info(json_obj_str)
+
+        json_obj = {**json_obj,**body,'method':'post'}
+        if fn:
+            response = lambda_client.invoke(
+                    FunctionName = fn,
+                    InvocationType='Event',
+                    Payload=json.dumps(json_obj)
+                )
+            logger.info(f"invoke lambda feedback StatusCode:{response['StatusCode']}")
+        return results
+    elif method == 'get':
+        body = event.get('body')
+        json_obj = {**body,'method':'get'}
+        if fn:
+            response = lambda_client.invoke(
+                    FunctionName = fn,
+                    InvocationType='RequestResponse',
+                    Payload=json.dumps(json_obj)
+                )
+            if response['StatusCode'] == 200:
+                payload_json = json.loads(response.get('Payload').read())
+                results = payload_json['body']
+        return results     
 
 
 @handle_error
@@ -1373,9 +1397,9 @@ def lambda_handler(event, context):
         return {'statusCode': 200 if result else 500,'body':result }
 
     ## 处理feedback action
-    if method == 'post' and resource == 'feedback':
-        handle_feedback(event)
-        return {'statusCode': 200}
+    if method in ['post','get','delete'] and resource == 'feedback':
+        results = handle_feedback(event)
+        return {'statusCode': 200,'body':results}
 
 
     ####其他管理操作 end
