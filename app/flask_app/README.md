@@ -67,7 +67,7 @@ flask_app
 * 选择 "Launch Instance（启动实例）"。
 * 命名实例，例如"LLMInferenceEC2"。
 * 在 "Amazon Machine Image (AMI)" 中，选择 Deep Learning AMI GPU PyTorch 2.0.1 (Ubuntu 20.04) 20231003。
-* 在 "Instance Type" 中，选择 g4dn.4xlarge。
+* 在 "Instance Type" 中，选择 g4dn.2xlarge/g4dn.xlarge。
 * 在 "Key pair (login)" 中，选择计划使用的密钥对。
 * 在 "Network Settings" 中，选择计划使用的VPC与安全组。注意在这一步，需要确保安全组中开放了对应的端口。本App默认使用3000端口。
 * 在 "Configure Storage" 中，选择对应容量的存储。
@@ -98,7 +98,7 @@ flask_app
 
 ```
 aws ec2 run-instances --image-id $ami-id --count 2
---instance-type g4dn.4xlarge --key-name $key-pair 
+--instance-type g4dn.2xlarge --key-name $key-pair 
 --security-group-ids $security-group-id
 --user-data file://userdata.sh 
 --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=$EC2Name}]' 
@@ -139,5 +139,4 @@ bash start_app.sh -m Qwen/BGE
 # china region
 bash start_app_cn.sh -m Qwen/BGE
 ```
-
 
