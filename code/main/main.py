@@ -443,7 +443,7 @@ class CustomDocRetriever(BaseRetriever):
         
         filter_knn_result = [ item for item in opensearch_knn_respose if (item['score'] > KNN_QQ_THRESHOLD_HARD_REFUSE and item['doc_type'] == 'Question') or  (item['score'] > KNN_QD_THRESHOLD_HARD_REFUSE and item['doc_type'] == 'Paragraph')]
         filter_inverted_result = [ item for item in opensearch_query_response if item['score'] > BM25_QD_THRESHOLD_HARD_REFUSE ]
-
+        
         recall_knowledge = combine_recalls(filter_knn_result, filter_inverted_result)
 
         ##如果是段落类型，添加临近doc
@@ -848,9 +848,9 @@ def create_qa_prompt_templete(prompt_template):
     )
     return PROMPT
 
-def create_chat_prompt_templete(prompt_template):
+def create_chat_prompt_templete(prompt_template=''):
     if prompt_template == '':
-        prompt_template_zh = """{system_role_prompt} {role_bot}\n {chat_history}\n\n用户: {question}"""
+        prompt_template_zh = """{system_role_prompt}{role_bot}\n{chat_history}\n\nHuman:{question}"""
     else:
         prompt_template_zh = prompt_template.replace('{context}','') ##remove{context}
     PROMPT = PromptTemplate(
@@ -1038,7 +1038,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         else:
             chat_history=''
         
-        prompt_template = create_chat_prompt_templete(template)
+        prompt_template = create_chat_prompt_templete()
         llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
         ##最终的answer
         answer = llmchain.run({'question':query_input,'chat_history':chat_history,'role_bot':B_Role})
