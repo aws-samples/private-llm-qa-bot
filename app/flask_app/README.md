@@ -194,7 +194,7 @@ Sample Response:
 ```
 
 ##### 4.1.3 流式推理(Stream)
-Endpoint: /chat  
+Endpoint: /stream   
 Method: POST  
 Description: 发送请求进行流式推理。  
 Sample Input: 同4.1.2  
@@ -227,7 +227,7 @@ Sample response:
 ```
 
 ##### 4.1.4 清空CUDA缓存
-Endpoint: /clear  
+Endpoint: /clear   
 Method: GET/POST  
 Description: 发送请求来清空CUDA缓存。  
 Sample response:  
@@ -240,7 +240,7 @@ Sample response:
 #### 4.2 Embedding推理接口
 
 ##### 4.2.1 Health Check
-Endpoint: /ping  
+Endpoint: /ping   
 Method: GET  
 Description: 发送请求以检查Flask App的状态。  
 Response:  
@@ -252,7 +252,7 @@ Response:
 ```
 
 ##### 4.2.2 Embedding模型推理
-Endpoint: /ping  
+Endpoint: /embedding   
 Method: POST  
 Description: 发送请求以检查Flask App的状态。  
 Sample Input:  
