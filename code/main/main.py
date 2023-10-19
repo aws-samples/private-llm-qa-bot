@@ -848,9 +848,9 @@ def create_qa_prompt_templete(prompt_template):
     )
     return PROMPT
 
-def create_chat_prompt_templete(prompt_template):
+def create_chat_prompt_templete(prompt_template=''):
     if prompt_template == '':
-        prompt_template_zh = """{system_role_prompt} {role_bot}\n {chat_history}\n\n用户: {question}"""
+        prompt_template_zh = """{system_role_prompt}{role_bot}\n{chat_history}\n\nHuman:{question}"""
     else:
         prompt_template_zh = prompt_template.replace('{context}','') ##remove{context}
     PROMPT = PromptTemplate(
@@ -1038,7 +1038,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         else:
             chat_history=''
         
-        prompt_template = create_chat_prompt_templete(template)
+        prompt_template = create_chat_prompt_templete()
         llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
         ##最终的answer
         answer = llmchain.run({'question':query_input,'chat_history':chat_history,'role_bot':B_Role})
