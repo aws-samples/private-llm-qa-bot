@@ -1072,6 +1072,9 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         else:
             chat_history=''
         def get_reply_stratgy(recall_knowledge):
+            if not recall_knowledge:
+                stratgy = ReplyStratgy.SAY_DONT_KNOW
+        
             global BM25_QD_THRESHOLD_HARD_REFUSE, BM25_QD_THRESHOLD_SOFT_REFUSE
             global KNN_QQ_THRESHOLD_HARD_REFUSE, KNN_QQ_THRESHOLD_SOFT_REFUSE
             global KNN_QD_THRESHOLD_HARD_REFUSE, KNN_QD_THRESHOLD_SOFT_REFUSE
