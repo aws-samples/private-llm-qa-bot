@@ -79,7 +79,7 @@ def update_feedback(session_id,msgid,action,username,timestamp,feedback=''):
 
     if not chat_data:
         print('No chat data found')
-        return True 
+        return False 
     
     question, answer = chat_data[0][0],chat_data[0][1]
 
@@ -225,13 +225,13 @@ def inject_new_qa(session_id,msgid,bucket_name,s3_prefix,action):
         logger.error('No chat data found')
         return False
 
-    question, answer,username = chat_data[0]['question'],chat_data[0]['answer'],chat_data[0]['username']
+    question, answer,username = chat_data[0]['question'],chat_data[0]['feedback'],chat_data[0]['username']
     formatted_qa = 'Question: {}\nAnswer: {}\n'.format(question,answer)
     logger.info(f"formatted_qa:{formatted_qa}")
     bucket_name = os.environ.get('UPLOAD_BUCKET') if bucket_name == '' else bucket_name
     s3_prefix = os.environ.get('UPLOAD_OBJ_PREFIX') if s3_prefix == '' else s3_prefix
 
-    temp_filename = f'{session_id}_{username}.faq'
+    temp_filename = f'{msgid}_{username}.faq'
     operation_result = save_string_to_s3_bucket(
         text_string=formatted_qa,
         bucket_name = bucket_name,
@@ -273,7 +273,8 @@ def lambda_handler(event, context):
         else:
             ret = update_feedback(session_id,msgid,action,username,timestamp,feedback)
         return {
-            'statusCode': 200 if ret else 500,
+            'statusCode': 200,
+            'body':ret
         }
         
     ## 获取反馈
