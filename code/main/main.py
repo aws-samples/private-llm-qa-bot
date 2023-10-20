@@ -1304,10 +1304,11 @@ def generate_s3_image_url(bucket_name, key, expiration=3600):
 
 def handle_feedback(event):
     method = event.get('method')
-    results = []
+    
     ##invoke feedback lambda to store in ddb
     fn = os.environ.get('lambda_feedback')
     if method == 'post':
+        results = True
         body = event.get('body')
         ## actions types: thumbs-up,thumbs-down,cancel-thumbs-up,cancel-thumbs-down
         timestamp = time.time()
@@ -1332,12 +1333,18 @@ def handle_feedback(event):
         if fn:
             response = lambda_client.invoke(
                     FunctionName = fn,
-                    InvocationType='Event',
+                    InvocationType='RequestResponse',
                     Payload=json.dumps(json_obj)
                 )
-            logger.info(f"invoke lambda feedback StatusCode:{response['StatusCode']}")
+            payload_json = json.loads(response.get('Payload').read())
+            logger.info(payload_json)
+            results = payload_json['body']
+            if response['StatusCode'] != 200 or not results:
+                logger.info(f"invoke lambda feedback StatusCode:{response['StatusCode']} and result {results}")
+                results = False
         return results
     elif method == 'get':
+        results = []
         body = event.get('body')
         json_obj = {**body,'method':'get'}
         if fn:
@@ -1405,7 +1412,7 @@ def lambda_handler(event, context):
     ## 处理feedback action
     if method in ['post','get','delete'] and resource == 'feedback':
         results = handle_feedback(event)
-        return {'statusCode': 200,'body':results}
+        return {'statusCode': 200 if results else 500,'body':results}
 
 
     ####其他管理操作 end
