@@ -368,6 +368,31 @@ def parse_html_to_json(html_docs):
     json_content = json.dumps(results, ensure_ascii=False)
     return json_content
 
+## parse faq in csv format. Question	Answer
+def parse_csv_to_json(file_content):
+    import csv
+    csv_data = file_content.splitlines()
+    reader = csv.reader(csv_data)
+    header = next(reader)  # Skip the header row
+    json_arr = []
+    for item in reader:
+        question, answer = item[0],item[1]
+        question = question.replace("Question: ", "")
+        answer = answer.replace("Answer: ", "")
+        obj = {
+            "Question":question, "Answer":answer
+        }
+        json_arr.append(obj)
+
+    qa_content = {
+        "doc_title" : "",
+        "doc_category" : "FAQ",
+        "qa_list" : json_arr
+    }
+    
+    json_content = json.dumps(qa_content, ensure_ascii=False)
+    return json_content
+
 def load_content_json_from_s3(bucket, object_key, content_type, credentials):
     if content_type == 'pdf':
         pdf_path=os.path.basename(object_key)
@@ -380,21 +405,26 @@ def load_content_json_from_s3(bucket, object_key, content_type, credentials):
     else:
         obj = s3.Object(bucket,object_key)
         file_content = obj.get()['Body'].read().decode('utf-8', errors='ignore').strip()
-        
-        if content_type == 'faq':
-            json_content = parse_faq_to_json(file_content)
-        elif content_type =='txt':
-            json_content = parse_txt_to_json(file_content)
-        elif content_type =='json':
-            json_content = file_content
-        elif content_type == 'pdf.json':
-            json_content = file_content
-        elif content_type == 'example':
-            json_content = file_content
-        elif content_type in ['wiki','blog']:
-            json_content = json.loads(file_content)
-        else:
-            raise RuntimeError("unsupport content type...(pdf, faq, txt, pdf.json are supported.)")
+        try:
+            if content_type == 'faq':
+                json_content = parse_faq_to_json(file_content)
+            elif content_type =='txt':
+                json_content = parse_txt_to_json(file_content)
+            elif content_type =='json':
+                json_content = file_content
+            elif content_type == 'pdf.json':
+                json_content = file_content
+            elif content_type == 'example':
+                json_content = file_content
+            elif content_type in ['wiki','blog']:
+                json_content = json.loads(file_content)
+            elif content_type == 'csv':
+                json_content = parse_csv_to_json(file_content)
+            else:
+                print(f"unsupport content type...{content_type}")
+                raise RuntimeError(f"unsupport content type...{content_type}")
+        except Exception as e:
+            raise RuntimeError(f"Exception ...{str(e)}")
         
         return json_content
 
@@ -563,7 +593,7 @@ def WriteVecIndexToAOS(bucket, object_key, content_type, smr_client, aos_endpoin
 
         print("---------flag------")
         gen_aos_record_func = None
-        if content_type == "faq":
+        if content_type in ["faq","csv"]:
             gen_aos_record_func = iterate_QA(file_content, object_key,smr_client, index_name, EMB_MODEL_ENDPOINT)
         elif content_type in ['txt', 'pdf', 'json']:
             gen_aos_record_func = iterate_paragraph(file_content,object_key, smr_client, index_name, EMB_MODEL_ENDPOINT)
@@ -586,7 +616,7 @@ def WriteVecIndexToAOS(bucket, object_key, content_type, smr_client, aos_endpoin
         return response
     except Exception as e:
         print(f"There was an error when ingest:{object_key} to aos cluster, Exception: {str(e)}")
-        return ''    
+        return None   
 
 def process_s3_uploaded_file(bucket, object_key):
     print("********** object_key : " + object_key)
@@ -618,6 +648,9 @@ def process_s3_uploaded_file(bucket, object_key):
         print("********** pre-processing example file")
         content_type = 'example'
         index_name = EXAMPLE_INDEX_NAME
+    elif object_key.endswith(".csv"):
+        print("********** pre-processing csv file")
+        content_type = 'csv'
     else:
         raise RuntimeError("unsupport content type...(pdf, faq, txt, pdf.json are supported.)")
     
@@ -632,9 +665,10 @@ def process_s3_uploaded_file(bucket, object_key):
     print(response)
     print("ingest {} chunk to AOS".format(response[0]))
     put_idx_to_ddb(filename=object_key,username='s3event',
-                    index_name=index_name,
-                        embedding_model=EMB_MODEL_ENDPOINT)
+                        index_name=index_name,
+                            embedding_model=EMB_MODEL_ENDPOINT)
 
 for s3_key in object_key.split(','):
     print("processing {}".format(s3_key))
+    s3_key = s3_key.replace('+',' ') ##replace the '+' with space. ps:if the original file name contains space, then s3 notification will replace it with '+'.
     process_s3_uploaded_file(bucket, s3_key)
