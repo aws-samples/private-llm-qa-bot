@@ -216,6 +216,19 @@ def save_string_to_s3_bucket(text_string, bucket_name, file_name,s3_prefix=""):
             os.remove(file_name)
         return False
 
+def delete_qa(session_id,msgid):
+    table = dynamodb_client.Table(user_feedback_table)
+    try:
+        table.delete_item(
+        Key={
+            'session-id': session_id,"msgid":msgid
+        })
+        return True
+    except Exception as e:
+        logger.error(f"delete session failed {str(e)}")
+        return False
+
+
 
 
  ##把faq知识入库，从ddb中取出faq，写入到知识库中
@@ -293,3 +306,13 @@ def lambda_handler(event, context):
                 "pageindex_key":exclusive_start_key
             }
         }
+    ## 删除反馈
+    elif method == 'delete':
+        session_id = event.get('session_id')
+        msgid = event.get('msgid')
+        ret = delete_qa(session_id,msgid)
+        return {
+            'statusCode': 200,
+            'body':ret
+        }
+
