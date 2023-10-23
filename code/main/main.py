@@ -850,7 +850,7 @@ def create_qa_prompt_templete(prompt_template):
 
 def create_chat_prompt_templete(prompt_template=''):
     if prompt_template == '':
-        prompt_template_zh = """{system_role_prompt}{role_bot}\n{chat_history}\n\nHuman:{question}"""
+        prompt_template_zh = """Human:{system_role_prompt}{role_bot}\n{chat_history}\n\n{question}"""
     else:
         prompt_template_zh = prompt_template.replace('{context}','') ##remove{context}
     PROMPT = PromptTemplate(
@@ -1306,6 +1306,9 @@ def generate_s3_image_url(bucket_name, key, expiration=3600):
     )
     return url
 
+
+## 1. write the feedback in logs and loaded to kinesis
+## 2. if lambda_feedback is setup, then call lambda_feedback for other managment operations
 def handle_feedback(event):
     method = event.get('method')
     
@@ -1333,7 +1336,7 @@ def handle_feedback(event):
         json_obj_str = json.dumps(json_obj, ensure_ascii=False)
         logger.info(json_obj_str)
 
-        json_obj = {**json_obj,**body,'method':'post'}
+        json_obj = {**json_obj,**body,'method':method}
         if fn:
             response = lambda_client.invoke(
                     FunctionName = fn,
@@ -1350,7 +1353,7 @@ def handle_feedback(event):
     elif method == 'get':
         results = []
         body = event.get('body')
-        json_obj = {**body,'method':'get'}
+        json_obj = {**body,'method':method}
         if fn:
             response = lambda_client.invoke(
                     FunctionName = fn,
@@ -1360,7 +1363,21 @@ def handle_feedback(event):
             if response['StatusCode'] == 200:
                 payload_json = json.loads(response.get('Payload').read())
                 results = payload_json['body']
-        return results     
+        return results   
+    elif method == 'delete':  
+        results = True
+        body = event.get('body')
+        json_obj = {**body,'method':method}
+        if fn:
+            response = lambda_client.invoke(
+                    FunctionName = fn,
+                    InvocationType='RequestResponse',
+                    Payload=json.dumps(json_obj)
+                )
+            if response['StatusCode'] == 200:
+                payload_json = json.loads(response.get('Payload').read())
+                results = payload_json['body']
+        return results  
 
 
 @handle_error
