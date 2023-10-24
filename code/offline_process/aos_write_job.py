@@ -17,6 +17,7 @@ from langchain.document_loaders import PDFMinerPDFasHTMLLoader
 from langchain.docstore.document import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter,CharacterTextSplitter
 import logging
+import urllib.parse
 
 args = getResolvedOptions(sys.argv, ['bucket', 'object_key','AOS_ENDPOINT','REGION','EMB_MODEL_ENDPOINT','PUBLISH_DATE'])
 s3 = boto3.resource('s3')
@@ -28,11 +29,9 @@ arg_chunk_size = 384
 CHUNK_SIZE=500
 CHUNK_OVERLAP=0
 
-# EMB_MODEL_ENDPOINT = "st-paraphrase-mpnet-base-v2-2023-04-19-04-14-31-658-endpoint"
 EMB_MODEL_ENDPOINT=args['EMB_MODEL_ENDPOINT']
 smr_client = boto3.client("sagemaker-runtime")
 
-# AOS_ENDPOINT = 'vpc-chatbot-knn-3qe6mdpowjf3cklpj5c4q2blou.us-east-1.es.amazonaws.com'
 AOS_ENDPOINT = args['AOS_ENDPOINT']
 REGION = args['REGION']
 
@@ -87,7 +86,11 @@ def batch_generator(generator, batch_size):
 def iterate_paragraph(file_content, object_key, smr_client, index_name, endpoint_name):
     json_arr = json.loads(file_content)
     doc_title = object_key
-
+    text_splitter = RecursiveCharacterTextSplitter(        
+        chunk_size = CHUNK_SIZE,
+        chunk_overlap  = CHUNK_OVERLAP,
+        length_function = len,
+    )
     def chunk_generator(json_arr):
         for idx, json_item in enumerate(json_arr):
             header = ""
@@ -104,6 +107,18 @@ def iterate_paragraph(file_content, object_key, smr_client, index_name, endpoint
             for sent in (sent for sent in sentences if len(sent) > Sentence_Len_Threshold): 
                 yield (idx, sent, 'Sentence', paragraph_content)
 
+    # def chunk_generator(json_arr):
+    #     idx = 0
+    #     texts = []
+    #     for json_item in json_arr:
+    #         header = ""
+    #         if len(json_item['heading']) > 0:
+    #             header = json_item['heading'][0]['heading']
+    #         texts += text_splitter.split_text(f"{header}-{json_item['content']}")
+    #         for paragraph_content in texts:
+    #             idx += 1
+    #             yield (idx, paragraph_content, 'Paragraph', paragraph_content)
+
     generator = chunk_generator(json_arr)
     batches = batch_generator(generator, batch_size=EMB_BATCH_SIZE)
     for batch in batches:
@@ -112,7 +127,7 @@ def iterate_paragraph(file_content, object_key, smr_client, index_name, endpoint
             print("len of emb_src_texts :{}".format(len(emb_src_texts)))
             embeddings = get_embedding(smr_client, emb_src_texts, endpoint_name)
             for i, emb in enumerate(embeddings):
-                document = { "publish_date": publish_date, "idx": batch[i][0], "doc" : batch[i][1], "doc_type" : batch[i][2], "content" : batch[i][3], "doc_title": doc_title, "doc_category": "", "embedding" : emb}
+                document = { "publish_date": publish_date, "idx": batch[i][0], "doc" : batch[i][1], "doc_type" : batch[i][2], "content" : batch[i][3], "doc_title": doc_title, "doc_category": doc_title, "embedding" : emb}
                 yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document['doc']).encode('utf-8')).hexdigest()}
 
 def iterate_pdf_json(file_content, object_key, smr_client, index_name, endpoint_name):
@@ -442,21 +457,25 @@ def iterate_paragraph_blog(content_json, object_key,smr_client, index_name, endp
             content_summary = blog['content_summary']
             texts = text_splitter.split_text(f"{content_summary}")
             for parag in blog['content']:
-                texts += text_splitter.split_text(f"{parag['title']}\n{parag['content']}")
+                texts += text_splitter.split_text(f"{parag['title']}-{parag['content']}")
             for paragraph_content in texts:
                 idx += 1
-                yield (idx, doc_title, 'Paragraph', paragraph_content,doc_title)
+                yield (idx, paragraph_content, 'Paragraph', paragraph_content,doc_title)
+                ## add embedding for sentence
+                sentences = re.split('[。？?.！!]', paragraph_content)
+                for sent in (sent for sent in sentences if len(sent) > Sentence_Len_Threshold): 
+                    yield (idx, sent, 'Sentence', paragraph_content,doc_title)
 
     generator = chunk_generator(content_json)
     batches = batch_generator(generator, batch_size=EMB_BATCH_SIZE)
     for batch in batches:
         if batch is not None:
-            emb_src_texts = [item[3] for item in batch] ##对content向量化
+            emb_src_texts = [item[1] for item in batch] ##对content向量化
             print("len of emb_src_texts :{}".format(len(emb_src_texts)))
             embeddings = get_embedding(smr_client, emb_src_texts, endpoint_name)
             for i, emb in enumerate(embeddings):
                 document = { "publish_date": publish_date, "idx": batch[i][0], "doc" : batch[i][1], "doc_type" : batch[i][2], "content" : batch[i][3], "doc_title": doc_title, "doc_category": batch[i][4], "embedding" : emb}
-                yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document['content']).encode('utf-8')).hexdigest()}
+                yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document['doc']).encode('utf-8')).hexdigest()}
                 
 
 def iterate_paragraph_wiki(content_json, object_key,smr_client, index_name, endpoint_name):
@@ -477,6 +496,10 @@ def iterate_paragraph_wiki(content_json, object_key,smr_client, index_name, endp
                 for paragraph_content in texts:
                     idx += 1
                     yield (idx, paragraph_content, 'Paragraph', paragraph_content,url)
+                    ## add embedding for sentence
+                    sentences = re.split('[。？?.！!]', paragraph_content)
+                    for sent in (sent for sent in sentences if len(sent) > Sentence_Len_Threshold): 
+                        yield (idx, sent, 'Sentence', paragraph_content,doc_title,url)
 
     generator = chunk_generator(content_json)
     batches = batch_generator(generator, batch_size=EMB_BATCH_SIZE)
@@ -629,13 +652,13 @@ def process_s3_uploaded_file(bucket, object_key):
     elif object_key.endswith(".txt"):
         print("********** pre-processing text file")
         content_type = 'txt'
-    elif object_key.endswith(".wiki.json"):
+    elif re.search(r'.wiki(\(\d+\))*.json',object_key):
         print("********** pre-processing wiki file")
         content_type = 'wiki'
-    elif object_key.endswith(".blog.json"):
+    elif re.search(r'.blog(\(\d+\))*.json',object_key):
         print("********** pre-processing blog file")
         content_type = 'blog'
-    elif object_key.endswith(".pdf.json"):
+    elif re.search(r'.pdf(\(\d+\))*.json',object_key):
         print("********** pre-processing pdf.json file")
         content_type = 'pdf.json'
     elif object_key.endswith(".pdf"):
@@ -669,6 +692,7 @@ def process_s3_uploaded_file(bucket, object_key):
                             embedding_model=EMB_MODEL_ENDPOINT)
 
 for s3_key in object_key.split(','):
+    s3_key = urllib.parse.unquote(s3_key) ##In case Chinese filename
     print("processing {}".format(s3_key))
     s3_key = s3_key.replace('+',' ') ##replace the '+' with space. ps:if the original file name contains space, then s3 notification will replace it with '+'.
     process_s3_uploaded_file(bucket, s3_key)
