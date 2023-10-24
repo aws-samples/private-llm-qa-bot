@@ -19,7 +19,7 @@ def lambda_handler(event, context):
       },
       "use_bedrock" : "True"
     }
-    invoke_response = lambda_client.invoke(FunctionName="Detect_Intention",
+    invoke_response = lambda_client.invoke(FunctionName="Query_Rewrite",
                                            InvocationType='RequestResponse',
                                            Payload=json.dumps(msg))
     
@@ -53,4 +53,4 @@ def lambda_handler(event, context):
 
 ### 优化手段
 
-1. 速度层面，使用IUR(Incomplete Utterance Rewrite)相关的小模型进行推理
+1. 速度层面，使用IUR(Incomplete Utterance Rewrite)相关的[小模型](https://huggingface.co/csdc-atl/dialogue-rewriter)进行推理
