@@ -312,17 +312,26 @@ class CustomDocRetriever(BaseRetriever):
     
     def add_neighbours_doc(self,client,opensearch_respose):
         docs = []
+        docs_dict = {}
         for item in opensearch_respose:
-            ## only apply to wiki and blog.json file
-            if item['doc_type'] == 'Paragraph' and ( item['doc_title'].endswith('wiki') or item['doc_title'].endswith('.blog.json')):
-                doc = self.search_paragraph_neighbours(client,item['idx'],item['doc_title'],item['doc_category'])
-                docs.append({ "doc": doc, "score": item['score'], "doc_title": item['doc_title'],"doc_type": item['doc_type'],'doc_category':item['doc_category']} )
+            ## only apply to 'Paragraph','Sentence' type file
+            if item['doc_type'] in ['Paragraph','Sentence'] and ( 
+                item['doc_title'].endswith('.wiki.json') or 
+                item['doc_title'].endswith('.blog.json') or 
+                item['doc_title'].endswith('.txt') or 
+                item['doc_title'].endswith('.pdf')) :
+                #check if has duplicate content in Paragraph/Sentence types
+                key = f"{item['doc_title']}-{item['doc_category']}-{item['idx']}"
+                if key not in docs_dict:
+                    docs_dict[key] = item['idx']
+                    doc = self.search_paragraph_neighbours(client,item['idx'],item['doc_title'],item['doc_category'],item['doc_type'])
+                    docs.append({ "doc": doc, "score": item['score'], "doc_title": item['doc_title'],"doc_type": item['doc_type'],'doc_category':item['doc_category']} )
             else:
                 docs.append({ "doc": item['doc'], "score": item['score'], "doc_title": item['doc_title'],"doc_type": item['doc_type'],'doc_category':item['doc_category'] } )
         
         return docs
 
-    def search_paragraph_neighbours(self,client, idx, doc_title,doc_category):
+    def search_paragraph_neighbours(self,client, idx, doc_title,doc_category,doc_type):
         query ={
             "query":{
                 "bool": {
@@ -344,7 +353,7 @@ class CustomDocRetriever(BaseRetriever):
                     },
                     {
                     "terms": {
-                        "doc_type": ['Paragraph']
+                        "doc_type": [doc_type]
                     }
                     }
                 ]
@@ -355,7 +364,14 @@ class CustomDocRetriever(BaseRetriever):
             body=query,
             index=self.aos_index
         )
-        doc = '\n'.join([item['_source']['content'] for item in query_response["hits"]["hits"]])
+         ## the 'Sentence' type has mappings sentence:content:idx = n:1:1, so need to filter out the duplicate idx
+        idx_dict = {}
+        doc = ''
+        for item in query_response["hits"]["hits"]:
+            key = item['_source']['idx']
+            if key not in idx_dict:
+                idx_dict[key]=key
+                doc += item['_source']['content']+'\n'            
         return doc
 
     
@@ -441,7 +457,9 @@ class CustomDocRetriever(BaseRetriever):
             logger.info(f'get_topk_items:{len(ret_content)}')
             return ret_content
         
-        filter_knn_result = [ item for item in opensearch_knn_respose if (item['score'] > KNN_QQ_THRESHOLD_HARD_REFUSE and item['doc_type'] == 'Question') or  (item['score'] > KNN_QD_THRESHOLD_HARD_REFUSE and item['doc_type'] == 'Paragraph')]
+        filter_knn_result = [ item for item in opensearch_knn_respose if (item['score'] > KNN_QQ_THRESHOLD_HARD_REFUSE and item['doc_type'] == 'Question') or 
+                              (item['score'] > KNN_QD_THRESHOLD_HARD_REFUSE and item['doc_type'] == 'Paragraph') or
+                              (item['score'] > KNN_QQ_THRESHOLD_HARD_REFUSE and item['doc_type'] == 'Sentence')]
         filter_inverted_result = [ item for item in opensearch_query_response if item['score'] > BM25_QD_THRESHOLD_HARD_REFUSE ]
         
         recall_knowledge = combine_recalls(filter_knn_result, filter_inverted_result)
