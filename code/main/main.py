@@ -37,6 +37,7 @@ from langchain.llms.base import LLM
 import io
 import math
 from enum import Enum
+from boto3 import client as boto3_client
 
 lambda_client= boto3.client('lambda')
 dynamodb_client = boto3.resource('dynamodb')
@@ -48,6 +49,7 @@ DOC_INDEX_TABLE= 'chatbot_doc_index'
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 sm_client = boto3.client("sagemaker-runtime")
+lambda_client = boto3_client('lambda')
 # llm_endpoint = 'bloomz-7b1-mt-2023-04-19-09-41-24-189-endpoint'
 chat_session_table = os.environ.get('chat_session_table')
 QA_SEP = "=>"
@@ -68,6 +70,8 @@ KNN_QQ_THRESHOLD_HARD_REFUSE = float(os.environ.get('knn_qq_threshold_hard',0.6)
 KNN_QQ_THRESHOLD_SOFT_REFUSE = float(os.environ.get('knn_qq_threshold_soft',0.8))
 KNN_QD_THRESHOLD_HARD_REFUSE = float(os.environ.get('knn_qd_threshold_hard',0.6))
 KNN_QD_THRESHOLD_SOFT_REFUSE = float(os.environ.get('knn_qd_threshold_soft',0.8))
+
+INTENTION_LIST = os.environ.get('intention_list', "")
 
 TOP_K = int(os.environ.get('TOP_K',4))
 NEIGHBORS = int(os.environ.get('neighbors',0))
@@ -476,6 +480,8 @@ class ReplyStratgy(Enum):
     HINT_LLM_REFUSE = 3
     RETURN_OPTIONS = 4
     SAY_DONT_KNOW = 5
+    AGENT = 6
+    OTHER = 7
 
 
 class APIException(Exception):
@@ -503,53 +509,36 @@ def handle_error(func):
 
     return wrapper
 
-# kendra
+def detect_intention(query, fewshot_cnt=5, use_bedrock="True"):
+    msg = {"fewshot_cnt":fewshot_cnt, "query": query, "use_bedrock" : use_bedrock }
+    invoke_response = lambda_client.invoke(FunctionName="Detect_Intention",
+                                           InvocationType='RequestResponse',
+                                           Payload=json.dumps(msg))
+    response_body = invoke_response['Payload']
 
+    response_str = response_body.read().decode("unicode_escape")
+    return response_str.strip('"')
 
+def rewrite_query(query, session_history, round_cnt=3, use_bedrock="True"):
+    history = []
+    for role_a_chat, role_b_chat in session_history[-1 * round_cnt:]:
+        history.append(role_a_chat)
+        history.append(role_b_chat)
 
+    msg = {
+      "params": {
+        "history": history,
+        "query": query
+      },
+      "use_bedrock" : use_bedrock
+    }
+    response = lambda_client.invoke(FunctionName="Query_Rewrite",
+                                           InvocationType='RequestResponse',
+                                           Payload=json.dumps(msg))
+    response_body = response['Payload']
+    response_str = response_body.read().decode("unicode_escape")
 
-
-def query_kendra(Kendra_index_id="", lang="zh", search_query_text="what is s3?", Kendra_result_num=3):
-    # 连接到Kendra
-    client = boto3.client('kendra')
-
-    # 构造Kendra查询请求
-    query_result = client.query(
-        IndexId=Kendra_index_id,
-        QueryText=search_query_text,
-        AttributeFilter={
-            "EqualsTo": {
-                "Key": "_language_code",
-                "Value": {
-                    "StringValue": lang
-                }
-            }
-        }
-    )
-    # print(query_result['ResponseMetadata']['HTTPHeaders'])
-    # kendra_took = query_result['ResponseMetadata']['HTTPHeaders']['x-amz-time-millis']
-    # 创建一个结果列表
-    results = []
-
-    # 将每个结果添加到结果列表中
-    for result in query_result['ResultItems']:
-        # 创建一个字典来保存每个结果
-        result_dict = {}
-
-        result_dict['score'] = 0.0
-        result_dict['doc_type'] = "P"
-
-        # 如果有可用的总结
-        if 'DocumentExcerpt' in result:
-            result_dict['doc'] = result['DocumentExcerpt']['Text']
-        else:
-            result_dict['doc'] = ''
-
-        # 将结果添加到列表中
-        results.append(result_dict)
-
-    # 输出结果列表
-    return results[:Kendra_result_num]
+    return response_str.strip()
 
 def is_chinese(string):
     for char in string:
@@ -786,16 +775,6 @@ def enforce_stop_tokens(text: str, stop: List[str]) -> str:
         return text
     
     return re.split("|".join(stop), text)[0]
-
-
-class QueryType(Enum):
-    KeywordQuery   = "KeywordQuery"       #用户仅仅输入了一些关键词（2 token)
-    KnowledgeQuery = "KnowledgeQuery"     #用户输入的需要参考知识库有关来回答
-    Conversation   = "Conversation"       #用户输入的是跟知识库无关的问题
-
-
-
-
 
 def qa_knowledge_fewshot_build(recalls):
     ret_context = []
@@ -1043,30 +1022,53 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
     verbose = False
     logger.info(f'use QA: {use_qa}')
     final_prompt = ''
-    if not use_qa:##如果不使用QA
-        reply_stratgy = ReplyStratgy.LLM_ONLY
-        query_type = QueryType.Conversation
-        # free_chat_coversions = [ (item[0],item[1]) for item in session_history if item[2] == str(query_type)]
-        # chat_history= get_chat_history(free_chat_coversions[-2:])
-        chat_coversions = [ (item[0],item[1]) for item in session_history]
-        if multi_rounds:
+    origin_query = query_input
+    intention = ''
+
+    if multi_rounds:
+        if llm_model_name.startswith('claude'):
+            query_input = rewrite_query(origin_query, session_history, round_cnt=3, use_bedrock="True")
+        else:
             ##add history parameter
             if isinstance(llm,SagemakerStreamEndpoint) or isinstance(llm,SagemakerEndpoint):
                 chat_history=''
                 llm.model_kwargs['history'] = chat_coversions[-1:]
             else:
                 chat_history= get_chat_history(chat_coversions[-1:])
-        else:
-            chat_history=''
-        
-        prompt_template = create_chat_prompt_templete()
+    else:
+        chat_history=''
+
+    intention = '知识问答'
+    global INTENTION_LIST
+    other_intentions = INTENTION_LIST.split(',')
+
+
+    if len(other_intentions) > 0 and len(other_intentions[0]) > 1 and llm_model_name.startswith('claude'):
+        before_detect = time.time()
+        intention = detect_intention(query_input, fewshot_cnt=5, use_bedrock="True")
+        elpase_time_detect = time.time() - before_detect
+        logger.info(f'intention: {intention}')
+        logger.info(f'runing time of detect intention : {elpase_time_detect}s seconds')
+
+    if not use_qa:
+        intention = '闲聊'
+
+    if intention == '闲聊':##如果不使用QA
+        reply_stratgy = ReplyStratgy.LLM_ONLY
+        prompt_template = create_chat_prompt_templete(template)
+
         llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
         ##最终的answer
         answer = llmchain.run({'question':query_input,'chat_history':chat_history,'role_bot':B_Role})
         ##最终的prompt日志
         final_prompt = prompt_template.format(question=query_input,role_bot=B_Role,chat_history=chat_history)
         recall_knowledge,opensearch_knn_respose,opensearch_query_response = [],[],[]
-    else: ##如果使用QA
+    elif intention in other_intentions:
+        #call agent for other intentions
+        reply_stratgy = ReplyStratgy.AGENT
+        recall_knowledge,opensearch_knn_respose,opensearch_query_response = [],[],[]
+        answer = "call agent to get answer"
+    elif intention == '知识问答': ##如果使用QA
         # 2. aos retriever
         doc_retriever = CustomDocRetriever.from_endpoints(embedding_model_endpoint=embedding_model_endpoint,
                                     aos_endpoint= aos_endpoint,
@@ -1083,15 +1085,6 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         elpase_time = time.time() - start
         logger.info(f'runing time of opensearch_query : {elpase_time}s seconds')
         
-        ##add history parameter
-        if multi_rounds:
-            if isinstance(llm,SagemakerStreamEndpoint) or isinstance(llm,SagemakerEndpoint):
-                chat_history=''
-                llm.model_kwargs['history'] = chat_coversions[-1:]
-            else:
-                chat_history= get_chat_history(chat_coversions[-1:])
-        else:
-            chat_history=''
         def get_reply_stratgy(recall_knowledge):
             if not recall_knowledge:
                 stratgy = ReplyStratgy.SAY_DONT_KNOW
@@ -1135,7 +1128,6 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         context = qa_knowledge_fewshot_build(recall_knowledge)
 
         if exactly_match_result and recall_knowledge: 
-            query_type = QueryType.KeywordQuery
             answer = exactly_match_result[0]["doc"]
             use_stream = False ##如果是直接匹配则不需要走流
             hide_ref= True ## 隐藏ref doc
@@ -1151,7 +1143,6 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         else:      
             ##添加召回引用
             stream_callback.add_recall_knowledge(recall_knowledge)
-            query_type = QueryType.KnowledgeQuery
             prompt_template = choose_prompt_template(reply_stratgy, template, llm_model_name)
             llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
             # context = "\n".join([doc['doc'] for doc in recall_knowledge])
@@ -1162,6 +1153,10 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
             final_prompt = prompt_template.format(question=query_input,role_bot=B_Role,context=context,chat_history=chat_history)
             # print(final_prompt)
             # print(answer)
+    else:
+        reply_stratgy = ReplyStratgy.OTHER
+        recall_knowledge,opensearch_knn_respose,opensearch_query_response = [],[],[]
+        answer = "invalid logic"
 
     answer = enforce_stop_tokens(answer, STOP)
     ref_text = ''
@@ -1170,11 +1165,12 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
 
     json_obj = {
         "query": query_input,
+        "origin_query" : origin_query,
+        "intention" : intention,
         "opensearch_doc":  opensearch_query_response,
         "opensearch_knn_doc":  opensearch_knn_respose,
         "kendra_doc": [],
         "knowledges" : recall_knowledge,
-        "detect_query_type": str(query_type),
         "LLM_input": final_prompt,
         "LLM_model_name": llm_model_name,
         "reply_stratgy" : reply_stratgy.name
@@ -1192,7 +1188,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
 
     start = time.time()
     if session_id != 'OnlyForDEBUG':
-        update_session(session_id=session_id, question=query_input, answer=answer, intention=str(query_type),msgid=msgid)
+        update_session(session_id=session_id, question=query_input, answer=answer, intention=intention,msgid=msgid)
     elpase_time = time.time() - start
     elpase_time1 = time.time() - start1
     logger.info(f'runing time of update_session : {elpase_time}s seconds')
@@ -1568,6 +1564,7 @@ def lambda_handler(event, context):
     logger.info(f'Kendra_index_id : {Kendra_index_id}')
     logger.info(f'Kendra_result_num : {Kendra_result_num}')
     logger.info(f'use multiple rounds: {multi_rounds}')
+    logger.info(f'intention list: {INTENTION_LIST}')
     
     main_entry_start = time.time()  # 或者使用 time.time_ns() 获取纳秒级别的时间戳
     answer,use_stream,query_input,opensearch_query_response,opensearch_knn_respose = main_entry_new(session_id, question, embedding_endpoint, llm_endpoint, model_name, aos_endpoint, aos_index, aos_knn_field, aos_result_num,
