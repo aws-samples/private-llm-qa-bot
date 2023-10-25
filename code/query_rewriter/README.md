@@ -48,6 +48,24 @@ def lambda_handler(event, context):
   "role_a" : "user",
   "role_b" : "bot"
 }
+
+#3
+{
+  "params": {
+    "history": ["Sagemaker相关问题应该联系谁？","李雷"],
+    "query": "那Emr的问题呢？"
+  },
+  "use_bedrock" : "True"
+}
+
+#4
+{
+  "params": {
+    "history": ["zero-etl在中国可用了吗？","还不可用", "在global可用了吗？", "可用"],
+    "query": "中国区sagemaker有jumpstart吗"
+  },
+  "use_bedrock" : "True"
+}
 ```
 
 

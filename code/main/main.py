@@ -574,6 +574,9 @@ def get_vector_by_sm_endpoint(questions, sm_client, endpoint_name):
 def search_using_aos_knn(client, q_embedding, index, size=10):
 
     #Note: 查询时无需指定排序方式，最临近的向量分数越高，做过归一化(0.0~1.0)
+    #精准Knn的查询语法参考 https://opensearch.org/docs/latest/search-plugins/knn/knn-score-script/
+    #模糊Knn的查询语法参考 https://opensearch.org/docs/latest/search-plugins/knn/approximate-knn/
+    #这里采用的是模糊查询
     query = {
         "size": size,
         "query": {

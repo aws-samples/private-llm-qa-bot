@@ -113,6 +113,27 @@ def lambda_handler(event, context):
   "query": "想出去玩吗",
   "use_bedrock" : "True"
 }
+
+#6
+{
+  "fewshot_cnt": 5,
+  "query": "bedrock国内可用吗？",
+  "use_bedrock" : "True"
+}
+
+#7
+{
+  "fewshot_cnt": 5,
+  "query": "DataZone的GTMS是谁？",
+  "use_bedrock" : "True"
+}
+
+#8
+{
+  "fewshot_cnt": 5,
+  "query": "EMR serverless中国区能用吗",
+  "use_bedrock" : "True"
+}
 ```
 
 
