@@ -1,0 +1,37 @@
+[
+    {
+        "query":"quicksight的GTMS是谁",
+        "intention":"Service角色查询",
+        "reply":"-"
+    },
+    {
+        "query":"quicksight的产品经理是谁？",
+        "intention":"Service角色查询",
+        "reply":"-"
+    },
+    {
+        "query":"数据治理的GTMS是谁？",
+        "intention":"Service角色查询",
+        "reply":"-"
+    },
+    {
+        "query":"AIML北区的Sales是谁？",
+        "intention":"Service角色查询",
+        "reply":"-"
+    },
+    {
+        "query":"AIML北区的BD是谁？",
+        "intention":"Service角色查询",
+        "reply":"-"
+    },
+    {
+        "query":"Sagemaker相关问题应该联系谁？",
+        "intention":"Service角色查询",
+        "reply":"-"
+    },
+    {
+        "query":"Emr相关问题应该联系谁？",
+        "intention":"Service角色查询",
+        "reply":"-"
+    }
+]

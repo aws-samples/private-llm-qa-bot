@@ -1,0 +1,37 @@
+[
+    {
+        "query":"中国区有没有glue interactive session?",
+        "intention":"服务是否可用查询",
+        "reply":"-"
+    },
+    {
+        "query":"北京region 有没有clean room服务？",
+        "intention":"服务是否可用查询",
+        "reply":"-"
+    },
+    {
+        "query":"zero-etl在中国可用了吗？",
+        "intention":"服务是否可用查询",
+        "reply":"-"
+    },
+    {
+        "query":"中国区sagemaker有jumpstart吗",
+        "intention":"服务是否可用查询",
+        "reply":"-"
+    },
+    {
+        "query":"quicksight在中国区可用吗？",
+        "intention":"服务是否可用查询",
+        "reply":"-"
+    },
+    {
+        "query":"quicksight在伦敦region可用吗？",
+        "intention":"服务是否可用查询",
+        "reply":"-"
+    },
+    {
+        "query":"DataZone在global region GA了吗？",
+        "intention":"服务是否可用查询",
+        "reply":"-"
+    }
+]
