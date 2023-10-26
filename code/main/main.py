@@ -1146,6 +1146,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         answer = "invalid logic"
 
     answer = enforce_stop_tokens(answer, STOP)
+    answer = answer.lstrip('根据反引号中的内容,')
     ref_text = ''
     if not use_stream and recall_knowledge and hide_ref == False:
         ref_text = format_reference(recall_knowledge)
