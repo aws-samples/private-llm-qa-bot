@@ -36,6 +36,9 @@
                "reply": {
                    "type": "text"
                },
+              "doc_title": {
+                   "type": "keyword"
+               },
                "embedding": {
                    "type": "knn_vector",
                    "dimension": 1024,
