@@ -113,11 +113,6 @@ def lambda_handler(event, context):
         "temperature": 0.01,
     }
 
-    def quick_check(llm):
-        prompt = """
-        Human: Please 
-        """
-
     llm = None
     if not use_bedrock:
         llmcontent_handler = llmContentHandler()
