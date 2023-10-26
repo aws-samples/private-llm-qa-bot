@@ -38,5 +38,10 @@
         "query":"如何共享消息队列？",
         "intention":"知识问答",
         "reply":"您可以将访问策略语句（并指定要授予的权限）与要共享的消息队列关联。Amazon SQS 可以提供 API，用于创建和管理以下访问策略语句：\n有关详细信息，请参阅 *[Amazon SQS API 参考](http://docs.aws.amazon.com/AWSSimpleQueueService/latest/APIReference/Welcome.html)*。"
+    },
+    {
+        "query":"Amazon EMR有哪些优势",
+        "intention":"知识问答",
+        "reply":"Amazon EMR有以下优势：节省成本、AWS集成、部署、可扩展性和灵活度、可靠性、安全性和监控。"
     }
 ]

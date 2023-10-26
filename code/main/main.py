@@ -501,18 +501,23 @@ def detect_intention(query, fewshot_cnt=5, use_bedrock="True"):
     response_str = response_body.read().decode("unicode_escape")
     return response_str.strip('"')
 
-def rewrite_query(query, session_history, round_cnt=3, use_bedrock="True"):
+def rewrite_query(query, session_history, round_cnt=2, use_bedrock="True"):
+    logger.info(f"session_history {str(session_history)}")
+    if len(session_history) == 0:
+        return query
+
     history = []
-    for role_a_chat, role_b_chat in session_history[-1 * round_cnt:]:
-        history.append(role_a_chat)
-        history.append(role_b_chat)
+    for item in session_history[-1 * round_cnt:]:
+        history.append(item[0])
+        history.append(item[1])
 
     msg = {
       "params": {
         "history": history,
         "query": query
       },
-      "use_bedrock" : use_bedrock
+      "use_bedrock" : use_bedrock,
+      "llm_model_name" : "claude-instant"
     }
     response = lambda_client.invoke(FunctionName="Query_Rewrite",
                                            InvocationType='RequestResponse',
@@ -1010,7 +1015,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
     if multi_rounds:
         if llm_model_name.startswith('claude'):
             query_input = rewrite_query(origin_query, session_history, round_cnt=3, use_bedrock="True")
-        else:
+        
             ##add history parameter
             if isinstance(llm,SagemakerStreamEndpoint) or isinstance(llm,SagemakerEndpoint):
                 chat_history=''
