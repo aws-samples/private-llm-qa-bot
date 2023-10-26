@@ -36,9 +36,12 @@
                "reply": {
                    "type": "text"
                },
+              "doc_title": {
+                   "type": "keyword"
+               },
                "embedding": {
                    "type": "knn_vector",
-                   "dimension": 768,
+                   "dimension": 1024,
                    "method": {
                        "name": "hnsw",
                        "space_type": "cosinesimil",
@@ -67,9 +70,9 @@ lambda_client = boto3_client('lambda')
 
 def lambda_handler(event, context):
   	question = event['prompt'] #"DynamoDB怎么计费"
-    msg = {"fewshot_cnt":5, "query": question }
-    invoke_response = lambda_client.invoke(FunctionName="QAChatDeployStack-lambdaintention**",
-                                           InvocationType='Event',
+    msg = {"fewshot_cnt":5, "query": question, "use_bedrock" : "True" }
+    invoke_response = lambda_client.invoke(FunctionName="Detect_Intention",
+                                           InvocationType='RequestResponse',
                                            Payload=json.dumps(msg))
     
 ```
@@ -82,31 +85,57 @@ def lambda_handler(event, context):
 #1
 {
   "fewshot_cnt": 5,
-  "query": "DynamoDB怎么计费"
+  "query": "DynamoDB怎么计费",
+  "use_bedrock" : "True"
 }
 
 #2
 {
   "fewshot_cnt": 5,
-  "query": "AWS Control Tower怎么用？"
+  "query": "AWS Control Tower怎么用？",
+  "use_bedrock" : "True"
 }
 
 #3
 {
   "fewshot_cnt": 5,
-  "query": "g5.2xlarge单价是多少？"
+  "query": "g5.2xlarge单价是多少？",
+  "use_bedrock" : "True"
 }
 
 #4
 {
   "fewshot_cnt": 5,
-  "query": "AWS 账户怎么加入到Organization？"
+  "query": "AWS 账户怎么加入到Organization？",
+  "use_bedrock" : "True"
 }
 
 #5
 {
   "fewshot_cnt": 5,
-  "query": "想出去玩吗"
+  "query": "想出去玩吗",
+  "use_bedrock" : "True"
+}
+
+#6
+{
+  "fewshot_cnt": 5,
+  "query": "bedrock国内可用吗？",
+  "use_bedrock" : "True"
+}
+
+#7
+{
+  "fewshot_cnt": 5,
+  "query": "DataZone的GTMS是谁？",
+  "use_bedrock" : "True"
+}
+
+#8
+{
+  "fewshot_cnt": 5,
+  "query": "EMR serverless中国区能用吗",
+  "use_bedrock" : "True"
 }
 ```
 
@@ -116,3 +145,7 @@ def lambda_handler(event, context):
 
 1. 如果识别失败，可以添加更多的例子到OpenSearch的chatbot-example-index
 2. 如果识别速度过慢，可以训练小模型(bert) 去分类
+
+## 集成方法
+1. 在Lambda(Ask_Assistant)的环境变量中添加一个变量intention_list，逗号分隔的字符串，把所有可能的意图枚举出来
+2. 目前仅仅支持claude模型时进行意图识别

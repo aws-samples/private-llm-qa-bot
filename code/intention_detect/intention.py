@@ -1,6 +1,7 @@
 import json
 import os
 import logging
+from collections import Counter
 
 from langchain.embeddings import SagemakerEndpointEmbeddings
 from langchain.embeddings.sagemaker_endpoint import EmbeddingsContentHandler
@@ -9,6 +10,8 @@ from langchain.llms.sagemaker_endpoint import LLMContentHandler
 from langchain import PromptTemplate, SagemakerEndpoint
 from typing import Any, Dict, List, Union,Mapping, Optional, TypeVar, Union
 from langchain.chains import LLMChain
+from langchain.llms.bedrock import Bedrock
+from botocore.exceptions import ClientError
 from opensearchpy import OpenSearch, RequestsHttpConnection, AWSV4SignerAuth, helpers
 import boto3
 
@@ -66,14 +69,35 @@ class llmContentHandler(LLMContentHandler):
         return response_json["outputs"]
 
 def create_intention_prompt_templete():
-    prompt_template = """{instruction}\n\n{fewshot}\n\n"Q: \"{query}\"，这个问题的提问意图是啥？可选项[{options}]\nA: """
+    prompt_template = """{instruction}\n\n{fewshot}\n\nHuman: \"{query}\"，这个问题的提问意图是啥？可选项[{options}]\nAssistant: """
 
     PROMPT = PromptTemplate(
         template=prompt_template, 
         input_variables=['fewshot','query', 'instruction', 'options']
     )
     return PROMPT
+    
+def get_bedrock_aksk(secret_name='chatbot_bedrock', region_name = "us-west-2"):
+    # Create a Secrets Manager client
+    session = boto3.session.Session()
+    client = session.client(
+        service_name='secretsmanager',
+        region_name=region_name
+    )
 
+    try:
+        get_secret_value_response = client.get_secret_value(
+            SecretId=secret_name
+        )
+    except ClientError as e:
+        # For a list of exceptions thrown, see
+        # https://docs.aws.amazon.com/secretsmanager/latest/apireference/API_GetSecretValue.html
+        raise e
+
+    # Decrypts secret using the associated KMS key.
+    secret = json.loads(get_secret_value_response['SecretString'])
+    return secret['BEDROCK_ACCESS_KEY'],secret['BEDROCK_SECRET_KEY']
+    
 @handle_error
 def lambda_handler(event, context):
     
@@ -83,7 +107,9 @@ def lambda_handler(event, context):
     index_name = os.environ.get('index_name')
     query = event.get('query')
     fewshot_cnt = event.get('fewshot_cnt')
+    use_bedrock = event.get('use_bedrock')
     llm_model_endpoint = os.environ.get('llm_model_endpoint')
+    llm_model_name = event.get('llm_model_name', None)
     
     logger.info("embedding_endpoint: {}".format(embedding_endpoint))
     logger.info("region:{}".format(region))
@@ -123,24 +149,43 @@ def lambda_handler(event, context):
 
     docs_simple = [ {"query" : doc[0].page_content, "intention" : doc[0].metadata['intention'], "score":doc[1]} for doc in docs]
 
-    options = set([doc['intention'] for doc in docs_simple ])
+    intention_list = [doc['intention'] for doc in docs_simple ]
+    intention_counter = Counter(intention_list)
+    options = set(intention_list)
     options_str = ", ".join(options)
 
-    instruction = "回答下列选择题："
-    examples = [ "Q: \"{}\"，这个问题的提问意图是啥？可选项[{}]\nA: {}".format(doc['query'], options_str, doc['intention']) for doc in docs_simple ]
-    fewshot_str = "\n\n".join(examples)
+    instruction = "参考下列Example，回答下列选择题："
+    examples = [ "Human: \"{}\"，这个问题的提问意图是啥？可选项[{}]\nAssistant: {}".format(doc['query'], options_str, doc['intention']) for doc in docs_simple ]
+    fewshot_str = "{}\n{}\n{}".format("<example>", "\n\n".join(examples), "</example>")
     
     parameters = {
         "temperature": 0.01,
     }
 
-    llmcontent_handler = llmContentHandler()
-    llm=SagemakerEndpoint(
-            endpoint_name=llm_model_endpoint, 
-            region_name=region, 
-            model_kwargs={'parameters':parameters},
-            content_handler=llmcontent_handler
+    llm = None
+    if not use_bedrock:
+        llmcontent_handler = llmContentHandler()
+        llm=SagemakerEndpoint(
+                endpoint_name=llm_model_endpoint, 
+                region_name=region, 
+                model_kwargs={'parameters':parameters},
+                content_handler=llmcontent_handler
+            )
+    else:
+        boto3_bedrock = boto3.client(
+            service_name="bedrock-runtime",
+            region_name=region
         )
+    
+        parameters = {
+            "max_tokens_to_sample": 20,
+            "stop_sequences": ["\n\n"],
+            "temperature":0.01,
+            "top_p":1
+        }
+        
+        model_id ="anthropic.claude-instant-v1" if llm_model_name == 'claude-instant' else "anthropic.claude-v2"
+        llm = Bedrock(model_id=model_id, client=boto3_bedrock, model_kwargs=parameters)
 
     prompt_template = create_intention_prompt_templete()
     prompt = prompt_template.format(fewshot=fewshot_str, instruction=instruction, query=query, options=options_str)
@@ -155,12 +200,17 @@ def lambda_handler(event, context):
         
     llmchain = LLMChain(llm=llm, verbose=False, prompt=prompt_template)
     answer = llmchain.run({'fewshot':fewshot_str, "instruction":instruction, "query":query, "options": options_str})
+    answer = answer.strip()
 
     log_dict = { "prompt" : prompt, "answer" : answer , "examples": docs_simple }
     log_dict_str = json.dumps(log_dict, ensure_ascii=False)
     logger.info(log_dict_str)
 
     if answer not in options:
-        answer = 'unknown'
-    
+        answer = intention_counter.most_common(1)[0]
+        for opt in options:
+            if opt in answer:
+                answer = opt
+                break
+        
     return answer
