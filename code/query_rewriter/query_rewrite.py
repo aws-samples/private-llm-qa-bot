@@ -57,6 +57,35 @@ def create_rewrite_prompt_templete():
         input_variables=['history','cur_query']
     )
     return PROMPT
+
+def create_check_implicit_info_prompt_template():
+    prompt_template = """Human: Please determine is there any implicit information of the lastest user's uttrance in conversation. You should answer with 'Yes' or 'No' in <answer>. You should refer the provided examples below.
+
+<examples>
+<example>
+<conversation>
+user: Sagemaker相关问题应该联系谁？
+bot: Bruce Lee
+user: 那EMR的呢？
+</conversation>
+<answer>Yes</answer>
+</example>
+<example>
+<conversation>
+user: zero-etl在中国可用了吗？
+bot: 还不可用
+user: 中国区sagemaker有jumpstart吗
+</conversation>
+<answer>No</answer>
+</example>
+</examples>
+
+Assistant: <conversation>\n{conversation}\n</conversation>\n<answer>"""
+    PROMPT = PromptTemplate(
+        template=prompt_template, 
+        input_variables=['conversation']
+    )
+    return PROMPT
     
 @handle_error
 def lambda_handler(event, context):
@@ -83,6 +112,11 @@ def lambda_handler(event, context):
     parameters = {
         "temperature": 0.01,
     }
+
+    def quick_check(llm):
+        prompt = """
+        Human: Please 
+        """
 
     llm = None
     if not use_bedrock:
@@ -120,4 +154,4 @@ def lambda_handler(event, context):
     log_dict_str = json.dumps(log_dict, ensure_ascii=False)
     logger.info(log_dict_str)
         
-    return answer
+    return answer.strip('"')

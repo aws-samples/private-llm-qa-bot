@@ -214,7 +214,7 @@ def iterate_examples(file_content, object_key, smr_client, index_name, endpoint_
         for i, query in enumerate(queries):
             print("query:")
             print(query)
-            document = { "publish_date": publish_date, "intention" : intentions[i], "query" : queries[i], "reply" : replies[i], "embedding" : embeddings[i]}
+            document = { "publish_date": publish_date, "intention" : intentions[i], "query" : queries[i], "reply" : replies[i], "doc_title": object_key,"embedding" : embeddings[i]}
             yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document).encode('utf-8')).hexdigest()}
             
 def link_header(semantic_snippets):

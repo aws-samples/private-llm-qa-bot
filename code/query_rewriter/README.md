@@ -19,7 +19,7 @@ def lambda_handler(event, context):
       },
       "use_bedrock" : "True"
     }
-    invoke_response = lambda_client.invoke(FunctionName="Detect_Intention",
+    invoke_response = lambda_client.invoke(FunctionName="Query_Rewrite",
                                            InvocationType='RequestResponse',
                                            Payload=json.dumps(msg))
     
@@ -48,9 +48,27 @@ def lambda_handler(event, context):
   "role_a" : "user",
   "role_b" : "bot"
 }
+
+#3
+{
+  "params": {
+    "history": ["Sagemaker相关问题应该联系谁？","李雷"],
+    "query": "那Emr的问题呢？"
+  },
+  "use_bedrock" : "True"
+}
+
+#4
+{
+  "params": {
+    "history": ["zero-etl在中国可用了吗？","还不可用", "在global可用了吗？", "可用"],
+    "query": "中国区sagemaker有jumpstart吗"
+  },
+  "use_bedrock" : "True"
+}
 ```
 
 
 ### 优化手段
 
-1. 速度层面，使用IUR(Incomplete Utterance Rewrite)相关的小模型进行推理
+1. 速度层面，使用IUR(Incomplete Utterance Rewrite)相关的[小模型](https://huggingface.co/csdc-atl/dialogue-rewriter)进行推理

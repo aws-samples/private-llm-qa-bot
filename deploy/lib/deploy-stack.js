@@ -202,7 +202,8 @@ export class DeployStack extends Stack {
           "es:*",
           "dynamodb:*",
           "secretsmanager:GetSecretValue",
-          "bedrock:*"
+          "bedrock:*",
+          "lambda:InvokeFunction"
           ],
         effect: iam.Effect.ALLOW,
         resources: ['*'],
