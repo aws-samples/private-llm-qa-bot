@@ -462,9 +462,10 @@ def iterate_paragraph_blog(content_json, object_key,smr_client, index_name, endp
                 idx += 1
                 yield (idx, paragraph_content, 'Paragraph', paragraph_content,doc_title)
                 ## add embedding for sentence
-                sentences = re.split('[。？?.！!]', paragraph_content)
-                for sent in (sent for sent in sentences if len(sent) > Sentence_Len_Threshold): 
-                    yield (idx, sent, 'Sentence', paragraph_content,doc_title)
+                # 实测效果并不好，造成召回内容干扰
+                # sentences = re.split('[。？?.！!]', paragraph_content)
+                # for sent in (sent for sent in sentences if len(sent) > Sentence_Len_Threshold): 
+                #     yield (idx, sent, 'Sentence', paragraph_content,doc_title)
 
     generator = chunk_generator(content_json)
     batches = batch_generator(generator, batch_size=EMB_BATCH_SIZE)
@@ -497,9 +498,10 @@ def iterate_paragraph_wiki(content_json, object_key,smr_client, index_name, endp
                     idx += 1
                     yield (idx, paragraph_content, 'Paragraph', paragraph_content,url)
                     ## add embedding for sentence
-                    sentences = re.split('[。？?.！!]', paragraph_content)
-                    for sent in (sent for sent in sentences if len(sent) > Sentence_Len_Threshold): 
-                        yield (idx, sent, 'Sentence', paragraph_content,doc_title,url)
+                    # 实测效果并不好，造成召回内容干扰
+                    # sentences = re.split('[。？?.！!]', paragraph_content)
+                    # for sent in (sent for sent in sentences if len(sent) > Sentence_Len_Threshold): 
+                    #     yield (idx, sent, 'Sentence', paragraph_content,doc_title,url)
 
     generator = chunk_generator(content_json)
     batches = batch_generator(generator, batch_size=EMB_BATCH_SIZE)
