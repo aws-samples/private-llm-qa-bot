@@ -166,7 +166,7 @@ export class DeployStack extends Stack {
       timeout: Duration.minutes(15),
       memorySize: 1024,
       runtime: 'python3.9',
-      // functionName: 'Main_brain',
+      functionName: 'Ask_Assistant',
       vpc:vpc,
       vpcSubnets:subnets,
       securityGroups:securityGroups,
@@ -186,15 +186,15 @@ export class DeployStack extends Stack {
         llm_other_stream_endpoint:process.env.llm_other_stream_endpoint,
         chat_session_table:chat_session_table.tableName,
         prompt_template_table:prompt_template_table.tableName,
-        bm25_qd_threshold_hard:process.env.bm25_qd_threshold_hard,
-        bm25_qd_threshold_soft:process.env.bm25_qd_threshold_soft,
-        knn_qq_threshold_hard:process.env.knn_qq_threshold_hard,
-        knn_qq_threshold_soft:process.env.knn_qq_threshold_soft,
-        knn_qd_threshold_hard:process.env.knn_qd_threshold_hard,
-        knn_qd_threshold_soft:process.env.knn_qd_threshold_soft,
+        bm25_qd_threshold_hard:'7',
+        bm25_qd_threshold_soft:'10',
+        knn_qq_threshold_hard:'0.6',
+        knn_qq_threshold_soft:'0.8',
+        knn_qd_threshold_hard:'0.6',
+        knn_qd_threshold_soft:'0.8',
+        lambda_feedback:"lambda_feedback",
         neighbors:process.env.neighbors,
-        TOP_K:process.env.TOP_K,
-        lambda_feedback:"lambda_feedback"
+        TOP_K:process.env.TOP_K
       },
     });
 
@@ -208,9 +208,10 @@ export class DeployStack extends Stack {
           "s3:Put*",
           "s3:Get*",
           "es:*",
-          "bedrock:*",
           "dynamodb:*",
           "secretsmanager:GetSecretValue",
+          "bedrock:*",
+          "lambda:InvokeFunction"
           ],
         effect: iam.Effect.ALLOW,
         resources: ['*'],
@@ -232,7 +233,8 @@ export class DeployStack extends Stack {
         index_name:"chatbot-example-index" ,
         aos_knn_field:process.env.aos_knn_field,
         embedding_endpoint:process.env.embedding_endpoint,
-        llm_model_endpoint:process.env.llm_chatglm_endpoint
+        llm_model_endpoint:process.env.llm_chatglm_endpoint,
+        region:region
       },
     });
 
@@ -248,30 +250,30 @@ export class DeployStack extends Stack {
           "es:*",
           "dynamodb:*",
           "secretsmanager:GetSecretValue",
+          "bedrock:*"
           ],
         effect: iam.Effect.ALLOW,
         resources: ['*'],
         }))
       
-    
-        const lambda_query_rewrite = new DockerImageFunction(this,
-          "lambda_query_rewrite", {
-          code: DockerImageCode.fromImageAsset(join(__dirname, "../../code/query_rewriter")),
-          timeout: Duration.minutes(15),
-          memorySize: 1024,
-          runtime: 'python3.9',
-          functionName: 'Query_Rewrite',
-          vpc:vpc,
-          vpcSubnets:subnets,
-          securityGroups:securityGroups,
-          architecture: Architecture.X86_64,
-          environment: {
-            llm_model_endpoint:process.env.llm_chatglm_endpoint,
-            region:region
-          },
-        });
-        
-        // Grant the Lambda function can invoke sagemaker
+    const lambda_query_rewrite = new DockerImageFunction(this,
+      "lambda_query_rewrite", {
+      code: DockerImageCode.fromImageAsset(join(__dirname, "../../code/query_rewriter")),
+      timeout: Duration.minutes(15),
+      memorySize: 1024,
+      runtime: 'python3.9',
+      functionName: 'Query_Rewrite',
+      vpc:vpc,
+      vpcSubnets:subnets,
+      securityGroups:securityGroups,
+      architecture: Architecture.X86_64,
+      environment: {
+        llm_model_endpoint:process.env.llm_chatglm_endpoint,
+        region:region
+      },
+    });
+
+    // Grant the Lambda function can invoke sagemaker
     lambda_query_rewrite.addToRolePolicy(new iam.PolicyStatement({
       // principals: [new iam.AnyPrincipal()],
         actions: [ 
@@ -305,7 +307,8 @@ export class DeployStack extends Stack {
 
     //grant permission to invoke feedback lambda
     fn_feedback.grantInvoke(lambda_main_brain);
-
+    lambda_intention.grantInvoke(lambda_main_brain);
+    lambda_intention.grantInvoke(lambda_main_brain);
 
     //glue job
     const gluestack = new GlueStack(this,'glue-stack',{opensearch_endpoint,region,vpc,subnets,securityGroups});
@@ -358,6 +361,7 @@ export class DeployStack extends Stack {
     //     },
     //     // layers:[layer],
     //     runtime: lambda.Runtime.PYTHON_3_9,
+    //     functionName: 'Agent_Plugin',
     //     timeout: Duration.minutes(1),
     //     memorySize: 256,
     //     handler: 'app.lambda_handler',
@@ -382,6 +386,7 @@ export class DeployStack extends Stack {
             embedding_endpoint:process.env.embedding_endpoint
           },
           runtime: lambda.Runtime.PYTHON_3_9,
+          functionName: 'Trigger_Ingestion',
           timeout: Duration.minutes(2),
           handler: 'offline_trigger_lambda.lambda_handler',
           code: lambda.Code.fromAsset(path.join(__dirname,'../../code/lambda_offline_trigger')),
