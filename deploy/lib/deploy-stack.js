@@ -222,7 +222,7 @@ export class DeployStack extends Stack {
       timeout: Duration.minutes(15),
       memorySize: 1024,
       runtime: 'python3.9',
-      // functionName: 'Main_brain',
+      functionName: 'Detect_Intention',
       vpc:vpc,
       vpcSubnets:subnets,
       securityGroups:securityGroups,
