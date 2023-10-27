@@ -25,7 +25,7 @@ from langchain.chains import LLMChain,ConversationalRetrievalChain,ConversationC
 from langchain.schema import BaseRetriever
 from langchain.schema import Document
 from langchain.llms.bedrock import Bedrock
-from pydantic import BaseModel
+from pydantic import BaseModel,Field
 from langchain.pydantic_v1 import Extra, root_validator
 
 import openai
@@ -76,6 +76,48 @@ INTENTION_LIST = os.environ.get('intention_list', "")
 TOP_K = int(os.environ.get('TOP_K',4))
 NEIGHBORS = int(os.environ.get('neighbors',0))
 
+
+###记录跟踪日志，用于前端输出
+class TraceLogger(BaseModel):
+    logs:List[str] =  Field([])
+    ref_docs:List[str] = Field([])
+    wsclient:Any = Field()
+    connectionId:str = Field()
+    msgid:str=Field()
+    stream:bool = Field()
+    use_trace:bool=Field()
+    hide_ref:bool=Field()
+    class Config:
+        extra = 'forbid'
+    
+    def postMessage(self,text:str) -> None:
+        data = json.dumps({ 'msgid':self.msgid, 'role': "AI", 'text': {'content':f'{text}\n\n'},'connectionId':self.connectionId })
+        try:
+            self.wsclient.post_to_connection(Data = data.encode('utf-8'),  ConnectionId=self.connectionId)
+        except Exception as e:
+            logger.warning(str(e))
+            
+    def add_ref(self,text:str) -> None:
+        self.ref_docs.append(text)
+
+    def trace(self,text:str) -> None:
+        if not self.use_trace:
+            return
+        self.logs.append(text)
+        if self.stream:
+            self.postMessage(text)
+        
+    ##ref doc排在llm输出answer之后，使用外部传入的stream参数控制是否需要推到ws
+    def dump_refs(self,stream) -> List[str]:
+        if stream and not self.use_trace and not self.hide_ref: ##当不使用trace，不隐藏ref时才推送
+            for text in self.ref_docs:
+                self.postMessage(text)
+        return '\n\n'.join(self.ref_docs)
+    
+    def dump_logs_to_string(self) -> List[str]:
+        return '\n\n'.join(self.logs)
+    
+TRACE_LOGGER = None
 
 class StreamScanner:    
     def __init__(self):
@@ -886,7 +928,10 @@ def get_bedrock_aksk(secret_name='chatbot_bedrock', region_name = os.environ.get
     secret = json.loads(get_secret_value_response['SecretString'])
     return secret['BEDROCK_ACCESS_KEY'],secret['BEDROCK_SECRET_KEY']
 
+
 def format_reference(recall_knowledge):
+    if not recall_knowledge:
+        return ''
     text = '\n```json\n#Reference\n'
     for sn,item in enumerate(recall_knowledge):
         displaydata = { "doc": item['doc'],"score": item['score']}
@@ -916,7 +961,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
     return: answer(str)
     """
     # STOP=[f"\n{A_Role}", f"\n{B_Role}"]
-    global STOP
+    global STOP,TRACE_LOGGER
     #如果是reset命令，则清空历史聊天
     if query_input == RESET:
         delete_session(session_id)
@@ -939,7 +984,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         json_obj_str = json.dumps(json_obj, ensure_ascii=False)
         logger.info(json_obj_str)
         use_stream = False
-        return answer,use_stream,'',[],[]
+        return answer,'',use_stream,'',[],[]
     
     logger.info("llm_model_name : {} ,use_stream :{}".format(llm_model_name,use_stream))
     llm = None
@@ -1047,20 +1092,26 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
     global INTENTION_LIST
     other_intentions = INTENTION_LIST.split(',')
 
-
+    TRACE_LOGGER.trace(f'**Starting trace mode...**')
+    TRACE_LOGGER.trace(f'**Using LLM model : {llm_model_name}**')
     if len(other_intentions) > 0 and len(other_intentions[0]) > 1 and llm_model_name.startswith('claude'):
         before_detect = time.time()
+        TRACE_LOGGER.trace(f'**Detecting intention...**')
         intention = detect_intention(query_input, fewshot_cnt=5, use_bedrock="True")
         elpase_time_detect = time.time() - before_detect
         logger.info(f'intention: {intention}')
-        logger.info(f'runing time of detect intention : {elpase_time_detect}s seconds')
-
+        logger.info(f'running time of detecting intention : {elpase_time_detect:.3f}s')
+        TRACE_LOGGER.trace(f'**Running time of detecting intention: {elpase_time_detect:.3f}s**')
+        TRACE_LOGGER.trace(f'**Detected intention: {intention}**')
+    
     if not use_qa:
         intention = '闲聊'
 
     if intention == '闲聊':##如果不使用QA
+        TRACE_LOGGER.trace('**Using Non-RAG Chat...**')
+        TRACE_LOGGER.trace('**Answer:**')
         reply_stratgy = ReplyStratgy.LLM_ONLY
-        prompt_template = create_chat_prompt_templete(template)
+        prompt_template = create_chat_prompt_templete()
 
         llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
         ##最终的answer
@@ -1068,13 +1119,22 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         ##最终的prompt日志
         final_prompt = prompt_template.format(question=query_input,role_bot=B_Role,chat_history=chat_history)
         recall_knowledge,opensearch_knn_respose,opensearch_query_response = [],[],[]
+
     elif intention in other_intentions:
         #call agent for other intentions
+        TRACE_LOGGER.trace('**Using Agent...**')
+        TRACE_LOGGER.trace('**Answer:**')
         reply_stratgy = ReplyStratgy.AGENT
         recall_knowledge,opensearch_knn_respose,opensearch_query_response = [],[],[]
-        answer = "call agent to get answer"
+        answer = "call agent to get answer" ##临时回答
+        if use_stream:
+            TRACE_LOGGER.postMessage(answer)
+
     elif intention == '知识问答': ##如果使用QA
         # 2. aos retriever
+        TRACE_LOGGER.trace('**Using RAG Chat...**')
+        TRACE_LOGGER.trace('**Retrieving knowledge...**')
+
         doc_retriever = CustomDocRetriever.from_endpoints(embedding_model_endpoint=embedding_model_endpoint,
                                     aos_endpoint= aos_endpoint,
                                     aos_index=aos_index)
@@ -1088,8 +1148,19 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         # query_with_history= get_question_history(chat_coversions[-2:])+query_input
         recall_knowledge,opensearch_knn_respose,opensearch_query_response = doc_retriever.get_relevant_documents_custom(query_input) 
         elpase_time = time.time() - start
-        logger.info(f'runing time of opensearch_query : {elpase_time}s seconds')
-        
+        logger.info(f'running time of opensearch_query : {elpase_time:.3f}s seconds')
+        TRACE_LOGGER.trace(f'**Running time of retrieving knowledge : {elpase_time:.3f}s**')
+        TRACE_LOGGER.trace(f'**Retrieved {len(recall_knowledge)} knowledge:**')
+        TRACE_LOGGER.add_ref(f'\n\n**Refer to {len(recall_knowledge)} knowledge:**')
+
+        ##添加召回文档到refdoc和tracelog
+        for sn,item in enumerate(recall_knowledge):
+            TRACE_LOGGER.trace(f"**[{sn+1}]** [{item['doc_title']}] [{item['doc_category']}] [{item['score']}]")
+            TRACE_LOGGER.trace(f"{item['doc']}")
+            TRACE_LOGGER.add_ref(f"**[{sn+1}]** [{item['doc_title']}] [{item['doc_category']}] [{item['score']}]")
+            TRACE_LOGGER.add_ref(f"{item['doc']}")
+        TRACE_LOGGER.trace('**Answer:**')
+
         def get_reply_stratgy(recall_knowledge):
             if not recall_knowledge:
                 stratgy = ReplyStratgy.SAY_DONT_KNOW
@@ -1146,8 +1217,9 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
             use_stream = False ##如果是直接匹配则不需要走流
             hide_ref= True ## 隐藏ref doc
         else:      
-            ##添加召回引用
-            stream_callback.add_recall_knowledge(recall_knowledge)
+            ##添加召回引用,如果使用trace则忽略
+            # if not TRACE_LOGGER.use_trace:
+            #     stream_callback.add_recall_knowledge(recall_knowledge)
             prompt_template = choose_prompt_template(reply_stratgy, template, llm_model_name)
             llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
             # context = "\n".join([doc['doc'] for doc in recall_knowledge])
@@ -1166,8 +1238,9 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
     answer = enforce_stop_tokens(answer, STOP)
     answer = answer.lstrip('根据反引号中的内容,')
     ref_text = ''
-    if not use_stream and recall_knowledge and hide_ref == False:
-        ref_text = format_reference(recall_knowledge)
+    # if not use_stream and recall_knowledge and hide_ref == False:
+        # ref_text = format_reference(recall_knowledge)
+    ref_text = TRACE_LOGGER.dump_refs(use_stream)
 
     json_obj = {
         "query": query_input,
@@ -1185,7 +1258,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
     json_obj['session_id'] = session_id
     json_obj['msgid'] = msgid
     json_obj['chatbot_answer'] = answer
-    json_obj['ref_docs']= format_reference(recall_knowledge) if use_qa and recall_knowledge else ''
+    json_obj['ref_docs'] = ref_text
     json_obj['conversations'] = chat_coversions[-1:]
     json_obj['timestamp'] = int(time.time())
     json_obj['log_type'] = "all"
@@ -1199,9 +1272,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
     elpase_time1 = time.time() - start1
     logger.info(f'runing time of update_session : {elpase_time}s seconds')
     logger.info(f'runing time of all  : {elpase_time1}s seconds')
-    answer = answer if hide_ref else f'{answer}{ref_text}'
-    # logger.info(answer)
-    return answer,use_stream,query_input,opensearch_query_response,opensearch_knn_respose
+    return answer,ref_text,use_stream,query_input,opensearch_query_response,opensearch_knn_respose
 
 def delete_doc_index(obj_key,embedding_model,index_name):
     def delete_aos_index(obj_key,index_name,size=50):
@@ -1477,6 +1548,7 @@ def lambda_handler(event, context):
     use_qa = event.get('use_qa',False)
     multi_rounds = event.get('multi_rounds',False)
     use_stream = event.get('use_stream',False)
+    use_trace = event.get('use_trace',True)
     template_id = event.get('template_id')
     msgid = event.get('msgid')
     max_tokens = event.get('max_tokens',2048)
@@ -1571,12 +1643,22 @@ def lambda_handler(event, context):
     logger.info(f'Kendra_result_num : {Kendra_result_num}')
     logger.info(f'use multiple rounds: {multi_rounds}')
     logger.info(f'intention list: {INTENTION_LIST}')
-    
+    global TRACE_LOGGER
+    TRACE_LOGGER = TraceLogger(wsclient=wsclient,msgid=msgid,connectionId=session_id,stream=use_stream,use_trace=use_trace,hide_ref=hide_ref)
+
     main_entry_start = time.time()  # 或者使用 time.time_ns() 获取纳秒级别的时间戳
-    answer,use_stream,query_input,opensearch_query_response,opensearch_knn_respose = main_entry_new(session_id, question, embedding_endpoint, llm_endpoint, model_name, aos_endpoint, aos_index, aos_knn_field, aos_result_num,
+    answer,ref_text,use_stream,query_input,opensearch_query_response,opensearch_knn_respose = main_entry_new(session_id, question, embedding_endpoint, llm_endpoint, model_name, aos_endpoint, aos_index, aos_knn_field, aos_result_num,
                        Kendra_index_id, Kendra_result_num,use_qa,wsclient,msgid,max_tokens,temperature,prompt_template,image_path,multi_rounds,hide_ref,use_stream)
     main_entry_elpase = time.time() - main_entry_start  # 或者使用 time.time_ns() 获取纳秒级别的时间戳
     logger.info(f'runing time of main_entry : {main_entry_elpase}s seconds')
+    if use_stream: ##只有当stream输出时，把这条trace放到最后一个chunk
+        TRACE_LOGGER.trace(f'\n\n**Total running time : {main_entry_elpase:.3f}s**')
+    if TRACE_LOGGER.use_trace:
+        tracelogs_str = TRACE_LOGGER.dump_logs_to_string()
+        ## 返回非stream的结果，把这条trace放到末尾
+        answer =f'{tracelogs_str}\n\n{answer}\n\n**Total running time : {main_entry_elpase:.3f}s**'
+    else:
+        answer = answer if hide_ref else f'{answer}{ref_text}'
     # 2. return rusult
 
     # 处理
@@ -1598,8 +1680,8 @@ def lambda_handler(event, context):
                              "created": request_timestamp,
                              "useTime": time.time() - request_timestamp,
                              "model": "main_brain",
-                             "choices":
-                             [{"text": "{}[{}]".format(answer, model_name)}],
+                             "choices": [{"text": answer}],
+                            #  [{"text": "{}[{}]".format(answer, model_name)}],
                              "extra_info" : extra_info,
                              "usage": {"prompt_tokens": 58, "completion_tokens": 15, "total_tokens": 73}},
                             # {"id": uuid.uuid4(),
