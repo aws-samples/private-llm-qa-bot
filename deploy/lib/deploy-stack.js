@@ -194,7 +194,8 @@ export class DeployStack extends Stack {
         knn_qd_threshold_soft:'0.8',
         lambda_feedback:"lambda_feedback",
         neighbors:process.env.neighbors,
-        TOP_K:process.env.TOP_K
+        TOP_K:process.env.TOP_K,
+        intention_list:'知识问答'
       },
     });
 
