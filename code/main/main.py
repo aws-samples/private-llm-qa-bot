@@ -1154,7 +1154,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         TRACE_LOGGER.add_ref(f'\n\n**Refer to {len(recall_knowledge)} knowledge:**')
 
         ##添加召回文档到refdoc和tracelog
-        for sn,item in enumerate(recall_knowledge):
+        for sn,item in enumerate(recall_knowledge[::-1]):
             TRACE_LOGGER.trace(f"**[{sn+1}]** [{item['doc_title']}] [{item['doc_category']}] [{item['score']}]")
             TRACE_LOGGER.trace(f"{item['doc']}")
             TRACE_LOGGER.add_ref(f"**[{sn+1}]** [{item['doc_title']}] [{item['doc_category']}] [{item['score']}]")
