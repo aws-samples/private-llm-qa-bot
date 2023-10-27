@@ -298,6 +298,8 @@ export class DeployStack extends Stack {
     );
     //grant permission to invoke feedback lambda
     fn_feedback.grantInvoke(lambda_main_brain);
+    lambda_intention.grantInvoke(lambda_main_brain);
+    lambda_query_rewrite.grantInvoke(lambda_main_brain);
 
     //glue job
     const gluestack = new GlueStack(this,'glue-stack',{opensearch_endpoint,region,vpc,subnets,securityGroups});
