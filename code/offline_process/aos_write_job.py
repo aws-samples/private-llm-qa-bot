@@ -121,13 +121,15 @@ def iterate_paragraph(file_content, object_key, smr_client, index_name, endpoint
 
     generator = chunk_generator(json_arr)
     batches = batch_generator(generator, batch_size=EMB_BATCH_SIZE)
+    doc_author = get_filename_from_obj_key(object_key)
+
     for batch in batches:
         if batch is not None:
             emb_src_texts = [item[1] for item in batch]
             print("len of emb_src_texts :{}".format(len(emb_src_texts)))
             embeddings = get_embedding(smr_client, emb_src_texts, endpoint_name)
             for i, emb in enumerate(embeddings):
-                document = { "publish_date": publish_date, "idx": batch[i][0], "doc" : batch[i][1], "doc_type" : batch[i][2], "content" : batch[i][3], "doc_title": doc_title, "doc_category": doc_title, "embedding" : emb}
+                document = { "publish_date": publish_date, "idx": batch[i][0], "doc" : batch[i][1], "doc_type" : batch[i][2], "content" : batch[i][3], "doc_title": doc_title,"doc_author":doc_author, "doc_category": doc_title, "embedding" : emb}
                 yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document['doc']).encode('utf-8')).hexdigest()}
 
 def iterate_pdf_json(file_content, object_key, smr_client, index_name, endpoint_name):
@@ -161,6 +163,7 @@ def iterate_pdf_json(file_content, object_key, smr_client, index_name, endpoint_
 
     generator = chunk_generator(json_arr)
     batches = batch_generator(generator, batch_size=EMB_BATCH_SIZE)
+    doc_author = get_filename_from_obj_key(object_key)
     try:
         for batch in batches:
             if batch is not None:
@@ -168,7 +171,7 @@ def iterate_pdf_json(file_content, object_key, smr_client, index_name, endpoint_
                 print("len of emb_src_texts :{}".format(len(emb_src_texts)))
                 embeddings = get_embedding(smr_client, emb_src_texts, endpoint_name)
                 for i, emb in enumerate(embeddings):
-                    document = { "publish_date": publish_date, "idx": batch[i][0], "doc" : batch[i][1], "doc_type" : batch[i][2], "content" : batch[i][3], "doc_title": doc_title, "doc_category": batch[i][4], "embedding" : emb}
+                    document = { "publish_date": publish_date, "idx": batch[i][0], "doc" : batch[i][1], "doc_type" : batch[i][2], "content" : batch[i][3], "doc_title": doc_title,"doc_author":doc_author, "doc_category": batch[i][4], "embedding" : emb}
                     yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document['doc']).encode('utf-8')).hexdigest()}
     except Exception as e:
         logging.exception(e)
@@ -181,6 +184,7 @@ def iterate_QA(file_content, object_key,smr_client, index_name, endpoint_name):
 
     it = iter(json_arr)
     qa_batches = batch_generator(it, batch_size=EMB_BATCH_SIZE)
+    doc_author = get_filename_from_obj_key(object_key)
 
     for idx, batch in enumerate(qa_batches):
         doc_template = "Question: {}\nAnswer: {}"
@@ -190,12 +194,12 @@ def iterate_QA(file_content, object_key,smr_client, index_name, endpoint_name):
         embeddings_q = get_embedding(smr_client, questions, endpoint_name)
 
         for i in range(len(embeddings_q)):
-            document = { "publish_date": publish_date, "doc" : questions[i], "idx": idx,"doc_type" : "Question", "content" : docs[i], "doc_title": doc_title, "doc_category": doc_category, "embedding" : embeddings_q[i]}
+            document = { "publish_date": publish_date, "doc" : questions[i], "idx": idx,"doc_type" : "Question", "content" : docs[i], "doc_title": doc_title,"doc_author":doc_author, "doc_category": doc_category, "embedding" : embeddings_q[i]}
             yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document).encode('utf-8')).hexdigest()}
 
         embeddings_a = get_embedding(smr_client, answers, endpoint_name)
         for i in range(len(embeddings_a)):
-            document = { "publish_date": publish_date, "doc" : answers[i], "idx": idx,"doc_type" : "Paragraph", "content" : docs[i], "doc_title": doc_title, "doc_category": doc_category, "embedding" : embeddings_a[i]}
+            document = { "publish_date": publish_date, "doc" : answers[i], "idx": idx,"doc_type" : "Paragraph", "content" : docs[i], "doc_title": doc_title,"doc_author":doc_author, "doc_category": doc_category, "embedding" : embeddings_a[i]}
             yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document).encode('utf-8')).hexdigest()}
 
 def iterate_examples(file_content, object_key, smr_client, index_name, endpoint_name):
@@ -469,13 +473,14 @@ def iterate_paragraph_blog(content_json, object_key,smr_client, index_name, endp
 
     generator = chunk_generator(content_json)
     batches = batch_generator(generator, batch_size=EMB_BATCH_SIZE)
+    doc_author = get_filename_from_obj_key(object_key)
     for batch in batches:
         if batch is not None:
             emb_src_texts = [item[1] for item in batch] ##对content向量化
             print("len of emb_src_texts :{}".format(len(emb_src_texts)))
             embeddings = get_embedding(smr_client, emb_src_texts, endpoint_name)
             for i, emb in enumerate(embeddings):
-                document = { "publish_date": publish_date, "idx": batch[i][0], "doc" : batch[i][1], "doc_type" : batch[i][2], "content" : batch[i][3], "doc_title": doc_title, "doc_category": batch[i][4], "embedding" : emb}
+                document = { "publish_date": publish_date, "idx": batch[i][0], "doc" : batch[i][1], "doc_type" : batch[i][2], "content" : batch[i][3], "doc_title": doc_title, "doc_author":doc_author,"doc_category": batch[i][4], "embedding" : emb}
                 yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document['doc']).encode('utf-8')).hexdigest()}
                 
 
@@ -505,13 +510,14 @@ def iterate_paragraph_wiki(content_json, object_key,smr_client, index_name, endp
 
     generator = chunk_generator(content_json)
     batches = batch_generator(generator, batch_size=EMB_BATCH_SIZE)
+    doc_author = get_filename_from_obj_key(object_key)
     for batch in batches:
         if batch is not None:
             emb_src_texts = [item[1] for item in batch] ##对content向量化
             print("len of emb_src_texts :{}".format(len(emb_src_texts)))
             embeddings = get_embedding(smr_client, emb_src_texts, endpoint_name)
             for i, emb in enumerate(embeddings):
-                document = { "publish_date": publish_date, "idx": batch[i][0], "doc" : batch[i][1], "doc_type" : batch[i][2], "content" : batch[i][3], "doc_title": doc_title, "doc_category": batch[i][4], "embedding" : emb}
+                document = { "publish_date": publish_date, "idx": batch[i][0], "doc" : batch[i][1], "doc_type" : batch[i][2], "content" : batch[i][3], "doc_title": doc_title, "doc_author":doc_author,"doc_category": batch[i][4], "embedding" : emb}
                 yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document['doc']).encode('utf-8')).hexdigest()}
 
 
@@ -679,22 +685,32 @@ def process_s3_uploaded_file(bucket, object_key):
     else:
         raise RuntimeError("unsupport content type...(pdf, faq, txt, pdf.json are supported.)")
     
+    username = get_filename_from_obj_key(object_key)
     #check if it is already built
-    idx_name = get_idx_from_ddb(object_key,EMB_MODEL_ENDPOINT)
+    idx_name = query_idx_from_ddb(object_key,username,EMB_MODEL_ENDPOINT)
+    # idx_name = get_idx_from_ddb(object_key,EMB_MODEL_ENDPOINT)
     if len(idx_name) > 0:
         print("doc file already exists")
         return
     
+
     response = WriteVecIndexToAOS(bucket, object_key, content_type, smr_client, index_name=index_name)
     print("response:")
     print(response)
     print("ingest {} chunk to AOS".format(response[0]))
-    put_idx_to_ddb(filename=object_key,username='s3event',
+    put_idx_to_ddb(filename=object_key,username=username,
                         index_name=index_name,
                             embedding_model=EMB_MODEL_ENDPOINT)
 
+##如果是从chatbot上传，则是ai-content/username/filename
+def get_filename_from_obj_key(object_key):
+    paths = object_key.split('/')
+    return paths[1] if len(paths) > 2 else 's3_upload'
+
+
+
 for s3_key in object_key.split(','):
     s3_key = urllib.parse.unquote(s3_key) ##In case Chinese filename
-    print("processing {}".format(s3_key))
     s3_key = s3_key.replace('+',' ') ##replace the '+' with space. ps:if the original file name contains space, then s3 notification will replace it with '+'.
+    print("processing {}".format(s3_key))
     process_s3_uploaded_file(bucket, s3_key)

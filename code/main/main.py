@@ -1257,17 +1257,20 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
 
         if exactly_match_result and recall_knowledge: 
             answer = exactly_match_result[0]["doc"]
-            use_stream = False ##如果是直接匹配则不需要走流
             hide_ref= True ## 隐藏ref doc
+            if use_stream:
+                TRACE_LOGGER.postMessage(answer)
         elif reply_stratgy == ReplyStratgy.RETURN_OPTIONS:
             some_reference = qa_knowledge_fewshot_build(recall_knowledge[::2])
             answer = f"我不太确定，这有两条可能相关的信息，供参考：\n=====\n{some_reference}\n====="
-            use_stream = False ##如果是直接匹配则不需要走流
             hide_ref= True ## 隐藏ref doc
+            if use_stream:
+                TRACE_LOGGER.postMessage(answer)
         elif reply_stratgy == ReplyStratgy.SAY_DONT_KNOW:
             answer = "我不太清楚，问问人工吧。"
-            use_stream = False ##如果是直接匹配则不需要走流
             hide_ref= True ## 隐藏ref doc
+            if use_stream:
+                TRACE_LOGGER.postMessage(answer)
         else:      
             ##添加召回引用,如果使用trace则忽略
             # if not TRACE_LOGGER.use_trace:

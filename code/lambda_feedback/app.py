@@ -249,7 +249,7 @@ def inject_new_qa(session_id,msgid,bucket_name,s3_prefix,action):
         text_string=formatted_qa,
         bucket_name = bucket_name,
         file_name = temp_filename,
-        s3_prefix = s3_prefix
+        s3_prefix = f'{s3_prefix}{username}/' 
     )
     if operation_result:
         operation_result = update_qa_status(session_id,msgid,status=action)
