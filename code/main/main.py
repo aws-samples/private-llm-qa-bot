@@ -71,6 +71,8 @@ KNN_QQ_THRESHOLD_SOFT_REFUSE = float(os.environ.get('knn_qq_threshold_soft',0.8)
 KNN_QD_THRESHOLD_HARD_REFUSE = float(os.environ.get('knn_qd_threshold_hard',0.6))
 KNN_QD_THRESHOLD_SOFT_REFUSE = float(os.environ.get('knn_qd_threshold_soft',0.8))
 
+KNN_QUICK_PEFETCH_THRESHOLD = float(os.environ.get('knn_quick_prefetch_threshold',0.95))
+
 INTENTION_LIST = os.environ.get('intention_list', "")
 
 TOP_K = int(os.environ.get('TOP_K',4))
@@ -351,6 +353,25 @@ class CustomDocRetriever(BaseRetriever):
             top_k_results.append(Document(page_content=item.get('doc')))
         return top_k_results
        
+     ## kkn前置检索FAQ,，如果query非常相似，则返回作为cache
+    def knn_quick_prefetch(self,query_input: str) -> List[Any]:
+        global KNN_QUICK_PEFETCH_THRESHOLD
+        start = time.time()
+        query_embedding = get_vector_by_sm_endpoint(query_input, sm_client, self.embedding_model_endpoint)
+        aos_client = OpenSearch(
+                hosts=[{'host': self.aos_endpoint, 'port': 443}],
+                http_auth = awsauth,
+                use_ssl=True,
+                verify_certs=True,
+                connection_class=RequestsHttpConnection
+            )
+        opensearch_knn_respose = search_using_aos_knn(aos_client,query_embedding[0], self.aos_index,size=3)
+        elpase_time = time.time() - start
+        logger.info(f'runing time of quick_knn_fetch : {elpase_time:.3f}s')
+        filter_knn_result = [item for item in opensearch_knn_respose if (item['score'] > KNN_QUICK_PEFETCH_THRESHOLD and item['doc_type'] == 'Question')]
+        if len(filter_knn_result) :
+            filter_knn_result.sort(key=lambda x:x['score'])
+        return filter_knn_result
 
     async def aget_relevant_documents(self, query: str) -> List[Document]:
         raise NotImplementedError
@@ -1088,13 +1109,36 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
     else:
         chat_history=''
 
+
+    
+    doc_retriever = CustomDocRetriever.from_endpoints(embedding_model_endpoint=embedding_model_endpoint,
+                                    aos_endpoint= aos_endpoint,
+                                    aos_index=aos_index)
+    TRACE_LOGGER.trace(f'**Starting trace mode...**')
+    TRACE_LOGGER.trace(f'**Using LLM model : {llm_model_name}**')
+    cache_answer = None
+    if use_qa:
+        before_prefetch = time.time()
+        TRACE_LOGGER.trace(f'**Prefetching cache...**')
+        cache_repsonses = doc_retriever.knn_quick_prefetch(query_input)
+        elpase_time_cache = time.time() - before_prefetch
+        TRACE_LOGGER.trace(f'**Running time of prefetching cache: {elpase_time_cache:.3f}s**')
+        if cache_repsonses:
+            last_cache = cache_repsonses[-1]['doc']
+            cache_answer = last_cache.split('\nAnswer:')[1]
+            TRACE_LOGGER.trace(f"**Found caches:**")
+            for sn,item in enumerate(cache_repsonses[::-1]):
+                TRACE_LOGGER.trace(f"**[{sn+1}]** [{item['doc_title']}] [{item['doc_category']}] [{item['score']}]")
+                TRACE_LOGGER.trace(f"{item['doc']}")
+        else:
+            TRACE_LOGGER.trace(f"**No cache found**")
+
     intention = '知识问答'
     global INTENTION_LIST
     other_intentions = INTENTION_LIST.split(',')
 
-    TRACE_LOGGER.trace(f'**Starting trace mode...**')
-    TRACE_LOGGER.trace(f'**Using LLM model : {llm_model_name}**')
-    if len(other_intentions) > 0 and len(other_intentions[0]) > 1 and llm_model_name.startswith('claude'):
+    ##如果使用QA，且没有cache answer再需要进一步意图判断
+    if use_qa and not cache_answer and len(other_intentions) > 0 and len(other_intentions[0]) > 1 and llm_model_name.startswith('claude'):
         before_detect = time.time()
         TRACE_LOGGER.trace(f'**Detecting intention...**')
         intention = detect_intention(query_input, fewshot_cnt=5, use_bedrock="True")
@@ -1107,7 +1151,15 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
     if not use_qa:
         intention = '闲聊'
 
-    if intention == '闲聊':##如果不使用QA
+    if cache_answer:
+        TRACE_LOGGER.trace('**Use Cache answer:**')
+        reply_stratgy = ReplyStratgy.OTHER
+        answer = cache_answer
+        if use_stream:
+            TRACE_LOGGER.postMessage(cache_answer)
+        recall_knowledge,opensearch_knn_respose,opensearch_query_response = [],[],[]
+
+    elif intention == '闲聊':##如果不使用QA
         TRACE_LOGGER.trace('**Using Non-RAG Chat...**')
         TRACE_LOGGER.trace('**Answer:**')
         reply_stratgy = ReplyStratgy.LLM_ONLY
@@ -1135,9 +1187,9 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         TRACE_LOGGER.trace('**Using RAG Chat...**')
         TRACE_LOGGER.trace('**Retrieving knowledge...**')
 
-        doc_retriever = CustomDocRetriever.from_endpoints(embedding_model_endpoint=embedding_model_endpoint,
-                                    aos_endpoint= aos_endpoint,
-                                    aos_index=aos_index)
+        # doc_retriever = CustomDocRetriever.from_endpoints(embedding_model_endpoint=embedding_model_endpoint,
+        #                             aos_endpoint= aos_endpoint,
+        #                             aos_index=aos_index)
         # 3. check is it keyword search
         # exactly_match_result = aos_search(aos_endpoint, aos_index, "doc", query_input, exactly_match=True)
         ## 精准匹配对paragraph类型文档不太适用，先屏蔽掉 
@@ -1153,7 +1205,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         TRACE_LOGGER.trace(f'**Retrieved {len(recall_knowledge)} knowledge:**')
         TRACE_LOGGER.add_ref(f'\n\n**Refer to {len(recall_knowledge)} knowledge:**')
 
-        ##添加召回文档到refdoc和tracelog
+        ##添加召回文档到refdoc和tracelog, 按score倒序展示
         for sn,item in enumerate(recall_knowledge[::-1]):
             TRACE_LOGGER.trace(f"**[{sn+1}]** [{item['doc_title']}] [{item['doc_category']}] [{item['score']}]")
             TRACE_LOGGER.trace(f"{item['doc']}")
@@ -1205,17 +1257,20 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
 
         if exactly_match_result and recall_knowledge: 
             answer = exactly_match_result[0]["doc"]
-            use_stream = False ##如果是直接匹配则不需要走流
             hide_ref= True ## 隐藏ref doc
+            if use_stream:
+                TRACE_LOGGER.postMessage(answer)
         elif reply_stratgy == ReplyStratgy.RETURN_OPTIONS:
             some_reference = qa_knowledge_fewshot_build(recall_knowledge[::2])
             answer = f"我不太确定，这有两条可能相关的信息，供参考：\n=====\n{some_reference}\n====="
-            use_stream = False ##如果是直接匹配则不需要走流
             hide_ref= True ## 隐藏ref doc
+            if use_stream:
+                TRACE_LOGGER.postMessage(answer)
         elif reply_stratgy == ReplyStratgy.SAY_DONT_KNOW:
             answer = "我不太清楚，问问人工吧。"
-            use_stream = False ##如果是直接匹配则不需要走流
             hide_ref= True ## 隐藏ref doc
+            if use_stream:
+                TRACE_LOGGER.postMessage(answer)
         else:      
             ##添加召回引用,如果使用trace则忽略
             # if not TRACE_LOGGER.use_trace:
