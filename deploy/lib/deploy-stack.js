@@ -282,6 +282,40 @@ export class DeployStack extends Stack {
         effect: iam.Effect.ALLOW,
         resources: ['*'],
         }))
+
+    const lambda_chat_agent = new DockerImageFunction(this,
+      "lambda_chat_agent", {
+      code: DockerImageCode.fromImageAsset(join(__dirname, "../../code/chat_agent")),
+      timeout: Duration.minutes(20),
+      memorySize: 1024,
+      runtime: 'python3.9',
+      functionName: 'Chat_Agent',
+      vpc:vpc,
+      vpcSubnets:subnets,
+      securityGroups:securityGroups,
+      architecture: Architecture.X86_64,
+      environment: {
+        llm_model_endpoint:process.env.llm_chatglm_endpoint,
+        region:region
+      },
+    });
+
+    // Grant the Lambda function can invoke sagemaker
+    lambda_chat_agent.addToRolePolicy(new iam.PolicyStatement({
+      // principals: [new iam.AnyPrincipal()],
+        actions: [ 
+          "sagemaker:InvokeEndpointAsync",
+          "sagemaker:InvokeEndpoint",
+          "s3:List*",
+          "s3:Put*",
+          "s3:Get*",
+          "es:*",
+          "secretsmanager:GetSecretValue",
+          "bedrock:*"
+          ],
+        effect: iam.Effect.ALLOW,
+        resources: ['*'],
+        }))
       
     chat_session_table.grantReadWriteData(lambda_main_brain);
     doc_index_table.grantReadWriteData(lambda_main_brain);
@@ -300,6 +334,7 @@ export class DeployStack extends Stack {
     fn_feedback.grantInvoke(lambda_main_brain);
     lambda_intention.grantInvoke(lambda_main_brain);
     lambda_query_rewrite.grantInvoke(lambda_main_brain);
+    lambda_chat_agent.grantInvoke(lambda_main_brain);
 
     //glue job
     const gluestack = new GlueStack(this,'glue-stack',{opensearch_endpoint,region,vpc,subnets,securityGroups});
