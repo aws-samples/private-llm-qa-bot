@@ -587,6 +587,24 @@ def rewrite_query(query, session_history, round_cnt=2, use_bedrock="True"):
 
     return response_str.strip()
 
+def chat_agent(query, intention, use_bedrock="True"):
+
+    msg = {
+      "params": {
+        "query": query,
+        "intention": intention 
+      },
+      "use_bedrock" : use_bedrock,
+      "llm_model_name" : "anthropic.claude-v2"
+    }
+    response = lambda_client.invoke(FunctionName="Chat_Agent",
+                                           InvocationType='RequestResponse',
+                                           Payload=json.dumps(msg))
+    response_body = response['Payload']
+    response_str = response_body.read().decode("unicode_escape")
+
+    return response_str.strip()
+
 def is_chinese(string):
     for char in string:
         if '\u4e00' <= char <= '\u9fff':
@@ -1094,6 +1112,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
 
     TRACE_LOGGER.trace(f'**Starting trace mode...**')
     TRACE_LOGGER.trace(f'**Using LLM model : {llm_model_name}**')
+    TRACE_LOGGER.trace(f'**In Other Intention: {intention in other_intentions}**')
     if len(other_intentions) > 0 and len(other_intentions[0]) > 1 and llm_model_name.startswith('claude'):
         before_detect = time.time()
         TRACE_LOGGER.trace(f'**Detecting intention...**')
@@ -1126,7 +1145,11 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         TRACE_LOGGER.trace('**Answer:**')
         reply_stratgy = ReplyStratgy.AGENT
         recall_knowledge,opensearch_knn_respose,opensearch_query_response = [],[],[]
-        answer = "call agent to get answer" ##临时回答
+        use_bedrock = "False"
+        if llm_model_name.startswith('claude'):
+            use_bedrock = "True"
+        answer = chat_agent(query_input, intention, use_bedrock=use_bedrock)
+
         if use_stream:
             TRACE_LOGGER.postMessage(answer)
 
@@ -1203,7 +1226,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
 
         context = qa_knowledge_fewshot_build(recall_knowledge)
 
-        if exactly_match_result and recall_knowledge: 
+        if exactly_match_result and recall_knowledge:
             answer = exactly_match_result[0]["doc"]
             use_stream = False ##如果是直接匹配则不需要走流
             hide_ref= True ## 隐藏ref doc
