@@ -1,3 +1,17 @@
+### 从长文档提取FAQ
+
+- 适应场景
+    文档中，上下文依赖比较严重，无论如何切分，都会存在上下文的信息缺失。chunk本身信息不完整。
+
+- 做法思路
+    利用Bedrock-Claude的大窗口能力，100k约等于100页文档。 直接基于全文全体提取FAQ，会存在大量的内容覆盖不到。优化后分两步走, 第一步，根据全文提取标题和各个章节的标题。 第二步，在Prompt中，限定在各个'章节'内提取QA。
+
+- Usage
+    ```shell
+    # 输入的input_file 为纯文本文件，可以是txt，也可以是markdown
+    python Enhance_Doc_Bedrock.py --input_file input.txt --output_file output.json
+    ```
+
 ### OpenSource doc spliter(表格信息提取，需要结合OCR自行实现)
 
 - 运行依赖
