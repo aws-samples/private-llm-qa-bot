@@ -1,6 +1,5 @@
 ### 实现逻辑：
-
-参考Langchain的prompt_template实现自己的query rewriter，通过lambda独立成一个接口供调用
+通过 prompt 模版实现 Agent功能，当前仅实现一个工具Agent，暂时未做控制 Agent
 
 
 ### 调用方法
@@ -11,15 +10,15 @@ from boto3 import client as boto3_client
 lambda_client = boto3_client('lambda')
 
 def lambda_handler(event, context):
-  	question = event['prompt'] #"DynamoDB怎么计费"
+  	question = event['prompt'] 
     msg = {
       "params": {
-        "history": ["有戴森的吹风机吗？","没有哦亲亲", "戴森都没有", "不好意思，看看其他品牌呢"],
-        "query": question
+        "query": query
       },
-      "use_bedrock" : "True"
+      "use_bedrock" : use_bedrock,
+      "llm_model_name" : "anthropic.claude-v2"
     }
-    invoke_response = lambda_client.invoke(FunctionName="Query_Rewrite",
+    response = lambda_client.invoke(FunctionName="Chat_Agent",
                                            InvocationType='RequestResponse',
                                            Payload=json.dumps(msg))
     
@@ -32,8 +31,7 @@ def lambda_handler(event, context):
 #1
 {
   "params": {
-    "history": ["有戴森的吹风机吗？","没有哦亲亲", "戴森都没有", "不好意思，看看其他品牌呢"],
-    "query": "那有松下的吗？"  
+    "query": "Sagemaker相关问题应该联系谁？"  
   },
   "use_bedrock" : "True"
 }
@@ -41,44 +39,74 @@ def lambda_handler(event, context):
 #2
 {
   "params": {
-    "history": ["你喜欢周杰伦吗", "我喜欢周杰伦"],
-    "query": "你喜欢他哪首歌",
+    "query": "quicksight的GTMS是谁？",
   },
   "use_bedrock" : "True",
-  "role_a" : "user",
-  "role_b" : "bot"
 }
 
 #3
 {
   "params": {
-    "history": ["Sagemaker相关问题应该联系谁？","李雷"],
-    "query": "那Emr的问题呢？"
+    "query": "AIML北区的Sales是谁？",
   },
-  "use_bedrock" : "True"
+  "use_bedrock" : "True",
 }
 
 #4
 {
   "params": {
-    "history": ["zero-etl在中国可用了吗？","还不可用", "在global可用了吗？", "可用"],
-    "query": "中国区sagemaker有jumpstart吗"
+    "query": "Emr相关问题应该联系谁？",
   },
-  "use_bedrock" : "True"
+  "use_bedrock" : "True",
 }
 
 #5
-{
-  "params": {
-    "history": ["AI的销售是谁？","请问是哪个地区的？"],
-    "query": "北区"
+{  "params": {
+    "query": "数据治理的GTMS是谁？",
   },
   "use_bedrock" : "True",
-  "llm_model_name":"claude-instant"
 }
+
+#6
+{  "params": {
+    "query": "aws head of sso 是谁",
+  },
+  "use_bedrock" : "True",
+}
+
+#7
+{  "params": {
+    "query": "aws sso大老板是谁",
+  },
+  "use_bedrock" : "True",
+}
+
+#8
+{  "params": {
+    "query": "Yinuo 负责AWS 什么服务",
+  },
+  "use_bedrock" : "True",
+}
+
+#9
+{  "params": {
+    "query": "Goden Yao 负责哪些服务",
+  },
+  "use_bedrock" : "True",
+}
+
+#10
+{  "params": {
+    "query": "Azure Competition 是谁负责",
+  },
+  "use_bedrock" : "True",
+}
+
 ```
 
 
-### 优化手段
+### TODO
+1. Tool Agent 实现
+2. Contorl Agent (React)
 
-1. 速度层面，使用IUR(Incomplete Utterance Rewrite)相关的[小模型](https://huggingface.co/csdc-atl/dialogue-rewriter)进行推理
+### 优化手段

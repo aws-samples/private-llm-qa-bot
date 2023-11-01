@@ -286,7 +286,7 @@ export class DeployStack extends Stack {
     const lambda_chat_agent = new DockerImageFunction(this,
       "lambda_chat_agent", {
       code: DockerImageCode.fromImageAsset(join(__dirname, "../../code/chat_agent")),
-      timeout: Duration.minutes(20),
+      timeout: Duration.minutes(15),
       memorySize: 1024,
       runtime: 'python3.9',
       functionName: 'Chat_Agent',

@@ -1,6 +1,7 @@
 import json
 import os
 import logging
+import re
 
 from langchain.llms.sagemaker_endpoint import LLMContentHandler
 from langchain import PromptTemplate, SagemakerEndpoint
@@ -14,8 +15,6 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 credentials = boto3.Session().get_credentials()
-
-context = """"""
 
 class APIException(Exception):
     def __init__(self, message, code: str = None):
@@ -59,27 +58,23 @@ def lambda_handler(event, context):
     llm_model_name = event.get('llm_model_name', None)
     params = event.get('params')
     use_bedrock = event.get('use_bedrock')
-    role_a = event.get('role_a', 'user')
-    role_b = event.get('role_a', 'bot')
     
     logger.info("region:{}".format(region))
     logger.info("params:{}".format(params))
-    logger.info("llm_model_name:{}".format(llm_model_name))
+    logger.info("llm_model_name:{}, use_bedrock: {}".format(llm_model_name, use_bedrock))
     logger.info("llm_model_endpoint:{}".format(llm_model_endpoint))
 
     param_dict = params
     query = param_dict["query"]
-    history = param_dict["history"]
 
-    history_with_role = [ "{}: {}".format(role_a if idx % 2 == 0 else role_b, item) for idx, item in enumerate(history) ]
-    history_str = "\n".join(history_with_role)
-
+    context = """"""
     parameters = {
         "temperature": 0.01,
     }
 
     llm = None
     if not use_bedrock:
+        logger.info(f'not use bedrock, use {llm_model_endpoint}')
         llmcontent_handler = llmContentHandler()
         llm=SagemakerEndpoint(
                 endpoint_name=llm_model_endpoint, 
@@ -94,8 +89,8 @@ def lambda_handler(event, context):
         )
     
         parameters = {
-            "max_tokens_to_sample": 20,
-            "stop_sequences": ["\n\n"],
+            "max_tokens_to_sample": 8096,
+            "stop_sequences": ["\nObservation"],
             "temperature":0.01,
             "top_p":0.85
         }
@@ -134,15 +129,13 @@ def lambda_handler(event, context):
         return PROMPT
     prompt = create_prompt_templete(promtp_tmp) 
     llmchain = LLMChain(llm=llm,verbose=False,prompt = prompt)
-    # query_input = "SSO 的负责人是谁"
-
     answer = llmchain.run({'question':query, 'role_bot':B_Role, "context": context})
-    # print(answer)
-    # llmchain = LLMChain(llm=llm, verbose=False, prompt=prompt_template)
-    # answer = llmchain.run({'history':history_str, "cur_query":query})
+    logger.info(f'context length: {len(context)}, prompt {prompt}')
     answer = answer.strip()
-
-    log_dict = { "history" : history, "answer" : answer , "question": query }
+    log_dict = {"answer" : answer , "question": query }
     log_dict_str = json.dumps(log_dict, ensure_ascii=False)
     logger.info(log_dict_str)
-    return answer.strip('"')
+    pattern = r'^根据.*[,|，]'
+    answer = re.sub(pattern, "", answer)
+    logger.info(answer)
+    return answer
