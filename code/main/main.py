@@ -587,11 +587,12 @@ def rewrite_query(query, session_history, round_cnt=2, use_bedrock="True"):
 
     return response_str.strip()
 
-def chat_agent(query, use_bedrock="True"):
+def chat_agent(query, intention, use_bedrock="True"):
 
     msg = {
       "params": {
-        "query": query
+        "query": query,
+        "intention": intention 
       },
       "use_bedrock" : use_bedrock,
       "llm_model_name" : "anthropic.claude-v2"
@@ -1147,9 +1148,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         use_bedrock = "False"
         if llm_model_name.startswith('claude'):
             use_bedrock = "True"
-            
-        if intention == "Service角色查询":
-            answer = chat_agent(query_input, use_bedrock=use_bedrock)
+        answer = chat_agent(query_input, intention, use_bedrock=use_bedrock)
 
         if use_stream:
             TRACE_LOGGER.postMessage(answer)

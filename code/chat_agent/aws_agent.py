@@ -51,55 +51,11 @@ class llmContentHandler(LLMContentHandler):
         return response_json["outputs"]
 
 
-@handle_error
-def lambda_handler(event, context):
-    region = os.environ.get('region')
-    llm_model_endpoint = os.environ.get('llm_model_endpoint')
-    llm_model_name = event.get('llm_model_name', None)
-    params = event.get('params')
-    use_bedrock = event.get('use_bedrock')
-    
-    logger.info("region:{}".format(region))
-    logger.info("params:{}".format(params))
-    logger.info("llm_model_name:{}, use_bedrock: {}".format(llm_model_name, use_bedrock))
-    logger.info("llm_model_endpoint:{}".format(llm_model_endpoint))
-
-    param_dict = params
-    query = param_dict["query"]
-
-    context = """"""
-    parameters = {
-        "temperature": 0.01,
-    }
-
-    llm = None
-    if not use_bedrock:
-        logger.info(f'not use bedrock, use {llm_model_endpoint}')
-        llmcontent_handler = llmContentHandler()
-        llm=SagemakerEndpoint(
-                endpoint_name=llm_model_endpoint, 
-                region_name=region, 
-                model_kwargs={'parameters':parameters},
-                content_handler=llmcontent_handler
-            )
-    else:
-        boto3_bedrock = boto3.client(
-            service_name="bedrock-runtime",
-            region_name=region
-        )
-    
-        parameters = {
-            "max_tokens_to_sample": 8096,
-            "stop_sequences": ["\nObservation"],
-            "temperature":0.01,
-            "top_p":0.85
-        }
-        
-        model_id ="anthropic.claude-instant-v1" if llm_model_name == 'claude-instant' else "anthropic.claude-v2"
-        llm = Bedrock(model_id=model_id, client=boto3_bedrock, model_kwargs=parameters)
-    
+def service_org(query, llm):
     B_Role="AWSBot"
     SYSTEM_ROLE_PROMPT = '你是云服务AWS的智能客服机器人AWSBot'
+    context = """"""
+    
     promtp_tmp = """
     {system_role_prompt} {role_bot}
 
@@ -132,6 +88,61 @@ def lambda_handler(event, context):
     answer = llmchain.run({'question':query, 'role_bot':B_Role, "context": context})
     logger.info(f'context length: {len(context)}, prompt {prompt}')
     answer = answer.strip()
+    return answer
+
+@handle_error
+def lambda_handler(event, context):
+    params = event.get('params')
+    param_dict = params
+    query = param_dict["query"]
+    intention = param_dict["intention"]     
+    
+    
+    use_bedrock = event.get('use_bedrock')
+    
+    region = os.environ.get('region')
+    llm_model_endpoint = os.environ.get('llm_model_endpoint')
+    llm_model_name = event.get('llm_model_name', None)
+    logger.info("region:{}".format(region))
+    logger.info("params:{}".format(params))
+    logger.info("llm_model_name:{}, use_bedrock: {}".format(llm_model_name, use_bedrock))
+    logger.info("llm_model_endpoint:{}".format(llm_model_endpoint))
+
+    parameters = {
+        "temperature": 0.01,
+    }
+
+    llm = None
+    if not use_bedrock:
+        logger.info(f'not use bedrock, use {llm_model_endpoint}')
+        llmcontent_handler = llmContentHandler()
+        llm=SagemakerEndpoint(
+                endpoint_name=llm_model_endpoint, 
+                region_name=region, 
+                model_kwargs={'parameters':parameters},
+                content_handler=llmcontent_handler
+            )
+    else:
+        boto3_bedrock = boto3.client(
+            service_name="bedrock-runtime",
+            region_name=region
+        )
+    
+        parameters = {
+            "max_tokens_to_sample": 8096,
+            "stop_sequences": ["\nObservation"],
+            "temperature":0.01,
+            "top_p":0.85
+        }
+        
+        model_id ="anthropic.claude-instant-v1" if llm_model_name == 'claude-instant' else "anthropic.claude-v2"
+        llm = Bedrock(model_id=model_id, client=boto3_bedrock, model_kwargs=parameters)
+
+    if intention == "Service角色查询":
+        answer = service_org(query, llm)
+    else:
+        return "抱歉，service 差异查询功能还在开发中，暂时无法回答"
+    
     log_dict = {"answer" : answer , "question": query }
     log_dict_str = json.dumps(log_dict, ensure_ascii=False)
     logger.info(log_dict_str)
