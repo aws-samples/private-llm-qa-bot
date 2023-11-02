@@ -392,10 +392,9 @@ class CustomDocRetriever(BaseRetriever):
                 if key not in docs_dict:
                     docs_dict[key] = item['idx']
                     doc = self.search_paragraph_neighbours(client,item['idx'],item['doc_title'],item['doc_category'],item['doc_type'])
-                    docs.append({ "doc": doc, "score": item['score'], "doc_title": item['doc_title'],"doc_type": item['doc_type'],'doc_category':item['doc_category']} )
+                    docs.append({ **item, "doc": doc } )
             else:
-                docs.append({ "doc": item['doc'], "score": item['score'], "doc_title": item['doc_title'],"doc_type": item['doc_type'],'doc_category':item['doc_category'] } )
-        
+                docs.append(item)
         return docs
 
     def search_paragraph_neighbours(self,client, idx, doc_title,doc_category,doc_type):
@@ -478,29 +477,29 @@ class CustomDocRetriever(BaseRetriever):
                 for item in opensearch_knn_respose:
                     doc_hash = hashlib.md5(str(item['doc']).encode('utf-8')).hexdigest()
                     if doc_hash not in unique_ids:
-                        opensearch_knn_nodup.append((item['doc'], item['score'],item['idx'], item['doc_title'], item['id'],item['doc_category'],item['doc_type']))
+                        opensearch_knn_nodup.append(item)
                         unique_ids.add(doc_hash)
                 
                 opensearch_bm25_nodup = []
                 for item in opensearch_query_response:
                     doc_hash = hashlib.md5(str(item['doc']).encode('utf-8')).hexdigest()
                     if doc_hash not in unique_ids:
-                        opensearch_bm25_nodup.append((item['doc'], item['score'], item['idx'], item['doc_title'],item['id'],item['doc_category'],item['doc_type']))
+                        opensearch_bm25_nodup.append(item)
                         doc_hash = hashlib.md5(str(item['doc']).encode('utf-8')).hexdigest()
                         unique_ids.add(doc_hash)
 
-                opensearch_knn_nodup.sort(key=lambda x: x[1])
-                opensearch_bm25_nodup.sort(key=lambda x: x[1])
+                opensearch_knn_nodup.sort(key=lambda x: x['score'])
+                opensearch_bm25_nodup.sort(key=lambda x: x['score'])
                 
                 half_topk = math.ceil(topk/2) 
     
-                kg_combine_result = [ { "doc": item[0], "score": item[1],"idx":item[2],"doc_title":item[3], "doc_category":item[5],"doc_type": item[6]  } for item in opensearch_knn_nodup[-1*half_topk:]]
-                knn_kept_doc = [ item[4] for item in opensearch_knn_nodup[-1*half_topk:] ]
+                kg_combine_result = [ item for item in opensearch_knn_nodup[-1*half_topk:]]
+                knn_kept_doc = [ item['id'] for item in opensearch_knn_nodup[-1*half_topk:] ]
 
                 bm25_count = 0
                 for item in opensearch_bm25_nodup[::-1]:
-                    if item[4] not in knn_kept_doc:
-                        kg_combine_result.append({ "doc": item[0], "score": item[1],"idx":item[2],"doc_title":item[3],"doc_category":item[5],"doc_type": item[6] })
+                    if item['id'] not in knn_kept_doc:
+                        kg_combine_result.append(item)
                         bm25_count += 1
                     if bm25_count+len(knn_kept_doc) >= topk:
                         break
@@ -509,11 +508,11 @@ class CustomDocRetriever(BaseRetriever):
                 step_bm25 = 0
                 while topk - len(kg_combine_result)>0:
                     if len(opensearch_knn_nodup) > half_topk and len(opensearch_knn_nodup[-1*half_topk-1-step_knn:-1*half_topk-step_knn]) > 0:
-                        kg_combine_result += [{ "doc": item[0], "score": item[1],"idx":item[2],"doc_title":item[3], "doc_category":item[5],"doc_type": item[6]  } for item in opensearch_knn_nodup[-1*half_topk-1-step_knn:-1*half_topk-step_knn]]
+                        kg_combine_result += [item for item in opensearch_knn_nodup[-1*half_topk-1-step_knn:-1*half_topk-step_knn]]
                         kg_combine_result.sort(key=lambda x: x['score'])
                         step_knn += 1
                     elif len(opensearch_bm25_nodup) > half_topk and len(opensearch_bm25_nodup[-1*half_topk-1-step_bm25:-1*half_topk-step_bm25]) >0:
-                        kg_combine_result += [{ "doc": item[0], "score": item[1],"idx":item[2],"doc_title":item[3], "doc_category":item[5],"doc_type": item[6]  } for item in opensearch_bm25_nodup[-1*half_topk-1-step_bm25:-1*half_topk-step_bm25]]
+                        kg_combine_result += [item for item in opensearch_bm25_nodup[-1*half_topk-1-step_bm25:-1*half_topk-step_bm25]]
                         step_bm25 += 1
                     else:
                         break
@@ -668,7 +667,7 @@ def search_using_aos_knn(client, q_embedding, index, size=10):
         body=query,
         index=index
     )
-    opensearch_knn_respose = [{'idx':item['_source'].get('idx',1),'doc_category':item['_source']['doc_category'],'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc':item['_source']['content'],"doc_type":item["_source"]["doc_type"],"score":item["_score"]}  for item in query_response["hits"]["hits"]]
+    opensearch_knn_respose = [{'idx':item['_source'].get('idx',1),'doc_category':item['_source']['doc_category'],'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc':item['_source']['content'],"doc_type":item["_source"]["doc_type"],"score":item["_score"],'doc_author': item['_source']['doc_author']}  for item in query_response["hits"]["hits"]]
     return opensearch_knn_respose
     
 
@@ -752,9 +751,9 @@ def aos_search(client, index_name, field, query_term, exactly_match=False, size=
     )
 
     if exactly_match:
-        result_arr = [ {'idx':item['_source'].get('idx',0),'doc_category':item['_source']['doc_category'],'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc': item['_source']['content'], 'doc_type': item['_source']['doc_type'], 'score': item['_score']} for item in query_response["hits"]["hits"]]
+        result_arr = [ {'idx':item['_source'].get('idx',0),'doc_category':item['_source']['doc_category'],'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc': item['_source']['content'], 'doc_type': item['_source']['doc_type'], 'score': item['_score'],'doc_author': item['_source']['doc_author']} for item in query_response["hits"]["hits"]]
     else:
-        result_arr = [ {'idx':item['_source'].get('idx',0),'doc_category':item['_source']['doc_category'],'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc':item['_source']['content'], 'doc_type': item['_source']['doc_type'], 'score': item['_score']} for item in query_response["hits"]["hits"]]
+        result_arr = [ {'idx':item['_source'].get('idx',0),'doc_category':item['_source']['doc_category'],'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc':item['_source']['content'], 'doc_type': item['_source']['doc_type'], 'score': item['_score'],'doc_author': item['_source']['doc_author']} for item in query_response["hits"]["hits"]]
     return result_arr
 
 def delete_session(session_id):
@@ -1128,7 +1127,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
             cache_answer = last_cache.split('\nAnswer:')[1]
             TRACE_LOGGER.trace(f"**Found caches:**")
             for sn,item in enumerate(cache_repsonses[::-1]):
-                TRACE_LOGGER.trace(f"**[{sn+1}]** [{item['doc_title']}] [{item['doc_category']}] [{item['score']}]")
+                TRACE_LOGGER.trace(f"**[{sn+1}] [{item['doc_title']}] [{item['doc_category']}] [{item['score']:.3f}] auther:[{item['doc_author']}]**")
                 TRACE_LOGGER.trace(f"{item['doc']}")
         else:
             TRACE_LOGGER.trace(f"**No cache found**")
@@ -1207,9 +1206,9 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
 
         ##添加召回文档到refdoc和tracelog, 按score倒序展示
         for sn,item in enumerate(recall_knowledge[::-1]):
-            TRACE_LOGGER.trace(f"**[{sn+1}]** [{item['doc_title']}] [{item['doc_category']}] [{item['score']}]")
+            TRACE_LOGGER.trace(f"**[{sn+1}] [{item['doc_title']}] [{item['doc_category']}] [{item['score']:.3f}] auther:[{item['doc_author']}]**")
             TRACE_LOGGER.trace(f"{item['doc']}")
-            TRACE_LOGGER.add_ref(f"**[{sn+1}]** [{item['doc_title']}] [{item['doc_category']}] [{item['score']}]")
+            TRACE_LOGGER.add_ref(f"**[{sn+1}] [{item['doc_title']}] [{item['doc_category']}] [{item['score']:.3f}] auther:[{item['doc_author']}]**")
             TRACE_LOGGER.add_ref(f"{item['doc']}")
         TRACE_LOGGER.trace('**Answer:**')
 

@@ -43,5 +43,35 @@
         "query":"Amazon EMR有哪些优势",
         "intention":"知识问答",
         "reply":"Amazon EMR有以下优势：节省成本、AWS集成、部署、可扩展性和灵活度、可靠性、安全性和监控。"
+    },
+    {
+        "query":"FOOB Ticket 的链接是什么",
+        "intention":"知识问答",
+        "reply":""
+    },
+    {
+        "query":"怎么提交FOOB？",
+        "intention":"知识问答",
+        "reply":""
+    },
+    {
+        "query":"怎么申请p4d p5?",
+        "intention":"知识问答",
+        "reply":""
+    },
+    {
+        "query":"Sagemaker如何使用张量并行技术对模型分层",
+        "intention":"知识问答",
+        "reply":""
+    },
+    {
+        "query":"SageMaker 模型并行支持哪些管道运行模式",
+        "intention":"知识问答",
+        "reply":""
+    },
+    {
+        "query":"GPU 内存限制会导致什么瓶颈",
+        "intention":"知识问答",
+        "reply":""
     }
 ]
