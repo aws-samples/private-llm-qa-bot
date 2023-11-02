@@ -64,7 +64,7 @@
   
   + 构建Opensearch Index
     其中**doc_type**可以为以下四个值**['Question','Paragraph','Sentence','Abstract']**
-    
+    注意："dimension": 768 这个参数需要根据实际使用的向量模型输出纬度进行修改  
     ```shell
     PUT chatbot-index
     {
@@ -99,6 +99,9 @@
                     "search_analyzer": "ik_smart"
                 },
                 "doc_title": {
+                    "type": "keyword"
+                },
+                "doc_author": {
                     "type": "keyword"
                 },
                 "doc_category": {
