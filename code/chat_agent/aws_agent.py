@@ -154,4 +154,8 @@ def lambda_handler(event, context):
     pattern = r'^根据[^，,]*[,|，]'
     answer = re.sub(pattern, "", answer)
     logger.info(answer)
-    return answer
+    return {
+        'statusCode': 200,
+        'headers': {'Content-Type': 'application/json'},
+        'body':answer
+    }
