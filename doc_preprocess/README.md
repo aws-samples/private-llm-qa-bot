@@ -1,3 +1,46 @@
+
+
+### 知识 - 标准中间格式
+在知识构造的过程中，所有原始格式的文档，都需要考虑转换到一种统一的知识格式，方便后续进行知识的注入和召回优化。
+
+```json
+# schema
+{
+    "page_content":"{will include original document string and sliced document string}",
+    "metadata":{
+        "content_type":"paragraph", # paragraph/table/QA
+        "heading_hierarchy":{
+        },
+        "figure_list":[
+        ],
+        "chunk_id":"",
+        "file_path":"",
+        "keywords":[
+        ],
+        "summary":""
+    }
+}
+
+# FAQ 例子
+{
+    "page_content":"{Question}=>{Answer}",
+    "metadata":{
+        "content_type":"QA",
+        "heading_hierarchy":{
+        },
+        "figure_list":[
+        ],
+        "chunk_id":"",
+        "file_path":"",
+        "keywords":[
+        ],
+        "summary":""
+    }
+}
+```
+
+
+
 ### 从长文档提取FAQ
 
 - 适应场景
@@ -51,7 +94,7 @@
   + ./common-stock-fs.pdf
 
 - Usage
-    
+  
     输出为输入的同名目录
     
     ```shell

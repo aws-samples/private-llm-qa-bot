@@ -5,7 +5,7 @@
 
 - 前端界面
   
-  ![console](./console.png)
+  ![console](./readme_1.png)
   
 - 部署方式
   - 参考 [workshop](https://catalog.us-east-1.prod.workshops.aws/workshops/158a2497-7cbe-4ba4-8bee-2307cb01c08a/en-US)
@@ -52,75 +52,16 @@
     - a1. 前端界面上传文档到S3
     - a2. S3触发Lambda开启Glue处理流程，进行内容的embedding，并入库到AOS中
     - b1. 把cloud watch中的日志通过KDF写入到AOS中，供维护迭代使用
-  - 在线流程[网页](http://chatbotfe-1170248869.us-west-2.elb.amazonaws.com/chat#)
+  - 在线流程[网页](http://chatbot-817094994.us-west-2.elb.amazonaws.com/chat#)
     - a1. 前端界面发起聊天，调用AIGateway，通过Dynamodb获取session信息
     - a2. 通过lambda访问 Sagemaker Endpoint对用户输入进行向量化
     - a3. 通过AOS进行向量相似检索
     - a4. 通过AOS进行倒排检索，与向量检索结果融合，构建Prompt
     - a5. 调用LLM生成结果 
-    - 前端[网页](http://chatbotfe-1170248869.us-west-2.elb.amazonaws.com/chat#)切换模型
+    - 前端[网页](http://chatbot-817094994.us-west-2.elb.amazonaws.com/chat#)切换模型
 
 - 知识库构建
   
-  + 构建Opensearch Index
-    其中**doc_type**可以为以下四个值**['Question','Paragraph','Sentence','Abstract']**
-    注意："dimension": 768 这个参数需要根据实际使用的向量模型输出纬度进行修改  
-    ```shell
-    PUT chatbot-index
-    {
-        "settings" : {
-            "index":{
-                "number_of_shards" : 1,
-                "number_of_replicas" : 0,
-                "knn": "true",
-                "knn.algo_param.ef_search": 32
-            }
-        },
-        "mappings": {
-            "properties": {
-                "publish_date" : {
-                    "type": "date",
-                    "format": "yyyy-MM-dd HH:mm:ss"
-                },
-                "idx" : {
-                    "type": "integer"
-                },
-                "doc_type" : {
-                    "type" : "keyword"
-                },
-                "doc": {
-                    "type": "text",
-                    "analyzer": "ik_max_word",
-                    "search_analyzer": "ik_smart"
-                },
-                "content": {
-                    "type": "text",
-                    "analyzer": "ik_max_word",
-                    "search_analyzer": "ik_smart"
-                },
-                "doc_title": {
-                    "type": "keyword"
-                },
-                "doc_author": {
-                    "type": "keyword"
-                },
-                "doc_category": {
-                    "type": "keyword"
-                },
-                "embedding": {
-                    "type": "knn_vector",
-                    "dimension": 768,
-                    "method": {
-                        "name": "hnsw",
-                        "space_type": "cosinesimil",
-                        "engine": "nmslib",
-                        "parameters": {
-                            "ef_construction": 512,
-                            "m": 32
-                        }
-                    }            
-                }
-            }
-        }
-    }
-    ```
+  参考[README.md](https://github.com/aws-samples/private-llm-qa-bot/blob/main/code/offline_process/aos_schema.md)构建知识库, 构建了知识库以后才能导入知识文件。构建完毕后，可以从前端页面导入知识。导入成功以后，能够在文档库中找到对应的知识文件
+  
+  ![console](./readme_2.png)
