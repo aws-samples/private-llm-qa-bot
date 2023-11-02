@@ -52,40 +52,45 @@ class llmContentHandler(LLMContentHandler):
 
 
 def service_org(query, llm):
-    B_Role="AWSBot"
-    SYSTEM_ROLE_PROMPT = '你是云服务AWS的智能客服机器人AWSBot'
     context = """"""
     
-    promtp_tmp = """
-    {system_role_prompt} {role_bot}
+    prompt_tmp = """
+        你是云服务AWS的智能客服机器人AWSBot
 
-    {context}
-    roles（角色） description:
-    - GTMS: Go To Market Specialist
-    - SS: Specialist Sales
-    - SSA: Specialist Solution Architechure
-    - TPM: 
-    - PM: Project Manager
+        给你 SSO (Service Specialist Organization) 的组织信息
+        {context}
 
-    If the context does not contain the knowleage for the question, truthfully says you does not know.
-    if the parent node key has overlap with sibling child node, ask question to conform the parent node.
-    if ask for the person's responsibility, must give all services or scope which in charged by them.
-    Skip the preamble; go straight to the point.
+        Job role (角色, 岗位类型) description:
+        - GTMS: Go To Market Specialist
+        - SS: Specialist Sales
+        - SSA: Specialist Solution Architechure
+        - TPM: 
+        - PM: Project Manager
 
-    使用中文回复，人名不需要按照中文习惯回复
+        Scope means job scope
+        service_name equal to business unit
 
-    {question}"""
+        If the context does not contain the knowleage for the question, truthfully says you does not know.
+        Don't put two people's names together. For example, zheng zhang not equal to zheng hao and xueqing not equal to Xueqing Lai
+
+        Find out the most relevant context, and give the answer according to the context
+        Skip the preamble; go straight to the point.
+        Only give the final answer.
+        Do not repeat similar answer.
+        使用中文回复，人名不需要按照中文习惯回复
+
+        {question}
+        """
 
     def create_prompt_templete(prompt_template):
         PROMPT = PromptTemplate(
             template=prompt_template,
-            partial_variables={'system_role_prompt':SYSTEM_ROLE_PROMPT},
-            input_variables=["context",'question','chat_history','role_bot']
+            input_variables=["context",'question','chat_history']
         )
         return PROMPT
-    prompt = create_prompt_templete(promtp_tmp) 
+    prompt = create_prompt_templete(prompt_tmp) 
     llmchain = LLMChain(llm=llm,verbose=False,prompt = prompt)
-    answer = llmchain.run({'question':query, 'role_bot':B_Role, "context": context})
+    answer = llmchain.run({'question':query, "context": context})
     logger.info(f'context length: {len(context)}, prompt {prompt}')
     answer = answer.strip()
     return answer
@@ -146,7 +151,7 @@ def lambda_handler(event, context):
     log_dict = {"answer" : answer , "question": query }
     log_dict_str = json.dumps(log_dict, ensure_ascii=False)
     logger.info(log_dict_str)
-    pattern = r'^根据.*[,|，]'
+    pattern = r'^根据[^，,]*[,|，]'
     answer = re.sub(pattern, "", answer)
     logger.info(answer)
     return answer

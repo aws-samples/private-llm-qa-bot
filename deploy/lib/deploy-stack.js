@@ -331,14 +331,16 @@ export class DeployStack extends Stack {
     prompt_template_table.grantReadWriteData(lambda_main_brain);
     new CfnOutput(this,'lambda roleName',{value:lambda_main_brain.role.roleName});
     
-    //add permission for chatbotFE wss 
-    lambda_main_brain.addToRolePolicy(
-      new iam.PolicyStatement({
-        actions: ['execute-api:ManageConnections'],
-        effect: iam.Effect.ALLOW,
-        resources: [process.env.wss_resourceArn  ]
-      })
-    );
+    //if use websocket, add permission for chatbotFE wss 
+    if (process.env.use_wss){
+      lambda_main_brain.addToRolePolicy(
+        new iam.PolicyStatement({
+          actions: ['execute-api:ManageConnections'],
+          effect: iam.Effect.ALLOW,
+          resources: [process.env.wss_resourceArn  ]
+        })
+      );
+    }
 
     //grant permission to invoke feedback lambda
     fn_feedback.grantInvoke(lambda_main_brain);

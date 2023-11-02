@@ -76,7 +76,7 @@ def lambda_handler(event, context):
 
 #7
 {  "params": {
-    "query": "aws sso大老板是谁",
+    "query": "aws sso 大老板是谁",
   },
   "use_bedrock" : "True",
 }
@@ -97,7 +97,7 @@ def lambda_handler(event, context):
 
 #10
 {  "params": {
-    "query": "Azure Competition 是谁负责",
+    "query": "Azure Competition 哪些人负责",
   },
   "use_bedrock" : "True",
 }
