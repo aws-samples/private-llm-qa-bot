@@ -1,6 +1,7 @@
 import json
 import os
 import logging
+import re
 
 from langchain.llms.sagemaker_endpoint import LLMContentHandler
 from langchain import PromptTemplate, SagemakerEndpoint
@@ -49,65 +50,63 @@ class llmContentHandler(LLMContentHandler):
         response_json = json.loads(output.read().decode("utf-8"))
         return response_json["outputs"]
 
-def create_rewrite_prompt_templete():
-    prompt_template = """Given the following conversation and a follow up question, rephrase the follow up question to be a standalone question, in its original language.\n\nChat History:\n{history}\nFollow Up Input: {cur_query}\nStandalone question:"""
 
-    PROMPT = PromptTemplate(
-        template=prompt_template, 
-        input_variables=['history','cur_query']
-    )
-    return PROMPT
-
-def create_check_implicit_info_prompt_template():
-    prompt_template = """Human: Please determine is there any implicit information of the lastest user's uttrance in conversation. You should answer with 'Yes' or 'No' in <answer>. You should refer the provided examples below.
-
-<examples>
-<example>
-<conversation>
-user: Sagemaker相关问题应该联系谁？
-bot: Bruce Lee
-user: 那EMR的呢？
-</conversation>
-<answer>Yes</answer>
-</example>
-<example>
-<conversation>
-user: zero-etl在中国可用了吗？
-bot: 还不可用
-user: 中国区sagemaker有jumpstart吗
-</conversation>
-<answer>No</answer>
-</example>
-</examples>
-
-Assistant: <conversation>\n{conversation}\n</conversation>\n<answer>"""
-    PROMPT = PromptTemplate(
-        template=prompt_template, 
-        input_variables=['conversation']
-    )
-    return PROMPT
+def service_org(query, llm):
+    B_Role="AWSBot"
+    SYSTEM_ROLE_PROMPT = '你是云服务AWS的智能客服机器人AWSBot'
+    context = """"""
     
+    promtp_tmp = """
+    {system_role_prompt} {role_bot}
+
+    {context}
+    roles（角色） description:
+    - GTMS: Go To Market Specialist
+    - SS: Specialist Sales
+    - SSA: Specialist Solution Architechure
+    - TPM: 
+    - PM: Project Manager
+
+    If the context does not contain the knowleage for the question, truthfully says you does not know.
+    if the parent node key has overlap with sibling child node, ask question to conform the parent node.
+    if ask for the person's responsibility, must give all services or scope which in charged by them.
+    Skip the preamble; go straight to the point.
+
+    使用中文回复，人名不需要按照中文习惯回复
+
+    {question}"""
+
+    def create_prompt_templete(prompt_template):
+        PROMPT = PromptTemplate(
+            template=prompt_template,
+            partial_variables={'system_role_prompt':SYSTEM_ROLE_PROMPT},
+            input_variables=["context",'question','chat_history','role_bot']
+        )
+        return PROMPT
+    prompt = create_prompt_templete(promtp_tmp) 
+    llmchain = LLMChain(llm=llm,verbose=False,prompt = prompt)
+    answer = llmchain.run({'question':query, 'role_bot':B_Role, "context": context})
+    logger.info(f'context length: {len(context)}, prompt {prompt}')
+    answer = answer.strip()
+    return answer
+
 @handle_error
 def lambda_handler(event, context):
+    params = event.get('params')
+    param_dict = params
+    query = param_dict["query"]
+    intention = param_dict["intention"]     
+    
+    
+    use_bedrock = event.get('use_bedrock')
+    
     region = os.environ.get('region')
     llm_model_endpoint = os.environ.get('llm_model_endpoint')
     llm_model_name = event.get('llm_model_name', None)
-    params = event.get('params')
-    use_bedrock = event.get('use_bedrock')
-    role_a = event.get('role_a', 'user')
-    role_b = event.get('role_a', 'bot')
-    
     logger.info("region:{}".format(region))
     logger.info("params:{}".format(params))
-    logger.info("llm_model_name:{}".format(llm_model_name))
+    logger.info("llm_model_name:{}, use_bedrock: {}".format(llm_model_name, use_bedrock))
     logger.info("llm_model_endpoint:{}".format(llm_model_endpoint))
-
-    param_dict = params
-    query = param_dict["query"]
-    history = param_dict["history"]
-
-    history_with_role = [ "{}: {}".format(role_a if idx % 2 == 0 else role_b, item) for idx, item in enumerate(history) ]
-    history_str = "\n".join(history_with_role)
 
     parameters = {
         "temperature": 0.01,
@@ -115,6 +114,7 @@ def lambda_handler(event, context):
 
     llm = None
     if not use_bedrock:
+        logger.info(f'not use bedrock, use {llm_model_endpoint}')
         llmcontent_handler = llmContentHandler()
         llm=SagemakerEndpoint(
                 endpoint_name=llm_model_endpoint, 
@@ -129,24 +129,24 @@ def lambda_handler(event, context):
         )
     
         parameters = {
-            "max_tokens_to_sample": 20,
-            "stop_sequences": ["\n\n"],
+            "max_tokens_to_sample": 8096,
+            "stop_sequences": ["\nObservation"],
             "temperature":0.01,
-            "top_p":1
+            "top_p":0.85
         }
         
         model_id ="anthropic.claude-instant-v1" if llm_model_name == 'claude-instant' else "anthropic.claude-v2"
         llm = Bedrock(model_id=model_id, client=boto3_bedrock, model_kwargs=parameters)
 
-    prompt_template = create_rewrite_prompt_templete()
-    prompt = prompt_template.format(history=history_str, cur_query=query)
+    if intention == "Service角色查询":
+        answer = service_org(query, llm)
+    else:
+        return "抱歉，service 差异查询功能还在开发中，暂时无法回答"
     
-    llmchain = LLMChain(llm=llm, verbose=False, prompt=prompt_template)
-    answer = llmchain.run({'history':history_str, "cur_query":query})
-    answer = answer.strip()
-
-    log_dict = { "history" : history, "answer" : answer , "cur_query": query }
+    log_dict = {"answer" : answer , "question": query }
     log_dict_str = json.dumps(log_dict, ensure_ascii=False)
     logger.info(log_dict_str)
-        
-    return answer.strip('"')
+    pattern = r'^根据.*[,|，]'
+    answer = re.sub(pattern, "", answer)
+    logger.info(answer)
+    return answer
