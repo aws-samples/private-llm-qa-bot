@@ -620,10 +620,10 @@ def chat_agent(query, intention, use_bedrock="True"):
     response = lambda_client.invoke(FunctionName="Chat_Agent",
                                            InvocationType='RequestResponse',
                                            Payload=json.dumps(msg))
-    response_body = response['Payload']
-    response_str = response_body.read().decode("unicode_escape")
+    payload_json = json.loads(response.get('Payload').read())
+    answer = payload_json['body']
 
-    return response_str.strip()
+    return answer
 
 def is_chinese(string):
     for char in string:
