@@ -146,7 +146,11 @@ def lambda_handler(event, context):
     if intention == "Service角色查询":
         answer = service_org(query, llm)
     else:
-        return "抱歉，service 差异查询功能还在开发中，暂时无法回答"
+        return {
+        'statusCode': 200,
+        'headers': {'Content-Type': 'application/json'},
+        'body':f'抱歉{intention}的功能还在开发中，暂时无法回答'
+    }
     
     log_dict = {"answer" : answer , "question": query }
     log_dict_str = json.dumps(log_dict, ensure_ascii=False)
