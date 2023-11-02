@@ -1,4 +1,5 @@
-## 1. 建立知识索引
+## 1. 建立知识索引  
+注意："dimension": 768 这个参数需要根据实际使用的向量模型输出纬度进行修改  
 
 ```json
 PUT chatbot-index
@@ -60,7 +61,8 @@ PUT chatbot-index
 }
 ```
 
-## 2. 建立意图识别example索引
+## 2. 建立意图识别example索引 
+注意："dimension": 768 这个参数需要根据实际使用的向量模型输出纬度进行修改  
 ```json
 PUT chatbot-example-index
    {
