@@ -92,7 +92,7 @@ Assistant:
 				print("bad json format => {}".format(ret_str))
 				continue
 
-			qa_list.extend([{"page content" : "{}=>{}".format(obj['Question'], obj['Answer']), "metadata" : {"heading_hierachy" : [topic, section_topic]}} for obj in json_obj])
+			qa_list.extend([{"page_content" : "{}=>{}".format(obj['Question'], obj['Answer']), "metadata" : {"content_type":"QA", "heading_hierachy" : [topic, section_topic]}} for obj in json_obj])
 
 		qa_file_content = json.dumps(qa_list, ensure_ascii=False)
 
