@@ -149,7 +149,7 @@ def lambda_handler(event, context):
         return {
         'statusCode': 200,
         'headers': {'Content-Type': 'application/json'},
-        'body':f'抱歉{intention}的功能还在开发中，暂时无法回答'
+        'body':f'抱歉关于"{intention}"的功能还在开发中，暂时无法回答'
     }
     
     log_dict = {"answer" : answer , "question": query }
