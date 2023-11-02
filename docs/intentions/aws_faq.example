@@ -45,6 +45,60 @@
         "reply":"Amazon EMR有以下优势：节省成本、AWS集成、部署、可扩展性和灵活度、可靠性、安全性和监控。"
     },
     {
+        "query":"FOOB Ticket 的链接是什么",
+        "intention":"知识问答",
+        "reply":""
+    },
+    {
+        "query":"怎么提交FOOB？",
+        "intention":"知识问答",
+        "reply":""
+    },
+    {
+        "query":"怎么申请p4d p5?",
+        "intention":"知识问答",
+        "reply":""
+    },
+    {
+        "query":"P5的spot limit应该怎么提？",
+        "intention":"知识问答",
+        "reply":""
+    },
+    {
+        "query":"宁夏区的GPU资源的情况？",
+        "intention":"知识问答",
+        "reply":""
+    },
+    {
+        "query":"inferentia2/traninium1中国区landing plan？",
+        "intention":"知识问答",
+        "reply":""
+    },
+    {
+        "query":"GPU OD的价格基础上如何可以有进一步的折扣？",
+        "intention":"知识问答",
+        "reply":""
+    },
+    {
+        "query":"需要提前多久申请FOOB？",
+        "intention":"知识问答",
+        "reply":""
+    },
+        {
+        "query":"申请GPU实例的FOOB 链接是什么？",
+        "intention":"知识问答",
+        "reply":""
+    },
+    {
+        "query":"ODCR预留实例怎么计费？",
+        "intention":"知识问答",
+        "reply":""
+    },
+    {
+        "query":"怎么看资源分配是否有risk？",
+        "intention":"知识问答",
+        "reply":""
+    {
         "query":"What is \"Unoccupied hosts\" in baywatch",
         "intention":"知识问答",
         "reply":"-"
