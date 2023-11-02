@@ -50,7 +50,7 @@ class llmContentHandler(LLMContentHandler):
         return response_json["outputs"]
 
 def create_rewrite_prompt_templete():
-    prompt_template = """Given the following conversation and a follow up question, rephrase the follow up question to be a standalone question, in its original language.\n\nChat History:\n{history}\nFollow Up Input: {cur_query}\nStandalone question:"""
+    prompt_template = """Given the following conversation and a follow up question, rephrase the follow up question to be a standalone question, in its original language. don't translate the chat history and input. \n\nChat History:\n{history}\nFollow Up Input: {cur_query}\nStandalone question:"""
 
     PROMPT = PromptTemplate(
         template=prompt_template, 
