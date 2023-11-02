@@ -60,18 +60,123 @@
         "reply":""
     },
     {
-        "query":"Sagemaker如何使用张量并行技术对模型分层",
+        "query":"P5的spot limit应该怎么提？",
         "intention":"知识问答",
         "reply":""
     },
     {
-        "query":"SageMaker 模型并行支持哪些管道运行模式",
+        "query":"宁夏区的GPU资源的情况？",
         "intention":"知识问答",
         "reply":""
     },
     {
-        "query":"GPU 内存限制会导致什么瓶颈",
+        "query":"inferentia2/traninium1中国区landing plan？",
         "intention":"知识问答",
         "reply":""
+    },
+    {
+        "query":"GPU OD的价格基础上如何可以有进一步的折扣？",
+        "intention":"知识问答",
+        "reply":""
+    },
+    {
+        "query":"需要提前多久申请FOOB？",
+        "intention":"知识问答",
+        "reply":""
+    },
+        {
+        "query":"申请GPU实例的FOOB 链接是什么？",
+        "intention":"知识问答",
+        "reply":""
+    },
+    {
+        "query":"ODCR预留实例怎么计费？",
+        "intention":"知识问答",
+        "reply":""
+    },
+    {
+        "query":"怎么看资源分配是否有risk？",
+        "intention":"知识问答",
+        "reply":""
+    },
+    {
+        "query":"What is \"Unoccupied hosts\" in baywatch",
+        "intention":"知识问答",
+        "reply":"-"
+    },
+    {
+        "query":"what is Free slots in baywatch?",
+        "intention":"知识问答",
+        "reply":"-"
+    },
+    {
+        "query":"How do I know if the instance type is GA or not GA?",
+        "intention":"知识问答",
+        "reply":"-"
+    },
+    {
+        "query":"what is FOOB?",
+        "intention":"知识问答",
+        "reply":"-"
+    },
+    {
+        "query":"what are the use cases for FOOB?",
+        "intention":"知识问答",
+        "reply":"-"
+    },
+    {
+        "query":"in what senarios, I need FOOB?",
+        "intention":"知识问答",
+        "reply":"-"
+    },
+    {
+        "query":"what if the customer has EBS requirement",
+        "intention":"知识问答",
+        "reply":"-"
+    },
+    {
+        "query":"请用中文回答 what if the customer has EBS requirement",
+        "intention":"知识问答",
+        "reply":"-"
+    },
+    {
+        "query":"what are the differences between Incremental Capacity Request ICR ticket and Limit increase (Service Quota) request?",
+        "intention":"知识问答",
+        "reply":"-"
+    },
+    {
+        "query":"how to request for p4d, p5",
+        "intention":"知识问答",
+        "reply":"-"
+    },
+    {
+        "query":"what is the approval template for requesting p4d?",
+        "intention":"知识问答",
+        "reply":"-"
+    },
+    {
+        "query":"ODCR预留怎么计费？",
+        "intention":"知识问答",
+        "reply":"-"
+    },
+    {
+        "query":"ODCR怎么享受RI 或者Savings Plan计费？",
+        "intention":"知识问答",
+        "reply":"-"
+    },
+    {
+        "query":"what is baywatch?",
+        "intention":"知识问答",
+        "reply":"-"
+    },
+    {
+        "query":"怎么看现有的Capacity？",
+        "intention":"知识问答",
+        "reply":"-"
+    },
+    {
+        "query":"申请gpu foob的流程是什么？",
+        "intention":"知识问答",
+        "reply":"-"
     }
 ]
