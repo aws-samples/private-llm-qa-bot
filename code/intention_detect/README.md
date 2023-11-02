@@ -69,7 +69,7 @@ from boto3 import client as boto3_client
 lambda_client = boto3_client('lambda')
 
 def lambda_handler(event, context):
-  	question = event['prompt'] #"DynamoDB怎么计费"
+    question = event['prompt'] #"DynamoDB怎么计费"
     msg = {"fewshot_cnt":5, "query": question, "use_bedrock" : "True" }
     invoke_response = lambda_client.invoke(FunctionName="Detect_Intention",
                                            InvocationType='RequestResponse',
@@ -146,6 +146,6 @@ def lambda_handler(event, context):
 1. 如果识别失败，可以添加更多的例子到OpenSearch的chatbot-example-index
 2. 如果识别速度过慢，可以训练小模型(bert) 去分类
 
-## 集成方法
+### 集成方法
 1. 在Lambda(Ask_Assistant)的环境变量中添加一个变量intention_list，逗号分隔的字符串，把所有可能的意图枚举出来
 2. 目前仅仅支持claude模型时进行意图识别
