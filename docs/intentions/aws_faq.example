@@ -98,6 +98,7 @@
         "query":"怎么看资源分配是否有risk？",
         "intention":"知识问答",
         "reply":""
+    },
     {
         "query":"What is \"Unoccupied hosts\" in baywatch",
         "intention":"知识问答",
