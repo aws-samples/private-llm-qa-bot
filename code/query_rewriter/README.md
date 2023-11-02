@@ -11,7 +11,7 @@ from boto3 import client as boto3_client
 lambda_client = boto3_client('lambda')
 
 def lambda_handler(event, context):
-  	question = event['prompt'] #"DynamoDB怎么计费"
+    question = event['prompt']
     msg = {
       "params": {
         "history": ["有戴森的吹风机吗？","没有哦亲亲", "戴森都没有", "不好意思，看看其他品牌呢"],
