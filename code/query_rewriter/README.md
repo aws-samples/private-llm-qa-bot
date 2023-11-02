@@ -66,6 +66,16 @@ def lambda_handler(event, context):
   },
   "use_bedrock" : "True"
 }
+
+#5
+{
+  "params": {
+    "history": ["AI的销售是谁？","请问是哪个地区的？"],
+    "query": "北区"
+  },
+  "use_bedrock" : "True",
+  "llm_model_name":"claude-instant"
+}
 ```
 
 
