@@ -30,6 +30,7 @@
   │   └── gen_env.sh                       # 自动生成部署变量的脚本(for workshop)
   ├── docs
   │   ├── intentions/                      # 意图识别的示例标注文件
+  │   ├── prompt_template/                 # 经过测试的Prompt模版  
   │   ├── aws_cleanroom.faq                # faq 知识库文件
   │   ├── aws_msk.faq                      # faq 知识库文件
   │   ├── aws_emr.faq                      # faq 知识库文件
