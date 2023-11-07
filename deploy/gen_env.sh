@@ -22,6 +22,13 @@ llm_chatglm_stream_endpoint="${unique_tag}-llm-chatglm-stream-endpoint"
 bucket="${account_id}-knowledge-bucket"
 wss_resourceArn="arn:aws:execute-api:us-east-2:946277762357:3g36ob2mc2/*/*/@connections/*"
 wss_apiId="3g36ob2mc2"
+
+cn_region=("cn-north-1","cn-northwest-1")
+if [[ "${cn_region[@]}" =~ "$region" ]]; then
+    wss_resourceArn="arn:aws-cn:execute-api:cn-north-1:946277762357:3g36ob2mc2/*/*/@connections/*"
+    wss_apiId="3g36ob2mc2"
+fi
+
 echo "CDK_DEFAULT_ACCOUNT=${account_id}" > .env
 echo "CDK_DEFAULT_REGION=${region}" >> .env
 echo "existing_vpc_id=optional" >> .env
