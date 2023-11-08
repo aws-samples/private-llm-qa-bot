@@ -1646,34 +1646,7 @@ def lambda_handler(event, context):
     
     logger.info(f'system_role:{B_Role},system_role_prompt:{SYSTEM_ROLE_PROMPT}')
 
-    llm_endpoint = None
-    if model_name == 'chatglm':
-        llm_endpoint = os.environ.get('llm_{}_endpoint'.format(model_name))
-    elif model_name == 'bloomz': 
-        llm_endpoint =  os.environ.get('llm_{}_endpoint'.format(model_name))
-    elif model_name == 'llama':
-        llm_endpoint =  os.environ.get('llm_{}_endpoint'.format(model_name))
-        pass
-    elif model_name == 'alpaca':
-        llm_endpoint =  os.environ.get('llm_{}_endpoint'.format(model_name))
-        pass
-    elif model_name == 'chatglm-stream':
-        llm_endpoint = os.environ.get('llm_chatglm_stream_endpoint')
-    elif model_name == 'visualglm':
-        llm_endpoint = os.environ.get('llm_visualglm_endpoint')
-    elif model_name == 'visualglm-stream':
-        llm_endpoint = os.environ.get('llm_visualglm_stream_endpoint')
-    elif model_name == 'other-stream':
-        llm_endpoint = os.environ.get('llm_other_stream_endpoint')
-    elif model_name == 'other':
-        llm_endpoint = os.environ.get('llm_other_endpoint')
-    elif model_name == 'baichuan':
-        llm_endpoint = os.environ.get('llm_baichuan_endpoint')
-    elif model_name == 'baichuan-stream':
-        llm_endpoint = os.environ.get('llm_baichuan_stream_endpoint')
-    else:
-        llm_endpoint = os.environ.get('llm_default_endpoint')
-        pass
+    llm_endpoint = os.environ.get('llm_model_endpoint')
 
     # 获取当前时间戳
     request_timestamp = time.time()  # 或者使用 time.time_ns() 获取纳秒级别的时间戳
