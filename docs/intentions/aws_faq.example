@@ -178,5 +178,10 @@
         "query":"申请gpu foob的流程是什么？",
         "intention":"知识问答",
         "reply":"-"
+    },
+    {
+        "query":"OCI有多少多AZ region",
+        "intention":"知识问答",
+        "reply":"-"
     }
 ]

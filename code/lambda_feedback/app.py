@@ -241,8 +241,8 @@ def inject_new_qa(session_id,msgid,bucket_name,s3_prefix,action):
     question, answer,username = chat_data[0]['question'],chat_data[0]['feedback'],chat_data[0]['username']
     formatted_qa = 'Question: {}\nAnswer: {}\n'.format(question,answer)
     logger.info(f"formatted_qa:{formatted_qa}")
-    bucket_name = os.environ.get('UPLOAD_BUCKET') if bucket_name == '' else bucket_name
-    s3_prefix = os.environ.get('UPLOAD_OBJ_PREFIX') if s3_prefix == '' else s3_prefix
+    bucket_name = os.environ.get('UPLOAD_BUCKET') if bucket_name == '' or bucket_name == None else bucket_name
+    s3_prefix = os.environ.get('UPLOAD_OBJ_PREFIX') if s3_prefix == '' or s3_prefix == None else s3_prefix
 
     temp_filename = f'{msgid}_{username}.faq'
     operation_result = save_string_to_s3_bucket(
