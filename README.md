@@ -124,3 +124,9 @@
         }
     }
     ```
+
+- Demo视频：  
+https://www.bilibili.com/video/BV1HN4y1D7vy/?vd_source=2cb87d8dd3ca4ea778f5468be12405b3
+
+- 安装部署文档：   
+https://upgt6k0dbo.feishu.cn/docx/S56udzGrrodzLHxl9YdcRq91nrd  
