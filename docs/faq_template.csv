@@ -1,0 +1,2 @@
+﻿Question,Answer
+Example: SageMaker在模型训练方面技术上有哪些优势？,SageMaker 托管的机器学习训练平台，支持多种方式的分布式训练，如deepspeed，pytorch fsdp等，自有的分布式训练框架SageMaker distribute training支持数据并行和模型并行，在LLM场景下可以解决显存不足OOM的问题。按需启动，模型训练完成资源自动释放，节省成本，同时多种存储产品供使用。
