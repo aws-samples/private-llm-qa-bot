@@ -49,14 +49,9 @@ export class DeployStack extends Stack {
 
     const cn_region = ["cn-north-1","cn-northwest-1"];
 
-    
-    if (!cn_region.includes(region)) {
-      const ec2stack = new Ec2Stack(this,'Ec2Stack',{vpc:vpc,securityGroup:securityGroups[0]});
-      new CfnOutput(this, 'OpenSearch EC2 Proxy Address', { value: `http://${ec2stack.publicIP}/_dashboards/`});
-      // new CfnOutput(this, 'Download Key Command', { value: 'aws secretsmanager get-secret-value --secret-id ec2-ssh-key/cdk-keypair/private --query SecretString --output text > cdk-key.pem && chmod 400 cdk-key.pem' })
-      // new CfnOutput(this, 'ssh command', { value: 'ssh -i cdk-key.pem -o IdentitiesOnly=yes ec2-user@' + ec2stack.dnsName})
-      ec2stack.addDependency(vpcStack);
-    }
+    const ec2stack = new Ec2Stack(this,'Ec2Stack',{vpc:vpc,securityGroup:securityGroups[0]});
+    new CfnOutput(this, 'OpenSearch EC2 Proxy Address', { value: `http://${ec2stack.publicIP}/_dashboards/`});
+    ec2stack.addDependency(vpcStack);
 
       // Create open search if the aos endpoint not provided
     let opensearch_endpoint=aos_existing_endpoint;
@@ -171,11 +166,7 @@ export class DeployStack extends Stack {
         aos_knn_field:process.env.aos_knn_field ,
         aos_results:process.env.aos_results ,
         embedding_endpoint:process.env.embedding_endpoint ,
-        llm_default_endpoint:process.env.llm_default_endpoint,
-        llm_bloomz_endpoint:process.env.llm_bloomz_endpoint,
-        llm_chatglm_endpoint:process.env.llm_chatglm_endpoint,
-        llm_chatglm_stream_endpoint:process.env.llm_chatglm_stream_endpoint,
-        llm_other_stream_endpoint:process.env.llm_other_stream_endpoint,
+        llm_model_endpoint:process.env.llm_default_endpoint,
         chat_session_table:chat_session_table.tableName,
         prompt_template_table:prompt_template_table.tableName,
         bm25_qd_threshold_hard:'7',

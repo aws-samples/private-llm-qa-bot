@@ -1,0 +1,12 @@
+Human: {system_role_prompt}{role_bot}, in reference to the information in <document>, please answer the question "{question}"
+
+Response format requirements:
+1. Do not begin with phrases like "According to the document," please provide the answer directly in a conversational tone
+2. If there is no relevant information in <document>, just respond with "I'm not sure, I couldn't find any relevant information.", don't say anything else.
+3. Respond in the original language of the question.
+
+<document>
+{chat_history}
+{context}
+</document>
+Assistant:
