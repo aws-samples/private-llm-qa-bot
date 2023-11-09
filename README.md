@@ -11,13 +11,15 @@
   https://www.bilibili.com/video/BV1HN4y1D7vy/?vd_source=2cb87d8dd3ca4ea778f5468be12405b3
 
 - 部署方式
-  - 部署文档 [Deployment Guide.pdf](./Deployment Guide.pdf), [飞书版本](https://upgt6k0dbo.feishu.cn/docx/S56udzGrrodzLHxl9YdcRq91nrd)
+  - 部署文档 
+      - [PDF版本](https://github.com/aws-samples/private-llm-qa-bot/blob/yuanbo20231109/Deployment%20Guide.pdf)
+      - [飞书版本](https://upgt6k0dbo.feishu.cn/docx/S56udzGrrodzLHxl9YdcRq91nrd)
   - 构建向量索引时的注意事项:
       + 需要考虑knn_vector's dimension与向量模型输出纬度对齐，space_type 与向量模型支持的类型对齐
       + 用户需要根据数据量自行决定是否开启ANN索引, 即("knn": "true")
       + m, ef_consturtion 参数需要根据根据数据量进行调整
   - 相关workshop地址 [workshop](https://catalog.us-east-1.prod.workshops.aws/workshops/158a2497-7cbe-4ba4-8bee-2307cb01c08a/en-US)
-
+  
 - 代码介绍
 
   ```python
@@ -130,4 +132,4 @@
             }
         }
     }
-    ``` 
+    ```
