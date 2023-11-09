@@ -12,7 +12,7 @@
 
 - 部署方式
   - 部署文档 
-      - [PDF版本](./"Deployment Guide".pdf)
+      - [PDF版本](https://github.com/aws-samples/private-llm-qa-bot/blob/yuanbo20231109/Deployment%20Guide.pdf)
       - [飞书版本](https://upgt6k0dbo.feishu.cn/docx/S56udzGrrodzLHxl9YdcRq91nrd)
   - 构建向量索引时的注意事项:
       + 需要考虑knn_vector's dimension与向量模型输出纬度对齐，space_type 与向量模型支持的类型对齐
