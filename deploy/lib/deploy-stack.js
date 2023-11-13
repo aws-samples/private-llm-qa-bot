@@ -318,7 +318,7 @@ export class DeployStack extends Stack {
       new iam.PolicyStatement({
         actions: ['execute-api:ManageConnections'],
         effect: iam.Effect.ALLOW,
-        resources: [process.env.wss_resourceArn  ]
+        resources: ['*']
       })
     );
     //grant permission to invoke feedback lambda
