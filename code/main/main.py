@@ -1155,7 +1155,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
     other_intentions = INTENTION_LIST.split(',')
 
     ##如果使用QA，且没有cache answer再需要进一步意图判断
-    if use_qa and not cache_answer and len(other_intentions) > 0 and len(other_intentions[0]) > 1 and llm_model_name.startswith('claude'):
+    if use_qa and not cache_answer and len(other_intentions) > 0 and len(other_intentions[0]) > 1:
         before_detect = time.time()
         TRACE_LOGGER.trace(f'**Detecting intention...**')
         intention = detect_intention(query_input, fewshot_cnt=5, use_bedrock="True")
