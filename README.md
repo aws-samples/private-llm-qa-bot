@@ -39,6 +39,7 @@
   
   
 - Api访问接口说明  
+  注明：Apigateway endpoint可以从后端部署后的cloudformation outputs里获得key=APIgatewayendpointurl  
   - Chat接口(POST方法)
     ```json
       {
