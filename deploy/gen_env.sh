@@ -21,8 +21,6 @@ llm_baichuan_endpoint="${unique_tag}-llm-baichuan-endpoint"
 llm_baichuan_stream_endpoint="${unique_tag}-llm-baichuan-stream-endpoint"
 llm_chatglm_stream_endpoint="${unique_tag}-llm-chatglm-stream-endpoint"
 bucket="${unique_tag}-bucket"
-wss_resourceArn="arn:aws:execute-api:us-east-2:946277762357:3g36ob2mc2/*/*/@connections/*"
-wss_apiId="3g36ob2mc2"
 echo "CDK_DEFAULT_ACCOUNT=${account_id}" > .env
 echo "CDK_DEFAULT_REGION=${region}" >> .env
 echo "existing_vpc_id=optional" >> .env
@@ -46,8 +44,6 @@ echo "llm_other_stream_endpoint=" >> .env
 echo "llm_other_endpoint=" >> .env
 echo "UPLOAD_BUCKET=${bucket}" >> .env
 echo "UPLOAD_OBJ_PREFIX=ai-content/" >> .env
-echo "wss_apiId=${wss_apiId}" >> .env
-echo "wss_resourceArn=${wss_resourceArn}" >> .env
 echo "neighbors=1" >>.env
 echo "TOP_K=4" >>.env
 
