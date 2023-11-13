@@ -45,6 +45,7 @@
       {
         "msgid": "类型string, 用于标识本次message id",
         "chat_name": "类型string, 用于标识本次会话的session id",
+        "prompt":"类型string,用户的问题",
         "use_qa": "类型Bool,是否使用知识库问答",
         "multi_rounds":  "类型Bool,是否开启多轮会话",
         "hide_ref": "类型Bool,回复中是否隐藏引用文档",
