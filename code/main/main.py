@@ -652,7 +652,7 @@ def get_vector_by_sm_endpoint(questions, sm_client, endpoint_name):
             {
                 "inputs": questions,
                 "parameters": parameters,
-                "is_query" : True,
+                "is_query" : False,
                 "instruction" :  instruction
             }
         ),
