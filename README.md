@@ -4,15 +4,11 @@
   
   基于AWS服务和大语言模型的知识问答Chatbot项目，支持大语言模型和向量模型的灵活插拔，可支持开源模型私有化部署或者bedrock Claude以及其他商业模型。
   
-  
-  
 - 常见问题
   
   知识召回错误率高？LLM的幻觉严重？文档量大写入管理遇到问题？
   
   参考PDF - [最佳实践](https://github.com/aws-samples/private-llm-qa-bot/blob/main/best_practice_summary.pdf)
-  
-  
   
 - 效果展示
   
@@ -24,8 +20,6 @@
   
     https://www.bilibili.com/video/BV1HN4y1D7vy/?vd_source=2cb87d8dd3ca4ea778f5468be12405b3
   
-  
-  
 - 部署方式
   
   - 部署文档 
@@ -36,9 +30,45 @@
     + 用户需要根据数据量自行决定是否开启ANN索引, 即("knn": "true")
     + m, ef_consturtion 参数需要根据根据数据量进行调整
   - 相关workshop地址 [workshop](https://catalog.us-east-1.prod.workshops.aws/workshops/158a2497-7cbe-4ba4-8bee-2307cb01c08a/en-US)
-  
-  
-- Api访问接口说明  
+   
+- 代码 & 架构
+
+  - 架构图
+    ![arch](./arch.png)
+  - 代码结构
+    
+    ```shell
+    .
+    ├── code
+    │   ├── main/                            # 主逻辑对应的lambda代码目录
+    │   ├── offline_process/                 # 离线知识构建对应的执行代码目录
+    │   ├── lambda_offline_trigger/          # 启动离线知识摄入的lambda代码目录
+    │   ├── lambda_plugins_trigger/          # 暂不使用
+    │   ├── intention_detect/                # 意图识别lambda代码目录
+    │   └── query_rewriter/                  # 用户输入重写lambda代码目录
+    ├── deploy
+    │   ├── lib/                             # cdk 部署脚本目录
+    │   └── gen_env.sh                       # 自动生成部署变量的脚本(for workshop)
+    ├── docs
+    │   ├── intentions/                      # 意图识别的示例标注文件
+    │   ├── prompt_template/                 # 经过测试的Prompt模版  
+    │   ├── aws_cleanroom.faq                # faq 知识库文件
+    │   ├── aws_msk.faq                      # faq 知识库文件
+    │   ├── aws_emr.faq                      # faq 知识库文件
+    │   ├── aws-overview.pdf                 # pdf 知识库文件
+    │   └── PMC10004510.txt                  # txt 纯文本文件
+    ├── doc_preprocess/                      # 原始文件处理脚本
+    │   ├── pdf_spliter.py                   # pdf解析拆分脚本      
+    │   └── ...                  
+    ├── notebook/                            # 各类notebook
+    │   ├── embedding/                       # 部署embedding模型的notebook
+    │   ├── llm/                             # 部署LLM模型的notebook
+    │   ├── mutilmodal/                      # 部署多模态模型的notebook，包括VisualGLM
+    │   ├── guidance/                        # 向量模型微调及效果可视化的若干notebook                         
+    │   └── ...     
+    ```
+
+- API访问接口
   注明：Apigateway endpoint可以从后端部署后的cloudformation outputs里获得key=APIgatewayendpointurl  
   - Chat接口(POST方法)
     ```json
@@ -128,47 +158,7 @@
       }
     }
     ```
-
   
-- 代码 & 架构
-
-  - 架构图![arch](./arch.png)
-  - 后端接口(todo)
-  - 代码结构
-    
-    ```shell
-    .
-    ├── code
-    │   ├── main/                            # 主逻辑对应的lambda代码目录
-    │   ├── offline_process/                 # 离线知识构建对应的执行代码目录
-    │   ├── lambda_offline_trigger/          # 启动离线知识摄入的lambda代码目录
-    │   ├── lambda_plugins_trigger/          # 暂不使用
-    │   ├── intention_detect/                # 意图识别lambda代码目录
-    │   └── query_rewriter/                  # 用户输入重写lambda代码目录
-    ├── deploy
-    │   ├── lib/                             # cdk 部署脚本目录
-    │   └── gen_env.sh                       # 自动生成部署变量的脚本(for workshop)
-    ├── docs
-    │   ├── intentions/                      # 意图识别的示例标注文件
-    │   ├── prompt_template/                 # 经过测试的Prompt模版  
-    │   ├── aws_cleanroom.faq                # faq 知识库文件
-    │   ├── aws_msk.faq                      # faq 知识库文件
-    │   ├── aws_emr.faq                      # faq 知识库文件
-    │   ├── aws-overview.pdf                 # pdf 知识库文件
-    │   └── PMC10004510.txt                  # txt 纯文本文件
-    ├── doc_preprocess/                      # 原始文件处理脚本
-    │   ├── pdf_spliter.py                   # pdf解析拆分脚本      
-    │   └── ...                  
-    ├── notebook/                            # 各类notebook
-    │   ├── embedding/                       # 部署embedding模型的notebook
-    │   ├── llm/                             # 部署LLM模型的notebook
-    │   ├── mutilmodal/                      # 部署多模态模型的notebook，包括VisualGLM
-    │   ├── guidance/                        # 向量模型微调及效果可视化的若干notebook                         
-    │   └── ...     
-    ```
-
-  
-
 - 流程介绍
 
   - 离线流程
