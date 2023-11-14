@@ -30,7 +30,7 @@
     + 用户需要根据数据量自行决定是否开启ANN索引, 即("knn": "true")
     + m, ef_consturtion 参数需要根据根据数据量进行调整
   - 相关workshop地址 [workshop](https://catalog.us-east-1.prod.workshops.aws/workshops/158a2497-7cbe-4ba4-8bee-2307cb01c08a/en-US)
-   
+  
 - 代码 & 架构
 
   - 架构图
@@ -69,7 +69,9 @@
     ```
 
 - API访问接口
-  注明：Apigateway endpoint可以从后端部署后的cloudformation outputs里获得key=APIgatewayendpointurl  
+  
+  【注意】Apigateway endpoint可以从后端部署后的cloudformation outputs里获得key=APIgatewayendpointurl  
+  
   - Chat接口(POST方法)
     ```json
       {
@@ -123,23 +125,24 @@
     curl -X POST -H "Content-Type: application/json" -d '{"method":"get","resource":"docs"}'  https://xxxxxx.execute-api.us-west-2.amazonaws.com/prod
     ```
   - prompt模板管理接口  
-  ```json
-    {
-      "method": "delete-删除,get-列出所有,post-新增或者保存",
-      "resource": "template",
-      "body":{
-          "id": "类型string，模板id, 删除和新增操作需要",
-          "template_name": "类型string，模板名称，新增或者保存操作需要",
-          "template":"类型string，模板类容，新增或者保存操作需要",
-          "comment":"类型string，模板备注",
-          "username":"类型string，创建者名称"
+  
+    ```json
+      {
+        "method": "delete-删除,get-列出所有,post-新增或者保存",
+        "resource": "template",
+        "body":{
+            "id": "类型string，模板id, 删除和新增操作需要",
+            "template_name": "类型string，模板名称，新增或者保存操作需要",
+            "template":"类型string，模板类容，新增或者保存操作需要",
+            "comment":"类型string，模板备注",
+            "username":"类型string，创建者名称"
+        }
       }
-    }
     ```
-    examples:
-    ```bash
-    curl -X POST -H "Content-Type: application/json" -d '{"method":"get","resource":"docs"}'  https://xxxxxx.execute-api.us-west-2.amazonaws.com/prod
-    ```
+     examples:
+      ```bash
+      curl -X POST -H "Content-Type: application/json" -d '{"method":"get","resource":"docs"}'  https://xxxxxx.execute-api.us-west-2.amazonaws.com/prod
+      ```
   - feedback管理接口(post方法)
     ```json
     {
