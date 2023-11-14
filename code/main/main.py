@@ -1113,16 +1113,21 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
     origin_query = query_input
     intention = ''
 
+    TRACE_LOGGER.trace(f'**Starting trace mode...**')
     if multi_rounds:
         if llm_model_name.startswith('claude'):
             query_input = rewrite_query(origin_query, session_history, round_cnt=3, use_bedrock="True")
+        else:
+            query_input = rewrite_query(origin_query, session_history, round_cnt=3, use_bedrock="")
         
-            ##add history parameter
-            if isinstance(llm,SagemakerStreamEndpoint) or isinstance(llm,SagemakerEndpoint):
-                chat_history=''
-                llm.model_kwargs['history'] = chat_coversions[-1:]
-            else:
-                chat_history= get_chat_history(chat_coversions[-1:])
+        chat_history=''
+        TRACE_LOGGER.trace(f'**Rewrite: {origin_query} => {query_input}**')
+        ##add history parameter
+        # if isinstance(llm,SagemakerStreamEndpoint) or isinstance(llm,SagemakerEndpoint):
+        #     chat_history=''
+        #     llm.model_kwargs['history'] = chat_coversions[-1:]
+        # else:
+        #     chat_history= get_chat_history(chat_coversions[-1:])
     else:
         chat_history=''
 
@@ -1131,7 +1136,6 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
     doc_retriever = CustomDocRetriever.from_endpoints(embedding_model_endpoint=embedding_model_endpoint,
                                     aos_endpoint= aos_endpoint,
                                     aos_index=aos_index)
-    TRACE_LOGGER.trace(f'**Starting trace mode...**')
     TRACE_LOGGER.trace(f'**Using LLM model : {llm_model_name}**')
     cache_answer = None
     if use_qa:

@@ -42,7 +42,7 @@ def lambda_handler(event, context):
 {
   "params": {
     "history": ["你喜欢周杰伦吗", "我喜欢周杰伦"],
-    "query": "你喜欢他哪首歌",
+    "query": "你喜欢他哪首歌"
   },
   "use_bedrock" : "True",
   "role_a" : "user",

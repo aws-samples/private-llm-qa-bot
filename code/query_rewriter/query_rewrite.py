@@ -101,6 +101,7 @@ def lambda_handler(event, context):
     logger.info("params:{}".format(params))
     logger.info("llm_model_name:{}".format(llm_model_name))
     logger.info("llm_model_endpoint:{}".format(llm_model_endpoint))
+    logger.info("use_bedrock:{}".format(bool(use_bedrock)))
 
     param_dict = params
     query = param_dict["query"]
