@@ -1160,11 +1160,11 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
             query_input = rewrite_query(origin_query, session_history, round_cnt=3, use_bedrock="True")
             TRACE_LOGGER.trace(f'**Rewrite: {origin_query} => {query_input}**')
             ##add history parameter
-            if isinstance(llm,SagemakerStreamEndpoint) or isinstance(llm,SagemakerEndpoint):
-                chat_history=''
-                llm.model_kwargs['history'] = chat_coversions[-1:]
-            else:
-                chat_history= get_chat_history(chat_coversions[-1:])
+            # if isinstance(llm,SagemakerStreamEndpoint) or isinstance(llm,SagemakerEndpoint):
+            #     chat_history=''
+            #     llm.model_kwargs['history'] = chat_coversions[-1:]
+            # else:
+            #     chat_history= get_chat_history(chat_coversions[-1:])
     else:
         chat_history=''
 
