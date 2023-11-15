@@ -47,6 +47,7 @@ echo "llm_chatglm_stream_endpoint=${llm_chatglm_stream_endpoint}" >> .env
 echo "llm_visualglm_endpoint=" >> .env
 echo "llm_other_stream_endpoint=" >> .env
 echo "llm_other_endpoint=" >> .env
+echo "cross_model_endpoint=" >> .env
 echo "UPLOAD_BUCKET=${bucket}" >> .env
 echo "UPLOAD_OBJ_PREFIX=ai-content/" >> .env
 echo "neighbors=1" >>.env

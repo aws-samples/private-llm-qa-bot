@@ -191,15 +191,16 @@ def iterate_QA(file_content, object_key,smr_client, index_name, endpoint_name):
         questions = [ item['Question'] for item in batch ]
         answers = [ item['Answer'] for item in batch ]
         docs = [ doc_template.format(item['Question'], item['Answer']) for item in batch ]
+        authors = [item.get('Author')  for item in batch ]
         embeddings_q = get_embedding(smr_client, questions, endpoint_name)
 
         for i in range(len(embeddings_q)):
-            document = { "publish_date": publish_date, "doc" : questions[i], "idx": idx,"doc_type" : "Question", "content" : docs[i], "doc_title": doc_title,"doc_author":doc_author, "doc_category": doc_category, "embedding" : embeddings_q[i]}
+            document = { "publish_date": publish_date, "doc" : questions[i], "idx": idx,"doc_type" : "Question", "content" : docs[i], "doc_title": doc_title,"doc_author":authors[i] if authors[i] else doc_author, "doc_category": doc_category, "embedding" : embeddings_q[i]}
             yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document).encode('utf-8')).hexdigest()}
 
         embeddings_a = get_embedding(smr_client, answers, endpoint_name)
         for i in range(len(embeddings_a)):
-            document = { "publish_date": publish_date, "doc" : answers[i], "idx": idx,"doc_type" : "Paragraph", "content" : docs[i], "doc_title": doc_title,"doc_author":doc_author, "doc_category": doc_category, "embedding" : embeddings_a[i]}
+            document = { "publish_date": publish_date, "doc" : answers[i], "idx": idx,"doc_type" : "Paragraph", "content" : docs[i], "doc_title": doc_title,"doc_author":authors[i] if authors[i] else doc_author, "doc_category": doc_category, "embedding" : embeddings_a[i]}
             yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document).encode('utf-8')).hexdigest()}
 
 def iterate_examples(file_content, object_key, smr_client, index_name, endpoint_name):
@@ -395,13 +396,25 @@ def parse_csv_to_json(file_content):
     header = next(reader)  # Skip the header row
     json_arr = []
     for item in reader:
-        question, answer = item[0],item[1]
-        question = question.replace("Question: ", "")
-        answer = answer.replace("Answer: ", "")
-        obj = {
-            "Question":question, "Answer":answer
-        }
-        json_arr.append(obj)
+        if len(item) >=3:
+            question, answer,author = item[0],item[1],item[2]
+            question = question.replace("Question: ", "")
+            answer = answer.replace("Answer: ", "")
+            obj = {
+                "Question":question, "Answer":answer,"Author":author
+            }
+            json_arr.append(obj)
+        elif len(item) ==2:
+            question, answer = item[0],item[1]
+            question = question.replace("Question: ", "")
+            answer = answer.replace("Answer: ", "")
+            obj = {
+                "Question":question, "Answer":answer
+            }
+            json_arr.append(obj)
+        else:
+            raise ('csv file must have two columns at least')
+            
 
     qa_content = {
         "doc_title" : "",

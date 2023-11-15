@@ -167,6 +167,7 @@ export class DeployStack extends Stack {
         aos_results:process.env.aos_results ,
         embedding_endpoint:process.env.embedding_endpoint ,
         llm_model_endpoint:process.env.llm_default_endpoint,
+        cross_model_endpoint:process.env.cross_model_endpoint,
         chat_session_table:chat_session_table.tableName,
         prompt_template_table:prompt_template_table.tableName,
         bm25_qd_threshold_hard:'7',
