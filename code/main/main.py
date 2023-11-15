@@ -1187,7 +1187,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
             cache_answer = last_cache.split('\nAnswer:')[1]
             TRACE_LOGGER.trace(f"**Found caches:**")
             for sn,item in enumerate(cache_repsonses[::-1]):
-                TRACE_LOGGER.trace(f"**[{sn+1}] [{item['doc_title']}] [{item['doc_category']}] [{item['score']:.3f}] [{item['rank_score']:.3f}] author:[{item['doc_author']}]**")
+                TRACE_LOGGER.trace(f"**[{sn+1}] [{item['doc_title']}] [{item['doc_category']}] [{item['score']:.3f}] author:[{item['doc_author']}]**")
                 TRACE_LOGGER.trace(f"{item['doc']}")
         else:
             TRACE_LOGGER.trace(f"**No cache found**")
