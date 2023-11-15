@@ -1154,7 +1154,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
     final_prompt = ''
     origin_query = query_input
     intention = ''
-
+    chat_history=''
     if multi_rounds:
         if llm_model_name.startswith('claude'):
             query_input = rewrite_query(origin_query, session_history, round_cnt=3, use_bedrock="True")
