@@ -440,6 +440,33 @@ class CustomDocRetriever(BaseRetriever):
                 doc += item['_source']['content']+'\n'            
         return doc
 
+    ## 调用排序模型
+    def rerank(self,query_input: str, docs: List[Any],sm_client,cross_model_endpoint):
+        inputs = [query_input]*len(docs)
+        response_model = sm_client.invoke_endpoint(
+            EndpointName=cross_model_endpoint,
+            Body=json.dumps(
+                {
+                    "inputs": inputs,
+                    "docs": [item['doc'] for item in docs]
+                }
+            ),
+            ContentType="application/json",
+        )
+        json_str = response_model['Body'].read().decode('utf8')
+        json_obj = json.loads(json_str)
+        scores = [item[1] for item in json_obj['scores']]
+        return scores
+    
+    def de_duplicate(self,docs):
+        unique_ids = set()
+        nodup = []
+        for item in docs:
+            doc_hash = hashlib.md5(str(item['doc']).encode('utf-8')).hexdigest()
+            if doc_hash not in unique_ids:
+                nodup.append(item)
+                unique_ids.add(doc_hash)
+        return nodup
     
     def get_relevant_documents_custom(self, query_input: str):
         global BM25_QD_THRESHOLD_HARD_REFUSE, BM25_QD_THRESHOLD_SOFT_REFUSE
@@ -527,8 +554,23 @@ class CustomDocRetriever(BaseRetriever):
                               (item['score'] > KNN_QD_THRESHOLD_HARD_REFUSE and item['doc_type'] == 'Paragraph') or
                               (item['score'] > KNN_QQ_THRESHOLD_HARD_REFUSE and item['doc_type'] == 'Sentence')]
         filter_inverted_result = [ item for item in opensearch_query_response if item['score'] > BM25_QD_THRESHOLD_HARD_REFUSE ]
-        
-        recall_knowledge = combine_recalls(filter_knn_result, filter_inverted_result)
+
+
+        ##是否使用rerank
+        cross_model_endpoint = os.environ.get('cross_model_endpoint',None)
+        if cross_model_endpoint:
+            all_docs = filter_knn_result+filter_inverted_result
+
+            ###to do 去重
+            all_docs = self.de_duplicate(all_docs)
+            scores = self.rerank(query_input, all_docs,sm_client,cross_model_endpoint)
+            ##sort by scores
+            sorted_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=False)
+            recall_knowledge = [{**all_docs[idx],'rank_score':scores[idx] } for idx in sorted_indices[-TOP_K:]]
+
+        else:
+            recall_knowledge = combine_recalls(filter_knn_result, filter_inverted_result)
+            recall_knowledge = [{**doc,'rank_score':0 } for doc in recall_knowledge]
 
         ##如果是段落类型，添加临近doc
         recall_knowledge = self.add_neighbours_doc(aos_client,recall_knowledge)
@@ -652,7 +694,7 @@ def get_vector_by_sm_endpoint(questions, sm_client, endpoint_name):
             {
                 "inputs": questions,
                 "parameters": parameters,
-                "is_query" : True,
+                "is_query" : False,
                 "instruction" :  instruction
             }
         ),
@@ -1116,7 +1158,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
     if multi_rounds:
         if llm_model_name.startswith('claude'):
             query_input = rewrite_query(origin_query, session_history, round_cnt=3, use_bedrock="True")
-        
+            TRACE_LOGGER.trace(f'**Rewrite: {origin_query} => {query_input}**')
             ##add history parameter
             if isinstance(llm,SagemakerStreamEndpoint) or isinstance(llm,SagemakerEndpoint):
                 chat_history=''
@@ -1131,7 +1173,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
     doc_retriever = CustomDocRetriever.from_endpoints(embedding_model_endpoint=embedding_model_endpoint,
                                     aos_endpoint= aos_endpoint,
                                     aos_index=aos_index)
-    TRACE_LOGGER.trace(f'**Starting trace mode...**')
+    
     TRACE_LOGGER.trace(f'**Using LLM model : {llm_model_name}**')
     cache_answer = None
     if use_qa:
@@ -1145,7 +1187,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
             cache_answer = last_cache.split('\nAnswer:')[1]
             TRACE_LOGGER.trace(f"**Found caches:**")
             for sn,item in enumerate(cache_repsonses[::-1]):
-                TRACE_LOGGER.trace(f"**[{sn+1}] [{item['doc_title']}] [{item['doc_category']}] [{item['score']:.3f}] auther:[{item['doc_author']}]**")
+                TRACE_LOGGER.trace(f"**[{sn+1}] [{item['doc_title']}] [{item['doc_category']}] [{item['score']:.3f}] [{item['rank_score']:.3f}] author:[{item['doc_author']}]**")
                 TRACE_LOGGER.trace(f"{item['doc']}")
         else:
             TRACE_LOGGER.trace(f"**No cache found**")
@@ -1155,7 +1197,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
     other_intentions = INTENTION_LIST.split(',')
 
     ##如果使用QA，且没有cache answer再需要进一步意图判断
-    if use_qa and not cache_answer and len(other_intentions) > 0 and len(other_intentions[0]) > 1 and llm_model_name.startswith('claude'):
+    if use_qa and not cache_answer and len(other_intentions) > 0 and len(other_intentions[0]) > 1:
         before_detect = time.time()
         TRACE_LOGGER.trace(f'**Detecting intention...**')
         intention = detect_intention(query_input, fewshot_cnt=5, use_bedrock="True")
@@ -1228,9 +1270,9 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
 
         ##添加召回文档到refdoc和tracelog, 按score倒序展示
         for sn,item in enumerate(recall_knowledge[::-1]):
-            TRACE_LOGGER.trace(f"**[{sn+1}] [{item['doc_title']}] [{item['doc_category']}] [{item['score']:.3f}] auther:[{item['doc_author']}]**")
+            TRACE_LOGGER.trace(f"**[{sn+1}] [{item['doc_title']}] [{item['doc_category']}] [{item['score']:.3f}] [{item['rank_score']:.3f}] author:[{item['doc_author']}]**")
             TRACE_LOGGER.trace(f"{item['doc']}")
-            TRACE_LOGGER.add_ref(f"**[{sn+1}] [{item['doc_title']}] [{item['doc_category']}] [{item['score']:.3f}] auther:[{item['doc_author']}]**")
+            TRACE_LOGGER.add_ref(f"**[{sn+1}] [{item['doc_title']}] [{item['doc_category']}] [{item['score']:.3f}] [{item['rank_score']:.3f}] author:[{item['doc_author']}]**")
             TRACE_LOGGER.add_ref(f"{item['doc']}")
         TRACE_LOGGER.trace('**Answer:**')
 
