@@ -3,7 +3,7 @@ import os
 import logging
 from collections import Counter
 
-from langchain.embeddings import SagemakerEndpointEmbeddings
+from langchain.embeddings import SagemakerEndpointEmbeddings,BedrockEmbeddings
 from langchain.embeddings.sagemaker_endpoint import EmbeddingsContentHandler
 from langchain.vectorstores import OpenSearchVectorSearch
 from langchain.llms.sagemaker_endpoint import LLMContentHandler
@@ -19,6 +19,7 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 credentials = boto3.Session().get_credentials()
+BEDROCK_EMBEDDING_MODELID_LIST = ["cohere.embed-multilingual-v3","cohere.embed-english-v3","amazon.titan-embed-text-v1"]
 
 class APIException(Exception):
     def __init__(self, message, code: str = None):
@@ -76,27 +77,7 @@ def create_intention_prompt_templete():
         input_variables=['fewshot','query', 'instruction', 'options']
     )
     return PROMPT
-    
-def get_bedrock_aksk(secret_name='chatbot_bedrock', region_name = "us-west-2"):
-    # Create a Secrets Manager client
-    session = boto3.session.Session()
-    client = session.client(
-        service_name='secretsmanager',
-        region_name=region_name
-    )
 
-    try:
-        get_secret_value_response = client.get_secret_value(
-            SecretId=secret_name
-        )
-    except ClientError as e:
-        # For a list of exceptions thrown, see
-        # https://docs.aws.amazon.com/secretsmanager/latest/apireference/API_GetSecretValue.html
-        raise e
-
-    # Decrypts secret using the associated KMS key.
-    secret = json.loads(get_secret_value_response['SecretString'])
-    return secret['BEDROCK_ACCESS_KEY'],secret['BEDROCK_SECRET_KEY']
     
 @handle_error
 def lambda_handler(event, context):
@@ -120,11 +101,14 @@ def lambda_handler(event, context):
 
     content_handler = ContentHandler()
 
-    embeddings = SagemakerEndpointEmbeddings(
+    if embedding_endpoint in BEDROCK_EMBEDDING_MODELID_LIST :
+        embeddings =  BedrockEmbeddings(region_name=region,model_id=embedding_endpoint) 
+    else: 
+       embeddings = SagemakerEndpointEmbeddings(
         endpoint_name=embedding_endpoint,
         region_name=region,
         content_handler=content_handler
-    )
+    ) 
 
     auth = AWSV4SignerAuth(credentials, region)
         
