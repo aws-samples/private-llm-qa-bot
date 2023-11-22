@@ -7,7 +7,9 @@ from langchain.embeddings import SagemakerEndpointEmbeddings,BedrockEmbeddings
 from langchain.embeddings.sagemaker_endpoint import EmbeddingsContentHandler
 from langchain.vectorstores import OpenSearchVectorSearch
 from langchain.llms.sagemaker_endpoint import LLMContentHandler
-from langchain import PromptTemplate, SagemakerEndpoint
+# from langchain import PromptTemplate, SagemakerEndpoint
+from langchain.prompts import PromptTemplate
+from langchain.llms import SagemakerEndpoint
 from typing import Any, Dict, List, Union,Mapping, Optional, TypeVar, Union
 from langchain.chains import LLMChain
 from langchain.llms.bedrock import Bedrock
@@ -19,7 +21,7 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 credentials = boto3.Session().get_credentials()
-BEDROCK_EMBEDDING_MODELID = "cohere.embed-multilingual-v3"
+BEDROCK_EMBEDDING_MODELID_LIST = ["cohere.embed-multilingual-v3","cohere.embed-english-v3","amazon.titan-embed-text-v1"]
 
 class APIException(Exception):
     def __init__(self, message, code: str = None):
@@ -77,6 +79,7 @@ def create_intention_prompt_templete():
         input_variables=['fewshot','query', 'instruction', 'options']
     )
     return PROMPT
+
     
 @handle_error
 def lambda_handler(event, context):
@@ -100,15 +103,15 @@ def lambda_handler(event, context):
 
     content_handler = ContentHandler()
 
-    
-    if embedding_endpoint == 'bedrock' :
-        embeddings =  BedrockEmbeddings(region_name=region,model_id=BEDROCK_EMBEDDING_MODELID) 
+    if embedding_endpoint in BEDROCK_EMBEDDING_MODELID_LIST :
+        embeddings =  BedrockEmbeddings(region_name=region,model_id=embedding_endpoint) 
     else: 
        embeddings = SagemakerEndpointEmbeddings(
         endpoint_name=embedding_endpoint,
         region_name=region,
         content_handler=content_handler
     ) 
+
     auth = AWSV4SignerAuth(credentials, region)
         
     docsearch = OpenSearchVectorSearch(

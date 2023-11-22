@@ -48,32 +48,42 @@ DOC_INDEX_TABLE= 'chatbot_doc_index'
 dynamodb = boto3.client('dynamodb')
 
 AOS_BENCHMARK_ENABLED=False
-BEDROCK_EMBEDDING_MODELID = "cohere.embed-multilingual-v3"
+BEDROCK_EMBEDDING_MODELID_LIST = ["cohere.embed-multilingual-v3","cohere.embed-english-v3","amazon.titan-embed-text-v1"]
 
 
 bedrock = boto3.client(service_name='bedrock-runtime',
                        region_name= os.environ.get('bedrock_region',REGION))
 
 
-def get_embedding_bedrock(text_arrs):
-    body = json.dumps({
-        "texts": text_arrs,
-        "input_type": "search_document"
-    })
+def get_embedding_bedrock(texts,model_id):
+    provider = model_id.split(".")[0]
+    if provider == "cohere":
+        body = json.dumps({
+            "texts": [texts] if isinstance(texts, str) else texts,
+            "input_type": "search_document"
+        })
+    else:
+        # includes common provider == "amazon"
+        body = json.dumps({
+            "inputText": texts if isinstance(texts, str) else texts[0],
+        })
     bedrock_resp = bedrock.invoke_model(
             body=body,
-            modelId=BEDROCK_EMBEDDING_MODELID,
+            modelId=model_id,
             accept="application/json",
             contentType="application/json"
         )
     response_body = json.loads(bedrock_resp.get('body').read())
-    embeddings = response_body['embeddings']
+    if provider == "cohere":
+        embeddings = response_body['embeddings']
+    else:
+        embeddings = [response_body['embedding']]
     return embeddings
 
 
 def get_embedding(smr_client, text_arrs, endpoint_name=EMB_MODEL_ENDPOINT):
-    if endpoint_name == 'bedrock':
-        return get_embedding_bedrock(text_arrs)
+    if endpoint_name in BEDROCK_EMBEDDING_MODELID_LIST:
+        return get_embedding_bedrock(text_arrs,endpoint_name)
     
     if AOS_BENCHMARK_ENABLED:
         text_len = len(text_arrs)
