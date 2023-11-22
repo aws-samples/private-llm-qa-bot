@@ -18,6 +18,7 @@ from langchain.docstore.document import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter,CharacterTextSplitter
 import logging
 import urllib.parse
+import numpy as np
 
 args = getResolvedOptions(sys.argv, ['bucket', 'object_key','AOS_ENDPOINT','REGION','EMB_MODEL_ENDPOINT','PUBLISH_DATE'])
 s3 = boto3.resource('s3')
@@ -47,9 +48,33 @@ DOC_INDEX_TABLE= 'chatbot_doc_index'
 dynamodb = boto3.client('dynamodb')
 
 AOS_BENCHMARK_ENABLED=False
-import numpy as np
+BEDROCK_EMBEDDING_MODELID = "cohere.embed-multilingual-v3"
+
+
+bedrock = boto3.client(service_name='bedrock-runtime',
+                       region_name= os.environ.get('bedrock_region',REGION))
+
+
+def get_embedding_bedrock(text_arrs):
+    body = json.dumps({
+        "texts": text_arrs,
+        "input_type": "search_document"
+    })
+    bedrock_resp = bedrock.invoke_model(
+            body=body,
+            modelId=BEDROCK_EMBEDDING_MODELID,
+            accept="application/json",
+            contentType="application/json"
+        )
+    response_body = json.loads(bedrock_resp.get('body').read())
+    embeddings = response_body['embeddings']
+    return embeddings
+
 
 def get_embedding(smr_client, text_arrs, endpoint_name=EMB_MODEL_ENDPOINT):
+    if endpoint_name == 'bedrock':
+        return get_embedding_bedrock(text_arrs)
+    
     if AOS_BENCHMARK_ENABLED:
         text_len = len(text_arrs)
         return [ np.random.rand(768).tolist() for i in range(text_len) ]
