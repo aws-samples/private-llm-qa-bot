@@ -4,7 +4,7 @@ import time
 import os
 import re
 from botocore import config
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError,EventStreamError
 from datetime import datetime, timedelta
 import pytz
 import boto3
@@ -77,7 +77,12 @@ INTENTION_LIST = os.environ.get('intention_list', "")
 
 TOP_K = int(os.environ.get('TOP_K',4))
 NEIGHBORS = int(os.environ.get('neighbors',0))
+BEDROCK_EMBEDDING_MODELID = "cohere.embed-multilingual-v3"
 
+boto3_bedrock = boto3.client(
+    service_name="bedrock-runtime",
+    region_name= os.environ.get('bedrock_region',region)
+)
 
 ###记录跟踪日志，用于前端输出
 class TraceLogger(BaseModel):
@@ -675,8 +680,27 @@ def is_chinese(string):
     return False
 
 
+def get_embedding_bedrock(text_arrs):
+    body = json.dumps({
+        "texts": [text_arrs] if isinstance(text_arrs, str) else text_arrs,
+        "input_type": "search_document"
+    })
+    bedrock_resp = boto3_bedrock.invoke_model(
+            body=body,
+            modelId=BEDROCK_EMBEDDING_MODELID,
+            accept="application/json",
+            contentType="application/json"
+        )
+    response_body = json.loads(bedrock_resp.get('body').read())
+    embeddings = response_body['embeddings']
+    return embeddings
+
+
 # AOS
 def get_vector_by_sm_endpoint(questions, sm_client, endpoint_name):
+    if endpoint_name == 'bedrock':
+        return get_embedding_bedrock(questions)
+
     parameters = {
     }
 
@@ -1072,11 +1096,6 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
     if llm_model_name.startswith('claude'):
         # ACCESS_KEY, SECRET_KEY=get_bedrock_aksk()
 
-        boto3_bedrock = boto3.client(
-            service_name="bedrock-runtime",
-            region_name= os.environ.get('bedrock_region',region)
-        )
-
         parameters = {
             "max_tokens_to_sample": max_tokens,
             "stop_sequences":STOP,
@@ -1340,15 +1359,16 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
             if use_stream:
                 TRACE_LOGGER.postMessage(answer)
         else:      
-            ##添加召回引用,如果使用trace则忽略
-            # if not TRACE_LOGGER.use_trace:
-            #     stream_callback.add_recall_knowledge(recall_knowledge)
             prompt_template = choose_prompt_template(reply_stratgy, template, llm_model_name)
             llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
+
             # context = "\n".join([doc['doc'] for doc in recall_knowledge])
             context = qa_knowledge_fewshot_build(recall_knowledge)
             ##最终的answer
-            answer = llmchain.run({'question':query_input,'context':context,'chat_history':chat_history,'role_bot':B_Role })
+            try:
+                answer = llmchain.run({'question':query_input,'context':context,'chat_history':chat_history,'role_bot':B_Role })
+            except Exception as e:
+                answer = str(e)
             ##最终的prompt日志
             final_prompt = prompt_template.format(question=query_input,role_bot=B_Role,context=context,chat_history=chat_history)
             # print(final_prompt)
