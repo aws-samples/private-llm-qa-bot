@@ -19,7 +19,7 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 credentials = boto3.Session().get_credentials()
-BEDROCK_EMBEDDING_MODELID = "cohere.embed-multilingual-v3"
+BEDROCK_EMBEDDING_MODELID_LIST = ["cohere.embed-multilingual-v3","cohere.embed-english-v3","amazon.titan-embed-text-v1"]
 
 class APIException(Exception):
     def __init__(self, message, code: str = None):
@@ -101,8 +101,8 @@ def lambda_handler(event, context):
 
     content_handler = ContentHandler()
 
-    if embedding_endpoint == 'bedrock' :
-        embeddings =  BedrockEmbeddings(region_name=region,model_id=BEDROCK_EMBEDDING_MODELID) 
+    if embedding_endpoint in BEDROCK_EMBEDDING_MODELID_LIST :
+        embeddings =  BedrockEmbeddings(region_name=region,model_id=embedding_endpoint) 
     else: 
        embeddings = SagemakerEndpointEmbeddings(
         endpoint_name=embedding_endpoint,

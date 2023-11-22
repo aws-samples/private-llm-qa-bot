@@ -77,7 +77,8 @@ INTENTION_LIST = os.environ.get('intention_list', "")
 
 TOP_K = int(os.environ.get('TOP_K',4))
 NEIGHBORS = int(os.environ.get('neighbors',0))
-BEDROCK_EMBEDDING_MODELID = "cohere.embed-multilingual-v3"
+
+BEDROCK_EMBEDDING_MODELID_LIST = ["cohere.embed-multilingual-v3","cohere.embed-english-v3","amazon.titan-embed-text-v1"]
 
 boto3_bedrock = boto3.client(
     service_name="bedrock-runtime",
@@ -680,26 +681,36 @@ def is_chinese(string):
     return False
 
 
-def get_embedding_bedrock(text_arrs):
-    body = json.dumps({
-        "texts": [text_arrs] if isinstance(text_arrs, str) else text_arrs,
-        "input_type": "search_document"
-    })
+def get_embedding_bedrock(texts,model_id):
+    provider = model_id.split(".")[0]
+    if provider == "cohere":
+        body = json.dumps({
+            "texts": [texts] if isinstance(texts, str) else texts,
+            "input_type": "search_document"
+        })
+    else:
+        # includes common provider == "amazon"
+        body = json.dumps({
+            "inputText": texts if isinstance(texts, str) else texts[0],
+        })
     bedrock_resp = boto3_bedrock.invoke_model(
             body=body,
-            modelId=BEDROCK_EMBEDDING_MODELID,
+            modelId=model_id,
             accept="application/json",
             contentType="application/json"
         )
     response_body = json.loads(bedrock_resp.get('body').read())
-    embeddings = response_body['embeddings']
+    if provider == "cohere":
+        embeddings = response_body['embeddings']
+    else:
+        embeddings = [response_body['embedding']]
     return embeddings
 
 
 # AOS
 def get_vector_by_sm_endpoint(questions, sm_client, endpoint_name):
-    if endpoint_name == 'bedrock':
-        return get_embedding_bedrock(questions)
+    if endpoint_name in BEDROCK_EMBEDDING_MODELID_LIST:
+        return get_embedding_bedrock(questions,endpoint_name)
 
     parameters = {
     }
