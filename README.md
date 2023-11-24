@@ -163,20 +163,63 @@
     ```
   
 - 流程介绍
-
+  
   - 离线流程
     - a1. 前端界面上传文档到S3
     - a2. S3触发Lambda开启Glue处理流程，进行内容的embedding，并入库到AOS中
     - b1. 把cloud watch中的日志通过KDF写入到AOS中，供维护迭代使用
   - 在线流程[网页](http://chatbotfe-1170248869.us-west-2.elb.amazonaws.com/login#)
     - 测试账号密码:test/test
+    - 使用这个公共测试前端需要填入自己的ak sk才能上传文档  
+    - 进入IAM创建一个用户，附加一个权限策略，替换"arn:aws:s3:::xxxx-chatbot-bucket"为实际的bucket
+    ```json
+    {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Sid": "VisualEditor0",
+                "Effect": "Allow",
+                "Action": [
+                    "s3:ListStorageLensConfigurations",
+                    "s3:ListAccessPointsForObjectLambda",
+                    "s3:GetAccessPoint",
+                    "s3:PutAccountPublicAccessBlock",
+                    "s3:GetAccountPublicAccessBlock",
+                    "s3:ListAllMyBuckets",
+                    "s3:ListAccessPoints",
+                    "s3:PutAccessPointPublicAccessBlock",
+                    "s3:ListJobs",
+                    "s3:PutStorageLensConfiguration",
+                    "s3:ListMultiRegionAccessPoints",
+                    "s3:CreateJob"
+                ],
+                "Resource": "*"
+            },
+            {
+                "Sid": "VisualEditor1",
+                "Effect": "Allow",
+                "Action": "s3:*",
+                "Resource": "arn:aws:s3:::xxxx-chatbot-bucket"
+            },
+            {
+                "Sid": "VisualEditor2",
+                "Effect": "Allow",
+                "Action": "s3:*",
+                "Resource": "arn:aws:s3:::xxxxx-chatbot-bucket/*"
+            }
+        ]
+    }    
+    ```
+    - IAM用户创建好之后，进入安全凭证->创建访问密钥，保存到本地。
+    - a0. 登录前端页面，配置相关信息  
+    ![Alt text](image.png)
+    - 更多设置切换模型等操作
+    ![Alt text](image-1.png)
     - a1. 前端界面发起聊天，调用AIGateway，通过Dynamodb获取session信息
     - a2. 通过lambda访问 Sagemaker Endpoint对用户输入进行向量化
     - a3. 通过AOS进行向量相似检索
     - a4. 通过AOS进行倒排检索，与向量检索结果融合，构建Prompt
     - a5. 调用LLM生成结果 
-    - 前端[网页](http://chatbotfe-1170248869.us-west-2.elb.amazonaws.com/login#)切换模型
-
   
 
 - 知识库构建
