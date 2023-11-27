@@ -87,7 +87,7 @@ export class LambdaStack extends NestedStack {
 
     this.login_fn = createNodeJsLambdaFn(
       this,
-      "../../chatbotFE/deploy/lambda/login",
+      "../chatbotFE/deploy/lambda/login",
       "index.js",
       "login",
       {
@@ -102,7 +102,7 @@ export class LambdaStack extends NestedStack {
 
     this.auth_fn = createNodeJsLambdaFn(
       this,
-      "../../chatbotFE/deploy/lambda/auth",
+      "../chatbotFE/deploy/lambda/auth",
       "index.js",
       "lambda_auth",
       {
@@ -117,7 +117,7 @@ export class LambdaStack extends NestedStack {
 
     this.users_fn = createNodeJsLambdaFn(
       this,
-      "../../chatbotFE/deploy/lambda/admin_users",
+      "../chatbotFE/deploy/lambda/admin_users",
       "index.js",
       "users",
       {
@@ -131,14 +131,14 @@ export class LambdaStack extends NestedStack {
     user_table.grantReadWriteData(this.users_fn);
     
     const layer = new lambda.LayerVersion(this, 'ChatbotLayer', {
-      code: lambda.Code.fromAsset('../../chatbotFE/deploy/layer/ChatbotFELayer.zip'),
+      code: lambda.Code.fromAsset('../chatbotFE/deploy/layer/ChatbotFELayer.zip'),
       description: 'ChatbotFELayer Python helper utility',
       compatibleRuntimes: [lambda.Runtime.PYTHON_3_9],
       layerVersionName:'ChatbotFELayer',
     });
 
     this.lambda_chat_py = new lambda.Function(this, 'handle_chat_py',{
-      code: lambda.Code.fromAsset('../../chatbotFE/deploy/lambda/lambda_chat_py'),
+      code: lambda.Code.fromAsset('../chatbotFE/deploy/lambda/lambda_chat_py'),
       layers:[layer],
       handler: 'app.handler',
       runtime: lambda.Runtime.PYTHON_3_9,
@@ -159,7 +159,7 @@ export class LambdaStack extends NestedStack {
 
     this.lambda_connect_handle = createNodeJsLambdaFn(
       this,
-      "../../chatbotFE/deploy/lambda/lambda_connect_handle",
+      "../chatbotFE/deploy/lambda/lambda_connect_handle",
       "index.mjs",
       "lambda_connect_handle",
       {
@@ -173,7 +173,7 @@ export class LambdaStack extends NestedStack {
 
     this.lambda_handle_chat = createNodeJsLambdaFn(
       this,
-      "../../chatbotFE/deploy/lambda/lambda_handle_chat",
+      "../chatbotFE/deploy/lambda/lambda_handle_chat",
       "index.mjs",
       "lambda_handle_chat",
       {
@@ -183,7 +183,7 @@ export class LambdaStack extends NestedStack {
 
     this.lambda_list_idx = createNodeJsLambdaFn(
       this,
-      "../../chatbotFE/deploy/lambda/lambda_list_idx",
+      "../chatbotFE/deploy/lambda/lambda_list_idx",
       "index.mjs",
       "lambda_list_idx",
       {
@@ -197,7 +197,7 @@ export class LambdaStack extends NestedStack {
   
     this.lambda_handle_upload = createNodeJsLambdaFn(
       this,
-      "../../chatbotFE/deploy/lambda/lambda_handle_upload",
+      "../chatbotFE/deploy/lambda/lambda_handle_upload",
       "index.js",
       "lambda_handle_upload",
       {
