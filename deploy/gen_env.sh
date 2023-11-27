@@ -1,5 +1,10 @@
 #!/bin/bash
 
+if [ "$#" -lt 1 ]||[ "$#" -gt 2 ]; then
+    echo "usage: $0 [region-name] [account-id (optional)]"
+    exit 1
+fi
+
 region=$1
 
 if [ ! -n "$2" ]; then
