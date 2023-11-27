@@ -66,9 +66,9 @@ export class DeployStack extends Stack {
     new CfnOutput(this,'opensearch endpoint',{value:opensearch_endpoint});
     new CfnOutput(this,'region',{value:process.env.CDK_DEFAULT_REGION});
     new CfnOutput(this,'UPLOAD_BUCKET',{value:process.env.UPLOAD_BUCKET});
-    new CfnOutput(this,'llm_chatglm_endpoint',{value:process.env.llm_chatglm_endpoint});
+    new CfnOutput(this,'llm_model_endpoint',{value:process.env.llm_model_endpoint});
     new CfnOutput(this,'embedding_endpoint',{value:process.env.embedding_endpoint});
-    new CfnOutput(this,'model_name',{value:process.env.llm_chatglm_endpoint.replace('-endpoint','')});
+    new CfnOutput(this,'model_name',{value:process.env.llm_model_endpoint.replace('-endpoint','')});
     new CfnOutput(this,'embedding_model_name',{value:process.env.embedding_endpoint.replace('-endpoint','')});
 
 
@@ -166,7 +166,7 @@ export class DeployStack extends Stack {
         aos_knn_field:process.env.aos_knn_field ,
         aos_results:process.env.aos_results ,
         embedding_endpoint:process.env.embedding_endpoint ,
-        llm_model_endpoint:process.env.llm_default_endpoint,
+        llm_model_endpoint:process.env.llm_model_endpoint,
         cross_model_endpoint:process.env.cross_model_endpoint,
         chat_session_table:chat_session_table.tableName,
         prompt_template_table:prompt_template_table.tableName,
@@ -217,7 +217,7 @@ export class DeployStack extends Stack {
         index_name:"chatbot-example-index" ,
         aos_knn_field:process.env.aos_knn_field,
         embedding_endpoint:process.env.embedding_endpoint,
-        llm_model_endpoint:process.env.llm_chatglm_endpoint,
+        llm_model_endpoint:process.env.llm_model_endpoint,
         region:region
       },
     });
@@ -252,7 +252,7 @@ export class DeployStack extends Stack {
       securityGroups:securityGroups,
       architecture: Architecture.X86_64,
       environment: {
-        llm_model_endpoint:process.env.llm_chatglm_endpoint,
+        llm_model_endpoint:process.env.llm_model_endpoint,
         region:region
       },
     });
@@ -287,7 +287,7 @@ export class DeployStack extends Stack {
       securityGroups:securityGroups,
       architecture: Architecture.X86_64,
       environment: {
-        llm_model_endpoint:process.env.llm_chatglm_endpoint,
+        llm_model_endpoint:process.env.llm_model_endpoint,
         region:region
       },
     });
