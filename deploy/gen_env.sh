@@ -11,21 +11,19 @@ fi
 ts=`date +%y-%m-%d-%H-%M-%S`
 unique_tag="$account_id-$ts"
 
-embedding_endpoint="${unique_tag}-embedding-endpoint"
-llm_default_endpoint="${unique_tag}-llm-default-endpoint"
-llm_bloomz_endpoint="${unique_tag}-llm-bloomz-endpoint"
-llm_chatglm_endpoint="${unique_tag}-llm-chatglm-endpoint"
-llm_llama_endpoint="${unique_tag}-llm-llama-endpoint"
-llm_alpaca_endpoint="${unique_tag}-llm-alpaca-endpoint"
-llm_vicuna_endpoint="${unique_tag}-llm-vicuna-endpoint"
-llm_chatglm_stream_endpoint="${unique_tag}-llm-chatglm-stream-endpoint"
-bucket="${unique_tag}-bucket"
-
 cn_region=("cn-north-1","cn-northwest-1")
 if [[ "${cn_region[@]}" =~ "$region" ]]; then
-    wss_resourceArn="arn:aws-cn:execute-api:cn-north-1:946277762357:3g36ob2mc2/*/*/@connections/*"
-    wss_apiId="3g36ob2mc2"
+    arn="arn:aws-cn:"
+else
+    arn="arn:aws:"
 fi
+
+
+embedding_endpoint="${unique_tag}-embedding-endpoint"
+llm_model_endpoint="${unique_tag}-llm-default-endpoint"
+bucket="${unique_tag}-bucket"
+main_fun_arn="${arn}lambda:${region}:${account_id}:function:Ask_Assistant"
+token_key="${unique_tag}"
 
 echo "CDK_DEFAULT_ACCOUNT=${account_id}" > .env
 echo "CDK_DEFAULT_REGION=${region}" >> .env
@@ -37,19 +35,12 @@ echo "aos_knn_field=embedding" >> .env
 echo "aos_results=3" >> .env
 echo "aos_existing_endpoint=optional" >> .env
 echo "embedding_endpoint=${embedding_endpoint}" >> .env
-echo "llm_default_endpoint=${llm_default_endpoint}" >> .env
-echo "llm_bloomz_endpoint=${llm_bloomz_endpoint}" >> .env
-echo "llm_chatglm_endpoint=${llm_chatglm_endpoint}" >> .env
-echo "llm_llama_endpoint=${llm_llama_endpoint}" >> .env
-echo "llm_alpaca_endpoint=${llm_alpaca_endpoint}" >> .env
-echo "llm_vicuna_endpoint=${llm_vicuna_endpoint}" >> .env
-echo "llm_chatglm_stream_endpoint=${llm_chatglm_stream_endpoint}" >> .env
-echo "llm_visualglm_endpoint=" >> .env
-echo "llm_other_stream_endpoint=" >> .env
-echo "llm_other_endpoint=" >> .env
+echo "llm_model_endpoint=" >> .env
 echo "cross_model_endpoint=" >> .env
 echo "UPLOAD_BUCKET=${bucket}" >> .env
 echo "UPLOAD_OBJ_PREFIX=ai-content/" >> .env
 echo "neighbors=1" >>.env
 echo "TOP_K=4" >>.env
+echo "MAIN_FUN_ARN=${main_fun_arn}" >>.env
+echo "TOKEN_KEY=${token_key}" >>.env
 
