@@ -87,7 +87,7 @@ export class LambdaStack extends NestedStack {
 
     this.login_fn = createNodeJsLambdaFn(
       this,
-      "lambda/login",
+      "../../chatbotFE/deploy/lambda/login",
       "index.js",
       "login",
       {
@@ -102,7 +102,7 @@ export class LambdaStack extends NestedStack {
 
     this.auth_fn = createNodeJsLambdaFn(
       this,
-      "lambda/auth",
+      "../../chatbotFE/deploy/lambda/auth",
       "index.js",
       "lambda_auth",
       {
@@ -117,7 +117,7 @@ export class LambdaStack extends NestedStack {
 
     this.users_fn = createNodeJsLambdaFn(
       this,
-      "lambda/admin_users",
+      "../../chatbotFE/deploy/lambda/admin_users",
       "index.js",
       "users",
       {
