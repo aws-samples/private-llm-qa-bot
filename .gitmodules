@@ -1,4 +1,4 @@
 [submodule "chatbotFE"]
 	path = chatbotFE
-	url = git@github.com:xiehust/chatbotFE.git
+	url = https://github.com/xiehust/chatbotFE.git
 	branch = main
