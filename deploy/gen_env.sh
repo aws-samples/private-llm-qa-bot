@@ -25,7 +25,7 @@ fi
 
 
 embedding_endpoint="${unique_tag}-embedding-endpoint"
-llm_model_endpoint="${unique_tag}-llm-default-endpoint"
+llm_model_endpoint="${unique_tag}-llm-model-endpoint"
 bucket="${unique_tag}-bucket"
 main_fun_arn="${arn}lambda:${region}:${account_id}:function:Ask_Assistant"
 token_key="${unique_tag}"
