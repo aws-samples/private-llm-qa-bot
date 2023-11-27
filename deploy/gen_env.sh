@@ -24,7 +24,7 @@ else
 fi
 
 
-embedding_endpoint="${unique_tag}-embedding-endpoint"
+embedding_endpoint="cohere.embed-multilingual-v3"
 llm_model_endpoint="${unique_tag}-llm-model-endpoint"
 bucket="${unique_tag}-bucket"
 main_fun_arn="${arn}lambda:${region}:${account_id}:function:Ask_Assistant"
