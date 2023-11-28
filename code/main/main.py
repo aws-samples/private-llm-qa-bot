@@ -1756,7 +1756,7 @@ def lambda_handler(event, context):
     ##如果指定了prompt 模板
     if template_id and template_id != 'default':
         prompt_template = get_template(template_id)
-        prompt_template = 'default' if prompt_template is None else prompt_template['template']['S']
+        prompt_template = '' if prompt_template is None else prompt_template['template']['S']
             
     logger.info(f'prompt_template_id : {template_id}')
     logger.info(f'prompt_template : {prompt_template}')
