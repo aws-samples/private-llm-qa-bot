@@ -6,7 +6,7 @@
 
 ### 准备工作：
 
-1. 需要手动构建index
+1. 需要准备好对应的index(按照部署文档已经自动创建)
 
    ```
    PUT chatbot-example-index
@@ -77,10 +77,15 @@ def lambda_handler(event, context):
     
 ```
 
+### 集成方法
+1. 在Lambda(Ask_Assistant)的环境变量中添加一个变量'intention_list'。以逗号分隔的字符串的形式，把除了默认包含的'闲聊'和'知识问答'以外的所有可能的意图枚举出来，如'intention_list' ->'Service角色查询,服务是否可用查询,价格咨询'
+2. 目前支持bedrock-claude模型和SageMaker私有化部署的模型进行意图识别
 
 
-### 测试case
+### 测试方法
+可以进入到'Detect_Intention' - Lambda中的Test选项卡中，使用下面json作为Event JSON来进行该模块的测试
 
+#### 测试case
 ```json
 #1
 {
@@ -139,13 +144,7 @@ def lambda_handler(event, context):
 }
 ```
 
-
-
 ### 优化手段
 
-1. 如果识别失败，可以添加更多的例子到OpenSearch的chatbot-example-index
-2. 如果识别速度过慢，可以训练小模型(bert) 去分类
-
-### 集成方法
-1. 在Lambda(Ask_Assistant)的环境变量中添加一个变量intention_list，逗号分隔的字符串，把所有可能的意图枚举出来
-2. 目前仅仅支持claude模型时进行意图识别
+1. 如果识别不准，可以添加更多的示例到example文件，然后更新摄入到OpenSearch的chatbot-example-index中
+2. 如果不满意识别速度，当example例子数量积累到一定成都，可以训练分类模型(bert)
