@@ -45,11 +45,11 @@ API_SCHEMA = [
                     "properties": {
                         "instance_type": {
                             "type": "string",
-                            "description": "the AWS ec2 instance type, for example, c5.xlarge, m5.large, t3.mirco, g4dn.2xlarge",
+                            "description": "the AWS ec2 instance type, for example, c5.xlarge, m5.large, t3.mirco, g4dn.2xlarge, if it is a partial of the instance type, you should try to auto complete it. for example, if it is r6g.2x, you can complete it as r6g.2xlarge",
                         },
                         "region": {
                             "type": "string",
-                            "description": "the AWS region name where the ec2 is located in, for example us-east-1, us-west-1",
+                            "description": "the AWS region name where the ec2 is located in, for example us-east-1, us-west-1, if it is common words such as 'us east 1','美东1','美西2',you should try to normalize it to standard AWS region name, for example, 'us east 1' is normalized to 'us-east-1', '美东2' is normalized to 'us-east-2','美西2' is normalized to 'us-west-2'",
                         },
                         "os": {
                             "type": "string",
@@ -207,8 +207,8 @@ class llmContentHandler(LLMContentHandler):
         return response_json["outputs"]
 
 def service_org(**args):
-    context = """empty"""
-    
+    context = """placeholder"""
+
     prompt_tmp = """
         你是云服务AWS的智能客服机器人AWSBot
 
@@ -291,7 +291,7 @@ def query_ec2_price(**args) -> Union[str,None]:
                         price = price_dimension['pricePerUnit']['USD']
                         desc =  price_dimension['description']
                         if not desc.startswith("$0.00 per") and not desc.startswith("USD 0.0 per"):
-                            ret.append(f"Price per unit: {price}, description: {desc}")
+                            ret.append(f"Region:{region}, Price per unit: {price}, description: {desc}")
         return ret
     
     response = pricing_client.get_products(
