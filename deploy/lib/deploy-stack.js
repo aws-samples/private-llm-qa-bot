@@ -320,7 +320,8 @@ export class DeployStack extends Stack {
           "s3:Get*",
           "es:*",
           "secretsmanager:GetSecretValue",
-          "bedrock:*"
+          "bedrock:*",
+          "pricing:GetProducts"
           ],
         effect: iam.Effect.ALLOW,
         resources: ['*'],
