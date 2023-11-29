@@ -290,8 +290,8 @@ def query_ec2_price(**args) -> Union[str,None]:
                     for _, price_dimension in price_dimensions.items():
                         price = price_dimension['pricePerUnit']['USD']
                         desc =  price_dimension['description']
-                        if not desc.startswith("$0.00 per Reservation"):
-                            ret.append(f"Price per hour: {price}, description: {desc}")
+                        if not desc.startswith("$0.00 per") and not desc.startswith("USD 0.0 per"):
+                            ret.append(f"Price per unit: {price}, description: {desc}")
         return ret
     
     response = pricing_client.get_products(
