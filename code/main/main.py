@@ -569,10 +569,13 @@ class CustomDocRetriever(BaseRetriever):
 
             ###to do 去重
             all_docs = self.de_duplicate(all_docs)
-            scores = self.rerank(query_input, all_docs,sm_client,cross_model_endpoint)
-            ##sort by scores
-            sorted_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=False)
-            recall_knowledge = [{**all_docs[idx],'rank_score':scores[idx] } for idx in sorted_indices[-TOP_K:]]
+            if all_docs:
+                scores = self.rerank(query_input, all_docs,sm_client,cross_model_endpoint)
+                ##sort by scores
+                sorted_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=False)
+                recall_knowledge = [{**all_docs[idx],'rank_score':scores[idx] } for idx in sorted_indices[-TOP_K:]]
+            else:
+                recall_knowledge = []
 
         else:
             recall_knowledge = combine_recalls(filter_knn_result, filter_inverted_result)
