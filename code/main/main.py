@@ -1269,20 +1269,6 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         final_prompt = prompt_template.format(question=query_input,role_bot=B_Role,chat_history=chat_history)
         recall_knowledge,opensearch_knn_respose,opensearch_query_response = [],[],[]
 
-    elif intention in other_intentions:
-        #call agent for other intentions
-        TRACE_LOGGER.trace('**Using Agent...**')
-        TRACE_LOGGER.trace('**Answer:**')
-        reply_stratgy = ReplyStratgy.AGENT
-        recall_knowledge,opensearch_knn_respose,opensearch_query_response = [],[],[]
-        use_bedrock = "False"
-        if llm_model_name.startswith('claude'):
-            use_bedrock = "True"
-        answer = chat_agent(query_input, intention, use_bedrock=use_bedrock)
-
-        if use_stream:
-            TRACE_LOGGER.postMessage(answer)
-
     elif intention == '知识问答': ##如果使用QA
         # 2. aos retriever
         TRACE_LOGGER.trace('**Using RAG Chat...**')
@@ -1388,12 +1374,21 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
             # print(final_prompt)
             # print(answer)
     else:
-        reply_stratgy = ReplyStratgy.OTHER
+        #call agent for other intentions
+        TRACE_LOGGER.trace('**Using Agent...**')
+        TRACE_LOGGER.trace('**Answer:**')
+        reply_stratgy = ReplyStratgy.AGENT
         recall_knowledge,opensearch_knn_respose,opensearch_query_response = [],[],[]
-        answer = "invalid logic"
+        use_bedrock = "False"
+        if llm_model_name.startswith('claude'):
+            use_bedrock = "True"
+        answer = chat_agent(query_input, intention, use_bedrock=use_bedrock)
+        if use_stream:
+            TRACE_LOGGER.postMessage(answer)
 
     answer = enforce_stop_tokens(answer, STOP)
-    answer = answer.lstrip('根据反引号中的内容,')
+    pattern = r'^根据[^，,]*[,|，]'
+    answer = re.sub(pattern, "", answer)
     ref_text = ''
     # if not use_stream and recall_knowledge and hide_ref == False:
         # ref_text = format_reference(recall_knowledge)
