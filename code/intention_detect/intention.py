@@ -78,7 +78,15 @@ def create_intention_prompt_templete():
     )
     return PROMPT
 
-    
+def create_detect_prompt_templete():
+    prompt_template = """Human:Here is a list of aimed functions:\n\n<api_schemas>{api_schemas}</api_schemas>\n\nYou should follow below examples to choose the corresponding function and params according to user's query\n\n<examples>{examples}</examples>\n\nAssistant:<query>{query}</query>\n<output>{"func":"""
+
+    PROMPT = PromptTemplate(
+        template=prompt_template, 
+        input_variables=['func_list','api_schemas','examples', 'query']
+    )
+    return PROMPT
+
 @handle_error
 def lambda_handler(event, context):
     
@@ -131,16 +139,25 @@ def lambda_handler(event, context):
         metadata_field='*'
     )
 
-    docs_simple = [ {"query" : doc[0].page_content, "intention" : doc[0].metadata['intention'], "score":doc[1]} for doc in docs]
+    docs_simple = [ {"query" : doc[0].page_content, "detection" : doc[0].metadata['detection'], "api_schema" : doc[0].metadata['api_schema'], "score":doc[1]} for doc in docs]
 
-    intention_list = [doc['intention'] for doc in docs_simple ]
-    intention_counter = Counter(intention_list)
-    options = set(intention_list)
-    options_str = ", ".join(options)
+    example_list = [ "<query>{}</query>\n<output>{}</output>".format(doc['query'], json.dumsp(doc['detection'], ensure_ascii=False)) for doc in docs_simple ]
+    function_list = [ doc['detection'] for doc in detection_list ]
+    api_schema_list = [ doc['api_schema'] for doc in docs_simple]
 
-    instruction = "参考下列Example，回答下列选择题："
-    examples = [ "Human: \"{}\"，这个问题的提问意图是啥？可选项[{}]\nAssistant: {}".format(doc['query'], options_str, doc['intention']) for doc in docs_simple ]
-    fewshot_str = "{}\n{}\n{}".format("<example>", "\n\n".join(examples), "</example>")
+    unique_function_list = set(function_list)
+
+    if len(options) == 1:
+        logger.info("Notice: Only Single latent Intention detected.")
+        answer = options.pop()
+        log_dict = { "answer" : answer, "examples": docs_simple }
+        log_dict_str = json.dumps(log_dict, ensure_ascii=False)
+        logger.info(log_dict_str)
+        return answer
+
+    api_schema_options = set(api_schema_list)
+    api_schema_str = "<api_schema>\n{}\n</api_schema>".format(",\n".join(api_schema_options))
+    example_list_str = "\n{}\n".format("\n".join(example_list))
     
     parameters = {
         "temperature": 0.01,
@@ -171,30 +188,22 @@ def lambda_handler(event, context):
         model_id ="anthropic.claude-instant-v1" if llm_model_name == 'claude-instant' else "anthropic.claude-v2"
         llm = Bedrock(model_id=model_id, client=boto3_bedrock, model_kwargs=parameters)
 
-    prompt_template = create_intention_prompt_templete()
-    prompt = prompt_template.format(fewshot=fewshot_str, instruction=instruction, query=query, options=options_str)
-    
-    if len(options) == 1:
-        logger.info("Notice: Only Single latent Intention detected.")
-        answer = options.pop()
-        log_dict = { "prompt" : prompt, "answer" : answer, "examples": docs_simple }
-        log_dict_str = json.dumps(log_dict, ensure_ascii=False)
-        logger.info(log_dict_str)
-        return answer
+    prompt_template = create_detect_prompt_templete()
+    prompt = prompt_template.format(api_schemas=api_schemas, examples=examples, query=query)
         
     llmchain = LLMChain(llm=llm, verbose=False, prompt=prompt_template)
-    answer = llmchain.run({'fewshot':fewshot_str, "instruction":instruction, "query":query, "options": options_str})
+    answer = llmchain.run({'api_schemas':api_schema_str, "examples":examples, "query":query})
     answer = answer.strip()
 
     log_dict = { "prompt" : prompt, "answer" : answer , "examples": docs_simple }
     log_dict_str = json.dumps(log_dict, ensure_ascii=False)
     logger.info(log_dict_str)
 
-    if answer not in options:
-        answer = intention_counter.most_common(1)[0]
-        for opt in options:
-            if opt in answer:
-                answer = opt
-                break
+    # if answer not in options:
+    #     answer = intention_counter.most_common(1)[0]
+    #     for opt in options:
+    #         if opt in answer:
+    #             answer = opt
+    #             break
         
     return answer

@@ -239,23 +239,22 @@ def iterate_QA(file_content, object_key,smr_client, index_name, endpoint_name):
             yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document).encode('utf-8')).hexdigest()}
 
 def iterate_examples(file_content, object_key, smr_client, index_name, endpoint_name):
-    json_arr = json.loads(file_content)
+    json_obj = json.loads(file_content)
+
+    api_schema = json_obj["api_schema"] if "api_schema" in json_obj.keys() else ""
 
     it = iter(json_arr)
     example_batches = batch_generator(it, batch_size=EMB_BATCH_SIZE)
 
     for idx, batch in enumerate(example_batches):
-
         queries = [ item['query'] for item in batch ]
-        intentions = [ item['intention'] for item in batch ]
-        replies = [ item['reply'] for item in batch ]
-        doc_title = object_key
+        detections = [ json.dumps(item['detection'], ensure_ascii=False) for item in batch ]
 
         embeddings = get_embedding(smr_client, queries, endpoint_name)
         for i, query in enumerate(queries):
             print("query:")
             print(query)
-            document = { "publish_date": publish_date, "intention" : intentions[i], "query" : queries[i], "doc_title":doc_title, "reply" : replies[i], "embedding" : embeddings[i]}
+            document = { "publish_date": publish_date, "detection" : detections[i], "query" : queries[i], "api_schema" : api_schema, "embedding" : embeddings[i]}
             yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document).encode('utf-8')).hexdigest()}
             
 def link_header(semantic_snippets):

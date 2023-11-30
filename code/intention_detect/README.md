@@ -25,7 +25,7 @@
                    "type": "date",
                    "format": "yyyy-MM-dd HH:mm:ss"
                },
-               "intention" : {
+               "detection" : {
                    "type" : "keyword"
                },
                "query": {
@@ -33,10 +33,10 @@
                    "analyzer": "ik_max_word",
                    "search_analyzer": "ik_smart"
                },
-               "reply": {
-                   "type": "text"
+               "api_schema": {
+                   "type": "keyword"
                },
-              "doc_title": {
+               "doc_title": {
                    "type": "keyword"
                },
                "embedding": {
