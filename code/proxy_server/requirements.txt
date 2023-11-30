@@ -1,0 +1,7 @@
+-i https://pypi.tuna.tsinghua.edu.cn/simple
+shortuuid
+fastapi
+uvicorn
+boto3
+botocore
+pydantic-settings
