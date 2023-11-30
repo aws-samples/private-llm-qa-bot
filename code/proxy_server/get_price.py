@@ -25,7 +25,7 @@ def query_ec2_price(**args) -> Union[str,None]:
                     for _, price_dimension in price_dimensions.items():
                         price = price_dimension['pricePerUnit']['CNY'] if region.startswith('cn-') else price_dimension['pricePerUnit']['USD']
                         desc =  price_dimension['description']
-                        if not desc.startswith("$0.00 per") and not desc.startswith("USD 0.0 per"):
+                        if not desc.startswith("$0.00 per") and not desc.startswith("USD 0.0 per") and not desc.startswith("0.00 CNY per"):
                             ret.append(f"Region: {region}, Price per unit: {price}, description: {desc}")
         return ret
     

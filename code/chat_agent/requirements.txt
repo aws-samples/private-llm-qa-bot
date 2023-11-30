@@ -6,3 +6,4 @@ langchainhub==0.1.13
 requests_aws4auth==1.2.2
 openai==0.27.6
 tiktoken==0.3.3
+requests

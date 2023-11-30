@@ -80,7 +80,9 @@ def create_error_response(code: int, message: str) -> JSONResponse:
 async def validation_exception_handler(request, exc):
     return create_error_response(400, str(exc))
 
-
+@app.get("/ping")
+async def ping():
+    return APIRequestResponse(message='ok')
 
 @app.post("/v1/get_ec2_price",dependencies=[Depends(check_api_key)])
 async def get_ec2_price(request: EC2PriceAPIRequest):

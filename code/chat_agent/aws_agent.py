@@ -11,6 +11,7 @@ from langchain.chains import LLMChain
 from langchain.llms.bedrock import Bedrock
 from botocore.exceptions import ClientError
 import boto3
+import requests
 from pydantic import BaseModel
 
 
@@ -43,13 +44,13 @@ API_SCHEMA = [
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "instance_type": {
+                         "instance_type": {
                             "type": "string",
-                            "description": "the AWS ec2 instance type, for example, c5.xlarge, m5.large, t3.mirco, g4dn.2xlarge",
+                            "description": "the AWS ec2 instance type, for example, c5.xlarge, m5.large, t3.mirco, g4dn.2xlarge, if it is a partial of the instance type, you should try to auto complete it. for example, if it is r6g.2x, you can complete it as r6g.2xlarge",
                         },
                         "region": {
                             "type": "string",
-                            "description": "the AWS region name where the ec2 is located in, for example us-east-1, us-west-1",
+                            "description": "the AWS region name where the ec2 is located in, for example us-east-1, us-west-1, if it is common words such as 'us east 1','美东1','美西2',you should try to normalize it to standard AWS region name, for example, 'us east 1' is normalized to 'us-east-1', '美东2' is normalized to 'us-east-2','美西2' is normalized to 'us-west-2','北京' is normalized to 'cn-north-1', '宁夏' is normalized to 'cn-northwest-1', '中国区' is normalized to 'cn-north-1'",
                         },
                         "os": {
                             "type": "string",
@@ -207,8 +208,7 @@ class llmContentHandler(LLMContentHandler):
         return response_json["outputs"]
 
 def service_org(**args):
-    context = """empty"""
-    
+    context = """placeholder"""
     prompt_tmp = """
         你是云服务AWS的智能客服机器人AWSBot
 
@@ -268,66 +268,80 @@ def service_org(**args):
 
 
 
+def remote_proxy_call(**args):
+    api = os.environ.get('api_endpoint')
+    key = os.environ.get('api_key')
+    payload = json.dumps(args)
+    if not api or not key:
+        return None
+    try:
+        resp = requests.post(api,headers={"Content-Type":"application/json","Authorization":f"Bearer {key}"},data=payload)
+        data = resp.json()
+        return data.get('message')
+    except Exception as e:
+        print(e)
+        return None
+    
+    
 
 def query_ec2_price(**args) -> Union[str,None]:  
     region = args.get('region','us-east-1')
     term = args.get('term','OnDemand')
     instance_type = args.get('instance_type','m5.large')
     os = args.get('os','Linux')
-    if not region.startswith('cn-'):
-        pricing_client = boto3.client('pricing', region_name='us-east-1')
+    if region.startswith('cn-'):
+        return remote_proxy_call(**args)
     else:
-        pricing_client = boto3.client('pricing', region_name='cn-northwest-1')
-
-    def parse_price(products,term):
-        ret = []
-        for product in products:
-            product = json.loads(product)
-            on_demand_terms = product['terms'].get(term)
-            if on_demand_terms:
-                for _, term_details in on_demand_terms.items():
-                    price_dimensions = term_details['priceDimensions']
-                    for _, price_dimension in price_dimensions.items():
-                        price = price_dimension['pricePerUnit']['USD']
-                        desc =  price_dimension['description']
-                        if not desc.startswith("$0.00 per") and not desc.startswith("USD 0.0 per"):
-                            ret.append(f"Price per unit: {price}, description: {desc}")
-        return ret
-    
-    response = pricing_client.get_products(
-        ServiceCode='AmazonEC2',
-        Filters=[
-            {
-                'Type': 'TERM_MATCH',
-                'Field': 'instanceType',
-                'Value': instance_type 
-            },
-            {
-                'Type': 'TERM_MATCH',
-                'Field': 'ServiceCode',
-                'Value': 'AmazonEC2'
-            },
-            {
-                'Type': 'TERM_MATCH',
-                'Field': 'regionCode',
-                'Value': region
-            },
-            {
-                'Type': 'TERM_MATCH',
-                'Field': 'tenancy',
-                'Value': 'Shared'
-            },
-            {
-                'Type': 'TERM_MATCH',
-                'Field': 'operatingSystem',
-                'Value': os
-            },
-        ]
-    )
-    products = response['PriceList']
-    prices = parse_price(products,term=term)
-    
-    return '\n'.join(prices) if prices else None
+        pricing_client = boto3.client('pricing', region_name='us-east-1')
+        def parse_price(products,term):
+            ret = []
+            for product in products:
+                product = json.loads(product)
+                on_demand_terms = product['terms'].get(term)
+                if on_demand_terms:
+                    for _, term_details in on_demand_terms.items():
+                        price_dimensions = term_details['priceDimensions']
+                        for _, price_dimension in price_dimensions.items():
+                            price = price_dimension['pricePerUnit']['USD']
+                            desc =  price_dimension['description']
+                            if not desc.startswith("$0.00 per") and not desc.startswith("USD 0.0 per"):
+                                ret.append(f"Price per unit: {price}, description: {desc}")
+            return ret
+        
+        response = pricing_client.get_products(
+            ServiceCode='AmazonEC2',
+            Filters=[
+                {
+                    'Type': 'TERM_MATCH',
+                    'Field': 'instanceType',
+                    'Value': instance_type 
+                },
+                {
+                    'Type': 'TERM_MATCH',
+                    'Field': 'ServiceCode',
+                    'Value': 'AmazonEC2'
+                },
+                {
+                    'Type': 'TERM_MATCH',
+                    'Field': 'regionCode',
+                    'Value': region
+                },
+                {
+                    'Type': 'TERM_MATCH',
+                    'Field': 'tenancy',
+                    'Value': 'Shared'
+                },
+                {
+                    'Type': 'TERM_MATCH',
+                    'Field': 'operatingSystem',
+                    'Value': os
+                },
+            ]
+        )
+        products = response['PriceList']
+        prices = parse_price(products,term=term)
+        
+        return '\n'.join(prices) if prices else None
 
 @handle_error
 def lambda_handler(event, context):
