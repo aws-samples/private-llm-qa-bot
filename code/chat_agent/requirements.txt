@@ -1,7 +1,7 @@
 boto3==1.28.70
 botocore==1.31.70
 huggingface-hub==0.17.3
-langchain==0.0.339
+langchain==0.0.330
 langchainhub==0.1.13
 requests_aws4auth==1.2.2
 openai==0.27.6
