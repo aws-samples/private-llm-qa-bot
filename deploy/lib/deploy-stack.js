@@ -177,6 +177,7 @@ export class DeployStack extends Stack {
         knn_qd_threshold_hard:'0.6',
         knn_qd_threshold_soft:'0.8',
         lambda_feedback:"lambda_feedback",
+        intention_list:"ec2_price,service_role,service_availability",
         neighbors:process.env.neighbors,
         TOP_K:process.env.TOP_K
       },
