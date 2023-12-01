@@ -20,7 +20,7 @@
             ]
         }
     },
-    "example":[
+    "examples":[
         {
             "query":"中国区有没有glue interactive session?",
             "detection":{

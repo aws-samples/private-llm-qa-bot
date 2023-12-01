@@ -242,6 +242,12 @@ def iterate_examples(file_content, object_key, smr_client, index_name, endpoint_
     json_obj = json.loads(file_content)
 
     api_schema = json_obj["api_schema"] if "api_schema" in json_obj.keys() else ""
+    json_arr = json_obj["examples"]
+    
+    # print("api_schema:")
+    # print(api_schema)
+    # print("json_arr:")
+    # print(json_arr)
 
     it = iter(json_arr)
     example_batches = batch_generator(it, batch_size=EMB_BATCH_SIZE)
@@ -252,9 +258,9 @@ def iterate_examples(file_content, object_key, smr_client, index_name, endpoint_
 
         embeddings = get_embedding(smr_client, queries, endpoint_name)
         for i, query in enumerate(queries):
-            print("query:")
-            print(query)
-            document = { "publish_date": publish_date, "detection" : detections[i], "query" : queries[i], "api_schema" : api_schema, "embedding" : embeddings[i]}
+            # print("query:")
+            # print(query)
+            document = { "publish_date": publish_date, "detection" : detections[i], "query" : queries[i], "api_schema" : json.dumps(api_schema, ensure_ascii=False), "embedding" : embeddings[i]}
             yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document).encode('utf-8')).hexdigest()}
             
 def link_header(semantic_snippets):
@@ -423,7 +429,7 @@ def parse_html_to_json(html_docs):
     json_content = json.dumps(results, ensure_ascii=False)
     return json_content
 
-## parse faq in csv format. Question	Answer
+## parse faq in csv format. Question    Answer
 def parse_csv_to_json(file_content):
     import csv
     csv_data = file_content.splitlines()

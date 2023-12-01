@@ -27,7 +27,7 @@
             ]
         }
     },
-    "example":[
+    "examples":[
         {
             "query":"quicksight的GTMS是谁",
             "detection":{

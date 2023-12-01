@@ -1,9 +1,7 @@
 {
     "api_schema":{
-        {
-            "name": "QA",
-            "description": "answer question according to searched relevant content"
-        }
+        "name": "QA",
+        "description": "answer question according to searched relevant content"
     },
     "examples":[
         {

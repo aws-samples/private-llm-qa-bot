@@ -1,9 +1,7 @@
 {
     "api_schema":{
-        {
-            "name": "chat",
-            "description": "chat with AI"
-        }
+        "name": "chat",
+        "description": "chat with AI"
     },
     "examples":[
     {
