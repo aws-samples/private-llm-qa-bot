@@ -243,6 +243,7 @@ def iterate_examples(file_content, object_key, smr_client, index_name, endpoint_
 
     api_schema = json_obj["api_schema"] if "api_schema" in json_obj.keys() else ""
     json_arr = json_obj["examples"]
+    doc_title = object_key
     
     # print("api_schema:")
     # print(api_schema)
@@ -260,7 +261,7 @@ def iterate_examples(file_content, object_key, smr_client, index_name, endpoint_
         for i, query in enumerate(queries):
             # print("query:")
             # print(query)
-            document = { "publish_date": publish_date, "detection" : detections[i], "query" : queries[i], "api_schema" : json.dumps(api_schema, ensure_ascii=False), "embedding" : embeddings[i]}
+            document = { "publish_date": publish_date, "detection" : detections[i], "query" : queries[i], "api_schema" : json.dumps(api_schema, ensure_ascii=False), "doc_title":doc_title, "embedding" : embeddings[i]}
             yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document).encode('utf-8')).hexdigest()}
             
 def link_header(semantic_snippets):

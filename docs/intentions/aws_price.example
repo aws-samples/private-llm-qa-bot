@@ -20,6 +20,10 @@
                 "term": {
                     "type": "string",
                     "description": "the payment term, the valid value should be 'OnDemand' or 'Reserved' "
+                },
+                "purchase_option": {
+                    "type": "string",
+                    "description": "the purchase option of Reserved instance, the valid value should be 'No Upfront', 'Partial Upfront' or 'All Upfront' "
                 }
             },
             "required": ["instance_type"]
