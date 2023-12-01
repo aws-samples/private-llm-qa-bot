@@ -672,9 +672,11 @@ def chat_agent(query, intention, use_bedrock="True"):
                                            InvocationType='RequestResponse',
                                            Payload=json.dumps(msg))
     payload_json = json.loads(response.get('Payload').read())
-    answer = payload_json['body']
+    body = payload_json['body']
+    answer = body['answer']
+    ref_doc = body['ref_doc']
 
-    return answer
+    return answer,ref_doc
 
 def is_chinese(string):
     for char in string:
@@ -1376,13 +1378,16 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
     else:
         #call agent for other intentions
         TRACE_LOGGER.trace('**Using Agent...**')
-        TRACE_LOGGER.trace('**Answer:**')
         reply_stratgy = ReplyStratgy.AGENT
-        recall_knowledge,opensearch_knn_respose,opensearch_query_response = [],[],[]
         use_bedrock = "False"
         if llm_model_name.startswith('claude'):
             use_bedrock = "True"
-        answer = chat_agent(query_input, intention, use_bedrock=use_bedrock)
+        answer,ref_doc = chat_agent(query_input, intention, use_bedrock=use_bedrock)
+        recall_knowledge,opensearch_knn_respose,opensearch_query_response = [ref_doc],[],[]
+        TRACE_LOGGER.add_ref(f'\n\n**Refer to {len(recall_knowledge)} knowledge:**')
+        TRACE_LOGGER.add_ref(f"**[1]** {ref_doc}")
+        TRACE_LOGGER.trace(f'**Function call result:**\n\n{ref_doc}')
+        TRACE_LOGGER.trace('**Answer:**')
         if use_stream:
             TRACE_LOGGER.postMessage(answer)
 
