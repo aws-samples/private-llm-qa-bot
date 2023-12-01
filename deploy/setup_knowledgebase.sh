@@ -62,6 +62,7 @@ payload1="{
 
 # 创建chatbot-index索引
 echo $payload1
+curl -XDELETE "$OPENSEARCH_ENDPOINT/chatbot-index" -H "Content-Type: application/json"
 curl -XPUT "$OPENSEARCH_ENDPOINT/chatbot-index" -H "Content-Type: application/json" -d "$payload1"
 
 payload2="{
@@ -79,7 +80,7 @@ payload2="{
                \"type\": \"date\",
                \"format\": \"yyyy-MM-dd HH:mm:ss\"
            },
-           \"intention\" : {
+           \"detection\" : {
                \"type\" : \"keyword\"
            },
            \"query\": {
@@ -87,10 +88,10 @@ payload2="{
                \"analyzer\": \"ik_max_word\",
                \"search_analyzer\": \"ik_smart\"
            },
-           \"reply\": {
+           \"api_schema\": {
                \"type\": \"text\"
            },
-          \"doc_title\": {
+           \"doc_title\": {
                \"type\": \"keyword\"
            },
            \"embedding\": {
@@ -112,4 +113,5 @@ payload2="{
 
 # 创建chatbot-index索引
 echo $payload2
+curl -XDELETE "$OPENSEARCH_ENDPOINT/chatbot-example-index" -H "Content-Type: application/json"
 curl -XPUT "$OPENSEARCH_ENDPOINT/chatbot-example-index" -H "Content-Type: application/json" -d "$payload2"
