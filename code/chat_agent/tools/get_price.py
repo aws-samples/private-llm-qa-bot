@@ -55,10 +55,12 @@ def query_ec2_price(**args) -> Union[str,None]:
                         if is_valid:
                             for _, price_dimension in price_dimensions.items():
                                 price = price_dimension['pricePerUnit']['CNY'] if region.startswith('cn-') else price_dimension['pricePerUnit']['USD']
+                                dollar = 'CNY' if region.startswith('cn-') else 'USD'
                                 desc =  price_dimension['description']
                                 unit =  price_dimension['unit']
-                                if not desc.startswith("$0.00 per") and not desc.startswith("USD 0.0 per") and not desc.startswith("0.00 CNY per"):
-                                    ret.append(f"Purchase option: {option}, Lease contract length: {term_attri.get('LeaseContractLength')}, Offering Class: {term_attri.get('OfferingClass')}, Price per {unit}: {price}, description: {desc}")
+                                if not desc.startswith("$0.00 per") and not desc.startswith("USD 0.0 per") \
+                                        and not desc.startswith("0.00 CNY per") and not desc.startswith("CNY 0.0 per"):
+                                    ret.append(f"Purchase option: {option}, Lease contract length: {term_attri.get('LeaseContractLength')}, Offering Class: {term_attri.get('OfferingClass')}, Price per {unit}: {dollar} {price} , description: {desc}")
                 elif on_demand_terms:
                     for _, term_details in on_demand_terms.items():
                         price_dimensions = term_details['priceDimensions']

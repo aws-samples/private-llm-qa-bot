@@ -166,16 +166,16 @@ class AgentTools(BaseModel):
         answer = answer.strip()
         return answer
 
-    def run(self,query):
+    def run(self,query) ->Dict[str,str]:
         context,func_name = self.dispatch_function_call(query)
-        print(f"****function_call [{func_name}] result ****:\n{context}")
+        logger.info(f"****function_call [{func_name}] result ****:\n{context}")
         answer = self._add_context_answer(query,context)
+        ref_doc = f"本次回答基于使用工具[{func_name}]为您查询到结果:\n\n{context}\n\n"
         if answer: 
-            formated_answer = f"{answer} \n\n**[1]** 本次回答基于使用工具[{func_name}]为您查询到结果:\n\n{context}\n\n"
+            return answer,ref_doc
         else:
-            print(f"context is None, return default answer:{REFUSE_ANSWER}")
-            formated_answer = REFUSE_ANSWER
-        return formated_answer
+            return REFUSE_ANSWER,''
+        
 
 
 class APIException(Exception):
@@ -264,23 +264,14 @@ def lambda_handler(event, context):
     agent_tools = AgentTools(api_schema=API_SCHEMA,llm=llm)
     agent_tools.register_tool(name='query_ec2_price',func=query_ec2_price)
     agent_tools.register_tool(name='service_org',func=service_org)
-    answer = agent_tools.run(query)
-
-    # else:
-    #     return {
-    #     'statusCode': 200,
-    #     'headers': {'Content-Type': 'application/json'},
-    #     'body':f'抱歉关于"{intention}"的功能还在开发中，暂时无法回答'
-    #     }
-    
-    log_dict = {"answer" : answer , "question": query }
-    log_dict_str = json.dumps(log_dict, ensure_ascii=False)
-    logger.info(log_dict_str)
+    answer,ref_doc = agent_tools.run(query)
     pattern = r'^根据[^，,]*[,|，]'
     answer = re.sub(pattern, "", answer)
-    logger.info(answer)
+    log_dict = {"answer" : answer ,"ref_doc":ref_doc, "question": query }
+    log_dict_str = json.dumps(log_dict, ensure_ascii=False)
+    logger.info(log_dict_str)
     return {
         'statusCode': 200,
         'headers': {'Content-Type': 'application/json'},
-        'body':answer
+        'body':log_dict
     }
