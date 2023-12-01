@@ -1,47 +1,70 @@
-[
-    {
-        "query":"g4dn的价格是多少",
-        "intention":"价格咨询",
-        "reply":"-"
+{
+    "api_schema" : {
+        "name": "ec2_price",
+        "description": "query the price of AWS ec2 instance",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "instance_type": {
+                    "type": "string",
+                    "description": "the AWS ec2 instance type, for example, c5.xlarge, m5.large, t3.mirco, g4dn.2xlarge"
+                },
+                "region": {
+                    "type": "string",
+                    "description": "the AWS region name where the ec2 is located in, for example us-east-1, us-west-1"
+                },
+                "os": {
+                    "type": "string",
+                    "description": "the operating system of ec2 instance, the valid value should be 'Linux' or 'Windows'"
+                },
+                "term": {
+                    "type": "string",
+                    "description": "the payment term, the valid value should be 'OnDemand' or 'Reserved' "
+                },
+                "purchase_option": {
+                    "type": "string",
+                    "description": "the purchase option of Reserved instance, the valid value should be 'No Upfront', 'Partial Upfront' or 'All Upfront' "
+                }
+            },
+            "required": ["instance_type"]
+        }
     },
-    {
-        "query":"Athena查询的单价是多少？",
-        "intention":"价格咨询",
-        "reply":"-"
-    },
-    {
-        "query":"Athena是如何计费的？",
-        "intention":"价格咨询",
-        "reply":"-"
-    },
-    {
-        "query":"AWS Glue的 DPU Hour价格是多少？ ",
-        "intention":"价格咨询",
-        "reply":"-"
-    },
-    {
-        "query":"AWS Glue的交互式会话的计算单价是多少？ ",
-        "intention":"价格咨询",
-        "reply":"-"
-    },
-    {
-        "query":"Aurora的 I/O 费率是多少 ",
-        "intention":"价格咨询",
-        "reply":"-"
-    },
-    {
-        "query":"Aurora备份存储怎么收费？",
-        "intention":"价格咨询",
-        "reply":"-"
-    },
-    {
-        "query":"Lex的输入请求的单价是多少",
-        "intention":"价格咨询",
-        "reply":"-"
-    },
-    {
-        "query":"SageMaker中ml.t3.large的notebook怎么收费？",
-        "intention":"价格咨询",
-        "reply":"-"
-    }
-]
+    "examples" : [
+        {
+            "query":"g4dn的价格是多少",
+            "detection": {"func" : "ec2_price", "param" : {"instance_type" : "g4dn", "region":""}}
+        },
+        {
+            "query":"g4dn在美西2的价格？",
+            "detection": {"func" : "ec2_price", "param" : {"instance_type" : "g4dn", "region":"us-west-2"}}
+        },
+        {
+            "query":"c5.xlarge在美东1的价格？",
+            "detection": {"func" : "ec2_price", "param" : {"instance_type" : "c5.xlarge", "region":"us-east-1"}}
+        },
+        {
+            "query":"c5.xlarge的windows实例价格？",
+            "detection": {"func" : "ec2_price", "param" : {"instance_type" : "c5.xlarge", "os":"Windows"}}
+        },
+        {
+            "query":"c5.2xlarge的OnDemand什么价格？",
+            "detection": {"func" : "ec2_price", "param" : {"instance_type" : "c5.xlarge", "term": "OnDemand"}}
+        },
+        {
+            "query":"c5.4xlarge的按需实例什么价格？",
+            "detection": {"func" : "ec2_price", "param" : {"instance_type" : "c5.xlarge", "term": "OnDemand"}}
+        },
+        {
+            "query":"t3.mirco在美西2的Linux实例什么价格？",
+            "detection": {"func" : "ec2_price", "param" : {"instance_type" : "t3.mirco", "region":"us-west-2", "os":"Linux"}}
+        },
+        {
+            "query":"g4dn.2xlarge在美西2的OnDemand什么价格？",
+            "detection": {"func" : "ec2_price", "param" : {"instance_type" : "g4dn.2xlarge", "region":"us-west-2", "term": "OnDemand"}}
+        },
+        {
+            "query":"SageMaker中ml.t3.large的什么价格？",
+            "detection": {"func" : "ec2_price", "param" : {"instance_type" : "ml.t3.large"}}
+        }
+    ]
+}
