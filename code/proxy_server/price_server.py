@@ -65,6 +65,7 @@ class EC2PriceAPIRequest(BaseModel):
     term : Optional[str] = 'OnDemand'
     os : Optional[str] = 'Linux'
     region: Optional[str] = 'cn-northwest-1'
+    purchase_option: Optional[str] = ''
 
 class APIRequestResponse(BaseModel):
     message:str
@@ -91,7 +92,8 @@ async def get_ec2_price(request: EC2PriceAPIRequest):
             'instance_type':request.instance_type,
                   'term':request.term,
                   'os':request.os,
-                  'region':request.region}
+                  'region':request.region,
+                  'purchase_option':request.purchase_option}
     print(input_args)
     ret =  query_ec2_price(**input_args)
     message = ret if ret else ''

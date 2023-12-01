@@ -13,7 +13,8 @@ from botocore.exceptions import ClientError
 import boto3
 import requests
 from pydantic import BaseModel
-
+from tools.get_price import query_ec2_price
+from tools.service_org_demo import service_org
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -54,11 +55,15 @@ API_SCHEMA = [
                         },
                         "os": {
                             "type": "string",
-                            "description": "the operating system of ec2 instance, the valid value should be 'Linux' or 'Windows' ",
+                            "description": "the operating system of ec2 instance,the valid value should be 'Linux' or 'Windows' ",
                         },
                         "term": {
                             "type": "string",
-                            "description": "the payment term, the valid value should be 'OnDemand' or 'Reserved' ",
+                            "description": "the payment term,the valid value should be 'OnDemand' or 'Reserved' ",
+                        },
+                        "purchase_option": {
+                            "type": "string",
+                            "description": "the purchase option of Reserved instance, the valid value should be 'No Upfront', 'Partial Upfront' or 'All Upfront' ",
                         },
                     },
                     "required": ["instance_type"],
@@ -207,141 +212,6 @@ class llmContentHandler(LLMContentHandler):
         response_json = json.loads(output.read().decode("utf-8"))
         return response_json["outputs"]
 
-def service_org(**args):
-    context = """placeholder"""
-    prompt_tmp = """
-        你是云服务AWS的智能客服机器人AWSBot
-
-        给你 SSO (Service Specialist Organization) 的组织信息
-        {context}
-
-        Job role (角色, 岗位类型) description:
-        - GTMS: Go To Market Specialist
-        - SS: Specialist Sales
-        - SSA: Specialist Solution Architechure
-        - TPM: 
-        - PM: Project Manager
-
-        Scope means job scope
-        service_name equal to business unit
-
-        If the context does not contain the knowleage for the question, truthfully says you does not know.
-        Don't put two people's names together. For example, zheng zhang not equal to zheng hao and xueqing not equal to Xueqing Lai
-
-        Find out the most relevant context, and give the answer according to the context
-        Skip the preamble; go straight to the point.
-        Only give the final answer.
-        Do not repeat similar answer.
-        使用中文回复，人名不需要按照中文习惯回复
-
-        {question}
-        """
-
-    def create_prompt_templete(prompt_template):
-        PROMPT = PromptTemplate(
-            template=prompt_template,
-            input_variables=["context",'question','chat_history']
-        )
-        return PROMPT
-
-
-    boto3_bedrock = boto3.client(
-            service_name="bedrock-runtime",
-            region_name=BEDROCK_REGION
-        )
-    
-    parameters = {
-        "max_tokens_to_sample": 8096,
-        "stop_sequences": ["\nObservation"],
-        "temperature":0.01,
-        "top_p":0.85
-    }
-        
-    model_id = "anthropic.claude-v2"
-    llm = Bedrock(model_id=model_id, client=boto3_bedrock, model_kwargs=parameters)
-    
-    prompt = create_prompt_templete(prompt_tmp) 
-    llmchain = LLMChain(llm=llm,verbose=False,prompt = prompt)
-    answer = llmchain.run({'question':args.get('query'), "context": context})
-    answer = answer.strip()
-    return answer
-
-
-
-def remote_proxy_call(**args):
-    api = os.environ.get('api_endpoint')
-    key = os.environ.get('api_key')
-    payload = json.dumps(args)
-    if not api or not key:
-        return None
-    try:
-        resp = requests.post(api,headers={"Content-Type":"application/json","Authorization":f"Bearer {key}"},data=payload)
-        data = resp.json()
-        return data.get('message')
-    except Exception as e:
-        print(e)
-        return None
-    
-    
-
-def query_ec2_price(**args) -> Union[str,None]:  
-    region = args.get('region','us-east-1')
-    term = args.get('term','OnDemand')
-    instance_type = args.get('instance_type','m5.large')
-    os = args.get('os','Linux')
-    if region.startswith('cn-'):
-        return remote_proxy_call(**args)
-    else:
-        pricing_client = boto3.client('pricing', region_name='us-east-1')
-        def parse_price(products,term):
-            ret = []
-            for product in products:
-                product = json.loads(product)
-                on_demand_terms = product['terms'].get(term)
-                if on_demand_terms:
-                    for _, term_details in on_demand_terms.items():
-                        price_dimensions = term_details['priceDimensions']
-                        for _, price_dimension in price_dimensions.items():
-                            price = price_dimension['pricePerUnit']['USD']
-                            desc =  price_dimension['description']
-                            if not desc.startswith("$0.00 per") and not desc.startswith("USD 0.0 per"):
-                                ret.append(f"Price per unit: {price}, description: {desc}")
-            return ret
-        
-        response = pricing_client.get_products(
-            ServiceCode='AmazonEC2',
-            Filters=[
-                {
-                    'Type': 'TERM_MATCH',
-                    'Field': 'instanceType',
-                    'Value': instance_type 
-                },
-                {
-                    'Type': 'TERM_MATCH',
-                    'Field': 'ServiceCode',
-                    'Value': 'AmazonEC2'
-                },
-                {
-                    'Type': 'TERM_MATCH',
-                    'Field': 'regionCode',
-                    'Value': region
-                },
-                {
-                    'Type': 'TERM_MATCH',
-                    'Field': 'tenancy',
-                    'Value': 'Shared'
-                },
-                {
-                    'Type': 'TERM_MATCH',
-                    'Field': 'operatingSystem',
-                    'Value': os
-                },
-            ]
-        )
-        products = response['PriceList']
-        prices = parse_price(products,term=term)
-        
-        return '\n'.join(prices) if prices else None
 
 @handle_error
 def lambda_handler(event, context):
