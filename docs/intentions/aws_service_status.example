@@ -1,37 +1,95 @@
-[
-    {
-        "query":"中国区有没有glue interactive session?",
-        "intention":"服务是否可用查询",
-        "reply":"-"
+{
+    "api_schema":{
+        "name":"service_availability",
+        "description":"query the availability of service in specified region",
+        "parameters":{
+            "type":"object",
+            "properties":{
+                "service":{
+                    "type":"string",
+                    "description":"the AWS service name"
+                },
+                "region":{
+                    "type":"string",
+                    "description":"the AWS region name where the service is located in, for example us-east-1(N.Virginal), us-west-2(Oregon), eu-west-2(London), ap-southeast-1(Singapore)"
+                }
+            },
+            "required":[
+                "service",
+                "region"
+            ]
+        }
     },
-    {
-        "query":"北京region 有没有clean room服务？",
-        "intention":"服务是否可用查询",
-        "reply":"-"
-    },
-    {
-        "query":"zero-etl在中国可用了吗？",
-        "intention":"服务是否可用查询",
-        "reply":"-"
-    },
-    {
-        "query":"中国区sagemaker有jumpstart吗",
-        "intention":"服务是否可用查询",
-        "reply":"-"
-    },
-    {
-        "query":"quicksight在中国区可用吗？",
-        "intention":"服务是否可用查询",
-        "reply":"-"
-    },
-    {
-        "query":"quicksight在伦敦region可用吗？",
-        "intention":"服务是否可用查询",
-        "reply":"-"
-    },
-    {
-        "query":"DataZone在global region GA了吗？",
-        "intention":"服务是否可用查询",
-        "reply":"-"
-    }
-]
+    "examples":[
+        {
+            "query":"中国区有没有glue interactive session?",
+            "detection":{
+                "func":"service_availability",
+                "parameters":{
+                    "service":"glue interactive session",
+                    "region":"cn-north-1"
+                }
+            }
+        },
+        {
+            "query":"北京region 有没有clean room服务？",
+            "detection":{
+                "func":"service_availability",
+                "parameters":{
+                    "service":"clean room",
+                    "region":"cn-north-1"
+                }
+            }
+        },
+        {
+            "query":"zero-etl在中国可用了吗？",
+            "detection":{
+                "func":"service_availability",
+                "parameters":{
+                    "service":"zero-etl",
+                    "region":"cn-north-1"
+                }
+            }
+        },
+        {
+            "query":"中国区sagemaker有jumpstart吗",
+            "detection":{
+                "func":"service_availability",
+                "parameters":{
+                    "service":"jumpstart",
+                    "region":"cn-north-1"
+                }
+            }
+        },
+        {
+            "query":"quicksight在中国区可用吗？",
+            "detection":{
+                "func":"service_availability",
+                "parameters":{
+                    "service":"quicksight",
+                    "region":"cn-north-1"
+                }
+            }
+        },
+        {
+            "query":"quicksight在伦敦region可用吗？",
+            "detection":{
+                "func":"service_availability",
+                "parameters":{
+                    "service":"quicksight",
+                    "region":"eu-west-2"
+                }
+            }
+        },
+        {
+            "query":"DataZone在global region GA了吗？",
+            "detection":{
+                "func":"service_availability",
+                "parameters":{
+                    "service":"DataZone",
+                    "region":"us-east-1"
+                }
+            }
+        }
+    ]
+}

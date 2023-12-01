@@ -622,15 +622,17 @@ def handle_error(func):
 
     return wrapper
 
-def detect_intention(query, fewshot_cnt=5, use_bedrock="True"):
-    msg = {"fewshot_cnt":fewshot_cnt, "query": query, "use_bedrock" : use_bedrock }
+def detect_intention(query, fewshot_cnt=5):
+    msg = {"fewshot_cnt":fewshot_cnt, "query": query}
     invoke_response = lambda_client.invoke(FunctionName="Detect_Intention",
                                            InvocationType='RequestResponse',
                                            Payload=json.dumps(msg))
     response_body = invoke_response['Payload']
 
     response_str = response_body.read().decode("unicode_escape")
-    return response_str.strip('"')
+    response_str = response_str.strip('"')
+
+    return json.loads(response_str)
 
 def rewrite_query(query, session_history, round_cnt=2, use_bedrock="True"):
     logger.info(f"session_history {str(session_history)}")
@@ -1232,7 +1234,8 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         else:
             TRACE_LOGGER.trace(f"**No cache found**")
 
-    intention = '知识问答'
+    detection = {'func': 'QA'}
+    intention = detection['func']
     global INTENTION_LIST
     other_intentions = INTENTION_LIST.split(',')
 
@@ -1240,15 +1243,16 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
     if use_qa and not cache_answer and len(other_intentions) > 0 and len(other_intentions[0]) > 1:
         before_detect = time.time()
         TRACE_LOGGER.trace(f'**Detecting intention...**')
-        intention = detect_intention(query_input, fewshot_cnt=5, use_bedrock="True")
+        detection = detect_intention(query_input, fewshot_cnt=5)
+        intention = detection['func']
         elpase_time_detect = time.time() - before_detect
-        logger.info(f'intention: {intention}')
-        logger.info(f'running time of detecting intention : {elpase_time_detect:.3f}s')
-        TRACE_LOGGER.trace(f'**Running time of detecting intention: {elpase_time_detect:.3f}s**')
+        logger.info(f'detection: {detection}')
+        logger.info(f'running time of detecting : {elpase_time_detect:.3f}s')
+        TRACE_LOGGER.trace(f'**Running time of detecting: {elpase_time_detect:.3f}s**')
         TRACE_LOGGER.trace(f'**Detected intention: {intention}**')
     
     if not use_qa:
-        intention = '闲聊'
+        intention = 'chat'
 
     if cache_answer:
         TRACE_LOGGER.trace('**Use Cache answer:**')
@@ -1258,7 +1262,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
             TRACE_LOGGER.postMessage(cache_answer)
         recall_knowledge,opensearch_knn_respose,opensearch_query_response = [],[],[]
 
-    elif intention == '闲聊':##如果不使用QA
+    elif intention == 'chat':##如果不使用QA
         TRACE_LOGGER.trace('**Using Non-RAG Chat...**')
         TRACE_LOGGER.trace('**Answer:**')
         reply_stratgy = ReplyStratgy.LLM_ONLY
@@ -1271,7 +1275,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         final_prompt = prompt_template.format(question=query_input,role_bot=B_Role,chat_history=chat_history)
         recall_knowledge,opensearch_knn_respose,opensearch_query_response = [],[],[]
 
-    elif intention == '知识问答': ##如果使用QA
+    elif intention == 'QA': ##如果使用QA
         # 2. aos retriever
         TRACE_LOGGER.trace('**Using RAG Chat...**')
         TRACE_LOGGER.trace('**Retrieving knowledge...**')
@@ -1376,6 +1380,8 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
             # print(final_prompt)
             # print(answer)
     else:
+        #todo: use detection to following stuff
+
         #call agent for other intentions
         TRACE_LOGGER.trace('**Using Agent...**')
         reply_stratgy = ReplyStratgy.AGENT
