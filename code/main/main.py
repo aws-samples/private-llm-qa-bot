@@ -630,6 +630,7 @@ def detect_intention(query, fewshot_cnt=5):
     response_body = invoke_response['Payload']
 
     response_str = response_body.read().decode("unicode_escape")
+    response_str = response_str.strip('"')
 
     return json.loads(response_str)
 
@@ -1241,7 +1242,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         before_detect = time.time()
         TRACE_LOGGER.trace(f'**Detecting intention...**')
         detection = detect_intention(query_input, fewshot_cnt=5)
-
+        intention = detection['func']
         elpase_time_detect = time.time() - before_detect
         logger.info(f'detection: {detection}')
         logger.info(f'running time of detecting : {elpase_time_detect:.3f}s')

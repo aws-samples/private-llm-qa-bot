@@ -292,6 +292,6 @@ def lambda_handler(event, context):
     try:
         ret = json.loads(answer)
     except Exception as e:
-        logger.info("Fail to detect function, caused by {}".format(str(e))
+        logger.info("Fail to detect function, caused by {}".format(str(e)))
 
     return ret
