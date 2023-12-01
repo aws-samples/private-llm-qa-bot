@@ -11,8 +11,10 @@ from langchain.chains import LLMChain
 from langchain.llms.bedrock import Bedrock
 from botocore.exceptions import ClientError
 import boto3
+import requests
 from pydantic import BaseModel
-
+from tools.get_price import query_ec2_price
+from tools.service_org_demo import service_org
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -43,21 +45,25 @@ API_SCHEMA = [
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "instance_type": {
+                         "instance_type": {
                             "type": "string",
                             "description": "the AWS ec2 instance type, for example, c5.xlarge, m5.large, t3.mirco, g4dn.2xlarge, if it is a partial of the instance type, you should try to auto complete it. for example, if it is r6g.2x, you can complete it as r6g.2xlarge",
                         },
                         "region": {
                             "type": "string",
-                            "description": "the AWS region name where the ec2 is located in, for example us-east-1, us-west-1, if it is common words such as 'us east 1','美东1','美西2',you should try to normalize it to standard AWS region name, for example, 'us east 1' is normalized to 'us-east-1', '美东2' is normalized to 'us-east-2','美西2' is normalized to 'us-west-2'",
+                            "description": "the AWS region name where the ec2 is located in, for example us-east-1, us-west-1, if it is common words such as 'us east 1','美东1','美西2',you should try to normalize it to standard AWS region name, for example, 'us east 1' is normalized to 'us-east-1', '美东2' is normalized to 'us-east-2','美西2' is normalized to 'us-west-2','北京' is normalized to 'cn-north-1', '宁夏' is normalized to 'cn-northwest-1', '中国区' is normalized to 'cn-north-1'",
                         },
                         "os": {
                             "type": "string",
-                            "description": "the operating system of ec2 instance, the valid value should be 'Linux' or 'Windows' ",
+                            "description": "the operating system of ec2 instance,the valid value should be 'Linux' or 'Windows' ",
                         },
                         "term": {
                             "type": "string",
-                            "description": "the payment term, the valid value should be 'OnDemand' or 'Reserved' ",
+                            "description": "the payment term,the valid value should be 'OnDemand' or 'Reserved' ",
+                        },
+                        "purchase_option": {
+                            "type": "string",
+                            "description": "the purchase option of Reserved instance, the valid value should be 'No Upfront', 'Partial Upfront' or 'All Upfront' ",
                         },
                     },
                     "required": ["instance_type"],
@@ -160,16 +166,16 @@ class AgentTools(BaseModel):
         answer = answer.strip()
         return answer
 
-    def run(self,query):
+    def run(self,query) ->Dict[str,str]:
         context,func_name = self.dispatch_function_call(query)
-        print(f"****function_call [{func_name}] result ****:\n{context}")
+        logger.info(f"****function_call [{func_name}] result ****:\n{context}")
         answer = self._add_context_answer(query,context)
+        ref_doc = f"本次回答基于使用工具[{func_name}]为您查询到结果:\n\n{context}\n\n"
         if answer: 
-            formated_answer = f"{answer} \n\n**[1]** 本次回答基于使用工具[{func_name}]为您查询到结果:\n\n{context}\n\n"
+            return answer,ref_doc
         else:
-            print(f"context is None, return default answer:{REFUSE_ANSWER}")
-            formated_answer = REFUSE_ANSWER
-        return formated_answer
+            return REFUSE_ANSWER,''
+        
 
 
 class APIException(Exception):
@@ -206,128 +212,6 @@ class llmContentHandler(LLMContentHandler):
         response_json = json.loads(output.read().decode("utf-8"))
         return response_json["outputs"]
 
-def service_org(**args):
-    context = """placeholder"""
-
-    prompt_tmp = """
-        你是云服务AWS的智能客服机器人AWSBot
-
-        给你 SSO (Service Specialist Organization) 的组织信息
-        {context}
-
-        Job role (角色, 岗位类型) description:
-        - GTMS: Go To Market Specialist
-        - SS: Specialist Sales
-        - SSA: Specialist Solution Architechure
-        - TPM: 
-        - PM: Project Manager
-
-        Scope means job scope
-        service_name equal to business unit
-
-        If the context does not contain the knowleage for the question, truthfully says you does not know.
-        Don't put two people's names together. For example, zheng zhang not equal to zheng hao and xueqing not equal to Xueqing Lai
-
-        Find out the most relevant context, and give the answer according to the context
-        Skip the preamble; go straight to the point.
-        Only give the final answer.
-        Do not repeat similar answer.
-        使用中文回复，人名不需要按照中文习惯回复
-
-        {question}
-        """
-
-    def create_prompt_templete(prompt_template):
-        PROMPT = PromptTemplate(
-            template=prompt_template,
-            input_variables=["context",'question','chat_history']
-        )
-        return PROMPT
-
-
-    boto3_bedrock = boto3.client(
-            service_name="bedrock-runtime",
-            region_name=BEDROCK_REGION
-        )
-    
-    parameters = {
-        "max_tokens_to_sample": 8096,
-        "stop_sequences": ["\nObservation"],
-        "temperature":0.01,
-        "top_p":0.85
-    }
-        
-    model_id = "anthropic.claude-v2"
-    llm = Bedrock(model_id=model_id, client=boto3_bedrock, model_kwargs=parameters)
-    
-    prompt = create_prompt_templete(prompt_tmp) 
-    llmchain = LLMChain(llm=llm,verbose=False,prompt = prompt)
-    answer = llmchain.run({'question':args.get('query'), "context": context})
-    answer = answer.strip()
-    return answer
-
-
-
-
-def query_ec2_price(**args) -> Union[str,None]:  
-    region = args.get('region','us-east-1')
-    term = args.get('term','OnDemand')
-    instance_type = args.get('instance_type','m5.large')
-    os = args.get('os','Linux')
-    if not region.startswith('cn-'):
-        pricing_client = boto3.client('pricing', region_name='us-east-1')
-    else:
-        pricing_client = boto3.client('pricing', region_name='cn-northwest-1')
-
-    def parse_price(products,term):
-        ret = []
-        for product in products:
-            product = json.loads(product)
-            on_demand_terms = product['terms'].get(term)
-            if on_demand_terms:
-                for _, term_details in on_demand_terms.items():
-                    price_dimensions = term_details['priceDimensions']
-                    for _, price_dimension in price_dimensions.items():
-                        price = price_dimension['pricePerUnit']['USD']
-                        desc =  price_dimension['description']
-                        if not desc.startswith("$0.00 per") and not desc.startswith("USD 0.0 per"):
-                            ret.append(f"Region:{region}, Price per unit: {price}, description: {desc}")
-        return ret
-    
-    response = pricing_client.get_products(
-        ServiceCode='AmazonEC2',
-        Filters=[
-            {
-                'Type': 'TERM_MATCH',
-                'Field': 'instanceType',
-                'Value': instance_type 
-            },
-            {
-                'Type': 'TERM_MATCH',
-                'Field': 'ServiceCode',
-                'Value': 'AmazonEC2'
-            },
-            {
-                'Type': 'TERM_MATCH',
-                'Field': 'regionCode',
-                'Value': region
-            },
-            {
-                'Type': 'TERM_MATCH',
-                'Field': 'tenancy',
-                'Value': 'Shared'
-            },
-            {
-                'Type': 'TERM_MATCH',
-                'Field': 'operatingSystem',
-                'Value': os
-            },
-        ]
-    )
-    products = response['PriceList']
-    prices = parse_price(products,term=term)
-    
-    return '\n'.join(prices) if prices else None
 
 @handle_error
 def lambda_handler(event, context):
@@ -380,23 +264,14 @@ def lambda_handler(event, context):
     agent_tools = AgentTools(api_schema=API_SCHEMA,llm=llm)
     agent_tools.register_tool(name='query_ec2_price',func=query_ec2_price)
     agent_tools.register_tool(name='service_org',func=service_org)
-    answer = agent_tools.run(query)
-
-    # else:
-    #     return {
-    #     'statusCode': 200,
-    #     'headers': {'Content-Type': 'application/json'},
-    #     'body':f'抱歉关于"{intention}"的功能还在开发中，暂时无法回答'
-    #     }
-    
-    log_dict = {"answer" : answer , "question": query }
-    log_dict_str = json.dumps(log_dict, ensure_ascii=False)
-    logger.info(log_dict_str)
+    answer,ref_doc = agent_tools.run(query)
     pattern = r'^根据[^，,]*[,|，]'
     answer = re.sub(pattern, "", answer)
-    logger.info(answer)
+    log_dict = {"answer" : answer ,"ref_doc":ref_doc, "question": query }
+    log_dict_str = json.dumps(log_dict, ensure_ascii=False)
+    logger.info(log_dict_str)
     return {
         'statusCode': 200,
         'headers': {'Content-Type': 'application/json'},
-        'body':answer
+        'body':log_dict
     }

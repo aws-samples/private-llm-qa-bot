@@ -1,112 +1,15 @@
-### 实现逻辑：
-通过 prompt 模版实现 Agent功能，当前仅实现一个工具Agent，暂时未做控制 Agent
+## 方法1: 直接用Agent做意图识别，决定调用哪个function，并做参数提取。
+- 代理工具文件放到tools目录，暴露一个tool function调用函数  
+def function_name(**args) -> Union[str,None]
 
+- 在 lambda function中aws_agent.py 中，需要把API_SCHEMA注册到AgentTools中。
+  导入tool function调用函数，注册到AgentTools， 
+  agent_tools = AgentTools(api_schema=API_SCHEMA,llm=llm)
+  agent_tools.register_tool(name='query_ec2_price',func=query_ec2_price)
+  agent_tools.register_tool(name='service_org',func=service_org)
 
-### 调用方法
+- 调用方法
+  answer = agent_tools.run(query)
+  
 
-```python
-# call this lambda from another lambda
-from boto3 import client as boto3_client
-lambda_client = boto3_client('lambda')
-
-def lambda_handler(event, context):
-  	question = event['prompt'] 
-    msg = {
-      "params": {
-        "query": query
-      },
-      "use_bedrock" : use_bedrock,
-      "llm_model_name" : "anthropic.claude-v2"
-    }
-    response = lambda_client.invoke(FunctionName="Chat_Agent",
-                                           InvocationType='RequestResponse',
-                                           Payload=json.dumps(msg))
-    
-```
-
-
-### 测试case
-
-```json
-#1
-{
-  "params": {
-    "query": "Sagemaker相关问题应该联系谁？"  
-  },
-  "use_bedrock" : "True"
-}
-
-#2
-{
-  "params": {
-    "query": "quicksight的GTMS是谁？",
-  },
-  "use_bedrock" : "True",
-}
-
-#3
-{
-  "params": {
-    "query": "AIML北区的Sales是谁？",
-  },
-  "use_bedrock" : "True",
-}
-
-#4
-{
-  "params": {
-    "query": "Emr相关问题应该联系谁？",
-  },
-  "use_bedrock" : "True",
-}
-
-#5
-{  "params": {
-    "query": "数据治理的GTMS是谁？",
-  },
-  "use_bedrock" : "True",
-}
-
-#6
-{  "params": {
-    "query": "aws head of sso 是谁",
-  },
-  "use_bedrock" : "True",
-}
-
-#7
-{  "params": {
-    "query": "aws sso 大老板是谁",
-  },
-  "use_bedrock" : "True",
-}
-
-#8
-{  "params": {
-    "query": "Yinuo 负责AWS 什么服务",
-  },
-  "use_bedrock" : "True",
-}
-
-#9
-{  "params": {
-    "query": "Goden Yao 负责哪些服务",
-  },
-  "use_bedrock" : "True",
-}
-
-#10
-{  "params": {
-    "query": "Azure Competition 哪些人负责",
-  },
-  "use_bedrock" : "True",
-}
-
-```
-
-
-### TODO
-1. Tool Agent 实现
-2. Contorl Agent (React)
-
-### 优化手段
+## 方法2: 如果外部lambda函数已经完成了参数提取，则直接调用
