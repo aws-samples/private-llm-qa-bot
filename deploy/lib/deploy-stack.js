@@ -218,7 +218,7 @@ export class DeployStack extends Stack {
         index_name:"chatbot-example-index" ,
         aos_knn_field:process.env.aos_knn_field,
         embedding_endpoint:process.env.embedding_endpoint,
-        llm_model_endpoint:process.env.llm_model_endpoint,
+        llm_model_endpoint:"anthropic.claude-instant-v1",
         region:region
       },
     });
