@@ -7,11 +7,11 @@
             "properties": {
                 "instance_type": {
                     "type": "string",
-                    "description": "the AWS ec2 instance type, for example, c5.xlarge, m5.large, t3.mirco, g4dn.2xlarge"
+                    "description": "the AWS ec2 instance type, for example, c5.xlarge, m5.large, t3.mirco, g4dn.2xlarge, if it is a partial of the instance type, you should try to auto complete it. for example, if it is r6g.2x, you can complete it as r6g.2xlarge"
                 },
                 "region": {
                     "type": "string",
-                    "description": "the AWS region name where the ec2 is located in, for example us-east-1, us-west-1"
+                    "description": "the AWS region name where the ec2 is located in, for example us-east-1, us-west-1, if it is common words such as 'us east 1','美东1','美西2',you should try to normalize it to standard AWS region name, for example, 'us east 1' is normalized to 'us-east-1', '美东2' is normalized to 'us-east-2','美西2' is normalized to 'us-west-2','北京' is normalized to 'cn-north-1', '宁夏' is normalized to 'cn-northwest-1', '中国区' is normalized to 'cn-north-1'"
                 },
                 "os": {
                     "type": "string",
@@ -32,11 +32,19 @@
     "examples" : [
         {
             "query":"g4dn的价格是多少",
-            "detection": {"func" : "ec2_price", "param" : {"instance_type" : "g4dn", "region":""}}
+            "detection": {"func" : "ec2_price", "param" : {"instance_type" : "g4dn"}}
         },
         {
             "query":"g4dn在美西2的价格？",
             "detection": {"func" : "ec2_price", "param" : {"instance_type" : "g4dn", "region":"us-west-2"}}
+        },
+        {
+            "query":"m5.2x在美西2的价格？",
+            "detection": {"func" : "ec2_price", "param" : {"instance_type" : "m5.2xlarge", "region":"us-west-2"}}
+        },
+        {
+            "query":"g4dn.12x在美西2的价格？",
+            "detection": {"func" : "ec2_price", "param" : {"instance_type" : "g4dn.12xlarge", "region":"us-west-2"}}
         },
         {
             "query":"c5.xlarge在美东1的价格？",
@@ -48,11 +56,11 @@
         },
         {
             "query":"c5.2xlarge的OnDemand什么价格？",
-            "detection": {"func" : "ec2_price", "param" : {"instance_type" : "c5.xlarge", "term": "OnDemand"}}
+            "detection": {"func" : "ec2_price", "param" : {"instance_type" : "c5.x2large", "term": "OnDemand"}}
         },
         {
-            "query":"c5.4xlarge的按需实例什么价格？",
-            "detection": {"func" : "ec2_price", "param" : {"instance_type" : "c5.xlarge", "term": "OnDemand"}}
+            "query":"c5.4x的按需实例什么价格？",
+            "detection": {"func" : "ec2_price", "param" : {"instance_type" : "c5.4xlarge", "term": "OnDemand"}}
         },
         {
             "query":"t3.mirco在美西2的Linux实例什么价格？",

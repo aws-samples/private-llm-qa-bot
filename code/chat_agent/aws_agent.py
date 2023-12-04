@@ -22,7 +22,7 @@ logger.setLevel(logging.INFO)
 credentials = boto3.Session().get_credentials()
 BEDROCK_REGION = None
 
-REFUSE_ANSWER = '对不起没有查询到您想要的信息，请您更具体的描述下您的要求.'
+REFUSE_ANSWER = '对不起, 根据{func_name}({args}),没有查询到您想要的信息，请您更具体的描述下您的要求.'
 
 FUNCTION_CALL_TEMPLATE = """here is a list of functions you can use, contains in <tools> tags
 
@@ -108,6 +108,9 @@ class AgentTools(BaseModel):
 
     def register_tool(self,name:str,func:callable) -> None:
         self.function_map[name] = func
+    
+    def check_tool(self,name:str) -> bool:
+        return name in self.function_map
 
     def _tool_call(self,name,**args) -> Union[str,None]:
         callback_func = self.function_map.get(name)
@@ -129,7 +132,7 @@ class AgentTools(BaseModel):
             return None
 
 
-    def dispatch_function_call(self,query) ->Dict[str,str]:
+    def dispatch_function_call(self,query:str):
         ##parse the args
         prompt = PromptTemplate(
                 template=FUNCTION_CALL_TEMPLATE,
@@ -140,16 +143,16 @@ class AgentTools(BaseModel):
         function_call = AgentTools.extract_function_call(answer)
         print(f"****use function_call****:{function_call}")
         if not function_call:
-            return None,None
+            return None,None,None
         try:
             args = json.loads(function_call['arguments'])
             func_name = function_call['name']
             result = self._tool_call(func_name,**args)
-            return result,func_name
+            return result,func_name,args
         except Exception as e:
             print(str(e))
             logger.info(str(e))
-            return None,None
+            return None,None,None
 
 
     def _add_context_answer(self,query,context) ->str:
@@ -167,14 +170,31 @@ class AgentTools(BaseModel):
         return answer
 
     def run(self,query) ->Dict[str,str]:
-        context,func_name = self.dispatch_function_call(query)
+        context,func_name,args = self.dispatch_function_call(query)
         logger.info(f"****function_call [{func_name}] result ****:\n{context}")
         answer = self._add_context_answer(query,context)
         ref_doc = f"本次回答基于使用工具[{func_name}]为您查询到结果:\n\n{context}\n\n"
         if answer: 
             return answer,ref_doc
         else:
-            return REFUSE_ANSWER,''
+            return REFUSE_ANSWER.format(func_name=func_name,args=args),''
+        
+    def run_with_func_args(self,query,func_name,args) ->Dict[str,str]:
+        try:
+            context = self._tool_call(func_name,**args)
+            logger.info(f"****function_call [{func_name}] result ****:\n{context}")
+            answer = self._add_context_answer(query,context)
+            ref_doc = f"本次回答基于使用工具[{func_name}]为您查询到结果:\n\n{context}\n\n"
+            if answer: 
+                return answer,ref_doc
+            else:
+                return REFUSE_ANSWER.format(func_name=func_name,args=args),''
+        except Exception as e:
+            print(str(e))
+            logger.info(str(e))
+            return REFUSE_ANSWER.format(func_name=func_name,args=args),''
+        
+       
         
 
 
@@ -218,7 +238,7 @@ def lambda_handler(event, context):
     params = event.get('params')
     param_dict = params
     query = param_dict["query"]
-    intention = param_dict["intention"]         
+    detection = param_dict["detection"]         
     use_bedrock = event.get('use_bedrock')
     
     region = os.environ.get('region')
@@ -260,18 +280,35 @@ def lambda_handler(event, context):
         
         model_id ="anthropic.claude-instant-v1" if llm_model_name == 'claude-instant' else "anthropic.claude-v2"
         llm = Bedrock(model_id=model_id, client=boto3_bedrock, model_kwargs=parameters)
+    
+
+
 
     agent_tools = AgentTools(api_schema=API_SCHEMA,llm=llm)
-    agent_tools.register_tool(name='query_ec2_price',func=query_ec2_price)
+    agent_tools.register_tool(name='ec2_price',func=query_ec2_price)
     agent_tools.register_tool(name='service_org',func=service_org)
-    answer,ref_doc = agent_tools.run(query)
+
+    func_name, func_params = None, None
+    if detection:
+        func_name = detection.get('func')
+        func_params = detection.get('param')
+
+    ## 已经从外面传入了识别出的意图和参数
+    if func_name and func_params:
+        if not agent_tools.check_tool(func_name):
+            answer = f"对不起，该函数{func_name}还未实现"
+            ref_doc = ''
+        else:
+            answer,ref_doc = agent_tools.run_with_func_args(query,func_name,func_params)
+    else:
+        answer,ref_doc = agent_tools.run(query)
     pattern = r'^根据[^，,]*[,|，]'
     answer = re.sub(pattern, "", answer)
-    log_dict = {"answer" : answer ,"ref_doc":ref_doc, "question": query }
-    log_dict_str = json.dumps(log_dict, ensure_ascii=False)
+    message = {"answer" : answer ,"ref_doc":ref_doc, "question": query }
+    log_dict_str = json.dumps(message, ensure_ascii=False)
     logger.info(log_dict_str)
     return {
         'statusCode': 200,
         'headers': {'Content-Type': 'application/json'},
-        'body':log_dict
+        'body':message
     }

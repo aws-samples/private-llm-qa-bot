@@ -660,12 +660,12 @@ def rewrite_query(query, session_history, round_cnt=2, use_bedrock="True"):
 
     return response_str.strip()
 
-def chat_agent(query, intention, use_bedrock="True"):
+def chat_agent(query, detection, use_bedrock="True"):
 
     msg = {
       "params": {
         "query": query,
-        "intention": intention 
+        "detection": detection 
       },
       "use_bedrock" : use_bedrock,
       "llm_model_name" : "anthropic.claude-v2"
@@ -1388,7 +1388,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         use_bedrock = "False"
         if llm_model_name.startswith('claude'):
             use_bedrock = "True"
-        answer,ref_doc = chat_agent(query_input, intention, use_bedrock=use_bedrock)
+        answer,ref_doc = chat_agent(query_input, detection, use_bedrock=use_bedrock)
         recall_knowledge,opensearch_knn_respose,opensearch_query_response = [ref_doc],[],[]
         TRACE_LOGGER.add_ref(f'\n\n**Refer to {len(recall_knowledge)} knowledge:**')
         TRACE_LOGGER.add_ref(f"**[1]** {ref_doc}")
