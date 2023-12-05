@@ -3,7 +3,61 @@ from typing import Any, Dict, List, Union,Mapping, Optional, TypeVar, Union
 import os
 import boto3
 import requests
+from pydantic import BaseModel,ValidationInfo, field_validator, Field,ValidationError
+import re
 
+
+
+class EC2PriceRequest(BaseModel):
+    region: Optional[str] = Field (description='region name', default='us-east-1')
+    term: Optional[str] = Field (description='purchase term', default='OnDemand')
+    instance_type: str 
+    purchase_option: Optional[str] = Field (description='purchase option', default='')
+    os:Optional[str] = Field(description='Operation system', default='Linux')
+
+    @classmethod
+    def validate_ec2_instance_type(cls,instance_type):
+        pattern = r'^(?:[a-z0-9][a-z0-9.-]*[a-z0-9])?(?:[a-z](?:[a-z0-9-]*[a-z0-9])?)?(\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*\.[a-z0-9]{2,63}$'
+        return re.match(pattern, instance_type) is not None
+    
+    @classmethod
+    def validate_region_name(cls,region_name):
+        pattern = r"^[a-z]{2}(-gov)?-(central|east|north|south|west|northeast|northwest|southeast|southwest)-\d$"
+        return re.match(pattern, region_name) is not None
+
+    @field_validator('region')
+    def validate_region(cls, value:str,info: ValidationInfo):
+        if not cls.validate_region_name(value):
+            # return f'value must be one of {allowed_values}'
+            raise ValueError(f"{value} is not a valid AWS region name.")
+        return value
+    
+    @field_validator('term')
+    def validate_term(cls, value:str,info: ValidationInfo):
+        allowed_values = ['OnDemand','Reserved']
+        if value not in allowed_values:
+            raise ValueError(f'value must be one of {allowed_values}')
+        return value
+    
+    @field_validator('purchase_option')
+    def validate_option(cls, value:str,info: ValidationInfo):
+        allowed_values = ['No Upfront','All Upfront','Partial Upfront']
+        if value not in allowed_values:
+            raise ValueError(f'value must be one of {allowed_values}')
+        return value
+
+    @field_validator('os')
+    def validate_os(cls, value:str,info: ValidationInfo):
+        allowed_values = ['Linux','Windows']
+        if value not in allowed_values:
+            raise ValueError(f'value must be one of {allowed_values}')
+        return value
+
+    @field_validator('instance_type')
+    def validate_instance_type(cls, value:str,info: ValidationInfo):
+        if not cls.validate_ec2_instance_type(value):
+            raise ValueError(f'{value} is a valid EC2 instance type')
+        return value
 
 def purchase_option_filter(term_attri:dict, value:str) -> dict:
     ##如果是空值，则不判断
@@ -32,11 +86,12 @@ def remote_proxy_call(**args):
     
 
 def query_ec2_price(**args) -> Union[str,None]:  
-    region = args.get('region','us-east-1')
-    term = args.get('term','OnDemand')
-    instance_type = args.get('instance_type','m5.large')
-    os = args.get('os','Linux')
-    purchase_option = args.get('purchase_option','')
+    request = EC2PriceRequest(**args)
+    region = request.region
+    term = request.term
+    instance_type = request.instance_type
+    os = request.os
+    purchase_option = request.purchase_option
     if region.startswith('cn-'):
         return remote_proxy_call(**args)
     else:
@@ -60,7 +115,7 @@ def query_ec2_price(**args) -> Union[str,None]:
                                 unit =  price_dimension['unit']
                                 if not desc.startswith("$0.00 per") and not desc.startswith("USD 0.0 per") \
                                         and not desc.startswith("0.00 CNY per") and not desc.startswith("CNY 0.0 per"):
-                                    ret.append(f"Purchase option: {option}, Lease contract length: {term_attri.get('LeaseContractLength')}, Offering Class: {term_attri.get('OfferingClass')}, Price per {unit}: {dollar} {price} , description: {desc}")
+                                    ret.append(f"Region: {region}, Purchase option: {option}, Lease contract length: {term_attri.get('LeaseContractLength')}, Offering Class: {term_attri.get('OfferingClass')}, Price per {unit}: {dollar} {price} , description: {desc}")
                 elif on_demand_terms:
                     for _, term_details in on_demand_terms.items():
                         price_dimensions = term_details['priceDimensions']
@@ -118,4 +173,5 @@ def query_ec2_price(**args) -> Union[str,None]:
 
 
 if __name__ == "__main__":
-    print(query_ec2_price(instance_type='m5.xlarge',region='us-east-1',term='Reserved',purchase_option=''))
+    args = {'instance_type':'m5.xlarge','region':'us-east-1','term':'Reserved','purchase_option':'All Upfront'}
+    print(query_ec2_price(**args))

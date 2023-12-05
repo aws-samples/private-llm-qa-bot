@@ -14,7 +14,7 @@ from fastapi.security.http import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic_settings import BaseSettings
 from fastapi.security import OAuth2PasswordBearer
 
-from get_price import query_ec2_price
+from get_price import query_ec2_price,EC2PriceRequest
 
 import shortuuid
 import uvicorn
@@ -60,12 +60,12 @@ class ErrorResponse(BaseModel):
     message: str
     code: int
 
-class EC2PriceAPIRequest(BaseModel):
-    instance_type : str
-    term : Optional[str] = 'OnDemand'
-    os : Optional[str] = 'Linux'
-    region: Optional[str] = 'cn-northwest-1'
-    purchase_option: Optional[str] = ''
+# class EC2PriceAPIRequest(BaseModel):
+#     instance_type : str
+#     term : Optional[str] = 'OnDemand'
+#     os : Optional[str] = 'Linux'
+#     region: Optional[str] = 'cn-northwest-1'
+#     purchase_option: Optional[str] = ''
 
 class APIRequestResponse(BaseModel):
     message:str
@@ -86,7 +86,7 @@ async def ping():
     return APIRequestResponse(message='ok')
 
 @app.post("/v1/get_ec2_price",dependencies=[Depends(check_api_key)])
-async def get_ec2_price(request: EC2PriceAPIRequest):
+async def get_ec2_price(request: EC2PriceRequest):
     
     input_args = {
             'instance_type':request.instance_type,
