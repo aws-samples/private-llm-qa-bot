@@ -24,6 +24,18 @@ BEDROCK_REGION = None
 
 REFUSE_ANSWER = '对不起, 根据{func_name}({args}),没有查询到您想要的信息，请您更具体的描述下您的要求.'
 
+ERROR_ANSWER = """
+            You are acting as a assistant.
+            When a user asked a prompt:{query}
+            a Large Language Model extracted the input arguments as {args}, and then use the args to call a function named:{func_name}.
+            but it raised exception error in:
+            <error>
+            {error}
+            </error>,
+            please concisely response how to correct it, don't use code in response.
+            Skip the preamble, go straight into the answer. 请用中文
+"""
+
 FUNCTION_CALL_TEMPLATE = """here is a list of functions you can use, contains in <tools> tags
 
 <tools>
@@ -40,7 +52,7 @@ Task: {task}"""
 
 API_SCHEMA = [
                 {
-                "name": "query_ec2_price",
+                "name": "ec2_price",
                 "description": "query the price of AWS ec2 instance",
                 "parameters": {
                     "type": "object",
@@ -106,14 +118,14 @@ class AgentTools(BaseModel):
     api_schema: list
     llm: Any
 
-    def register_tool(self,name:str,func:callable) -> None:
-        self.function_map[name] = func
-    
-    def check_tool(self,name:str) -> bool:
-        return name in self.function_map
+    def register_tool(cls,name:str,func:callable) -> None:
+        cls.function_map[name] = func
 
-    def _tool_call(self,name,**args) -> Union[str,None]:
-        callback_func = self.function_map.get(name)
+    def check_tool(cls,name:str) -> bool:
+        return name in cls.function_map
+
+    def _tool_call(cls,name,**args) -> Union[str,None]:
+        callback_func = cls.function_map.get(name)
         return callback_func(**args) if callback_func else None
 
     @staticmethod
@@ -132,70 +144,84 @@ class AgentTools(BaseModel):
             return None
 
 
-    def dispatch_function_call(self,query:str):
+    def dispatch_function_call(cls,query:str):
         ##parse the args
         prompt = PromptTemplate(
                 template=FUNCTION_CALL_TEMPLATE,
                 input_variables=["functions",'task']
             )
-        llmchain = LLMChain(llm=self.llm,verbose=False,prompt = prompt)
-        answer = llmchain.run({'functions':self.api_schema, "task": query})
+        llmchain = LLMChain(llm=cls.llm,verbose=False,prompt = prompt)
+        answer = llmchain.run({'functions':cls.api_schema, "task": query})
         function_call = AgentTools.extract_function_call(answer)
         print(f"****use function_call****:{function_call}")
         if not function_call:
-            return None,None,None
+            return None,None,None,None
         try:
             args = json.loads(function_call['arguments'])
             func_name = function_call['name']
-            result = self._tool_call(func_name,**args)
-            return result,func_name,args
+            result = cls._tool_call(func_name,**args)
+            return result,func_name,args,None
         except Exception as e:
             print(str(e))
             logger.info(str(e))
-            return None,None,None
+            return None,function_call['name'],args,str(e)
 
+    def _add_error_answer(cls,query,func_name,args,error) ->str:
+        prompt = PromptTemplate(
+                template=ERROR_ANSWER,
+                input_variables=["func_name",'args','error','query']
+            )
+        llmchain = LLMChain(llm=cls.llm,verbose=False,prompt = prompt)
+        answer = llmchain.run({'func_name':func_name, "args": args,"error":error,"query":query})
+        answer = answer.strip()
+        return answer
 
-    def _add_context_answer(self,query,context) ->str:
+    def _add_context_answer(cls,query,context) ->str:
         if not context:
             return None 
         prompt = PromptTemplate(
                 template=CONTEXT_TEMPLATE,
                 input_variables=["context",'question']
             )
-        llmchain = LLMChain(llm=self.llm,verbose=False,prompt = prompt)
+        llmchain = LLMChain(llm=cls.llm,verbose=False,prompt = prompt)
 
         logger.info(f'llm input:{CONTEXT_TEMPLATE.format(context=context,question=query)}')
         answer = llmchain.run({'context':context, "question": query})
         answer = answer.strip()
         return answer
 
-    def run(self,query) ->Dict[str,str]:
-        context,func_name,args = self.dispatch_function_call(query)
+    def run(cls,query) ->Dict[str,str]:
+        context,func_name,args,error = cls.dispatch_function_call(query)
         logger.info(f"****function_call [{func_name}] result ****:\n{context}")
-        answer = self._add_context_answer(query,context)
-        ref_doc = f"本次回答基于使用工具[{func_name}]为您查询到结果:\n\n{context}\n\n"
-        if answer: 
-            return answer,ref_doc
+        if error:
+            answer = cls._add_error_answer(query,func_name,args,error)
         else:
+            answer = cls._add_context_answer(query,context)
+        if answer: 
+            ref_doc = f"本次回答基于使用工具[{func_name}]为您查询到结果:\n\n{context}\n\n"
+            return answer,ref_doc
+        else :
             return REFUSE_ANSWER.format(func_name=func_name,args=args),''
-        
-    def run_with_func_args(self,query,func_name,args) ->Dict[str,str]:
+    
+    def run_with_func_args(cls,query,func_name,args) ->Dict[str,str]:
+        context= ''
         try:
-            context = self._tool_call(func_name,**args)
+            context = cls._tool_call(func_name,**args)
             logger.info(f"****function_call [{func_name}] result ****:\n{context}")
-            answer = self._add_context_answer(query,context)
+            answer = cls._add_context_answer(query,context)
             ref_doc = f"本次回答基于使用工具[{func_name}]为您查询到结果:\n\n{context}\n\n"
             if answer: 
                 return answer,ref_doc
             else:
                 return REFUSE_ANSWER.format(func_name=func_name,args=args),''
         except Exception as e:
-            print(str(e))
             logger.info(str(e))
-            return REFUSE_ANSWER.format(func_name=func_name,args=args),''
-        
-       
-        
+            answer = cls._add_error_answer(query,func_name,args,str(e))
+            if answer: 
+                ref_doc = f"本次回答基于使用工具[{func_name}]为您查询到结果:\n\n{context}\n\n"
+                return answer,ref_doc
+            else :
+                return REFUSE_ANSWER.format(func_name=func_name,args=args),''
 
 
 class APIException(Exception):
@@ -238,7 +264,8 @@ def lambda_handler(event, context):
     params = event.get('params')
     param_dict = params
     query = param_dict["query"]
-    detection = param_dict["detection"]         
+    intention = param_dict.get("intention")      
+    detection = param_dict.get("detection")
     use_bedrock = event.get('use_bedrock')
     
     region = os.environ.get('region')
@@ -280,9 +307,6 @@ def lambda_handler(event, context):
         
         model_id ="anthropic.claude-instant-v1" if llm_model_name == 'claude-instant' else "anthropic.claude-v2"
         llm = Bedrock(model_id=model_id, client=boto3_bedrock, model_kwargs=parameters)
-    
-
-
 
     agent_tools = AgentTools(api_schema=API_SCHEMA,llm=llm)
     agent_tools.register_tool(name='ec2_price',func=query_ec2_price)
@@ -302,6 +326,9 @@ def lambda_handler(event, context):
             answer,ref_doc = agent_tools.run_with_func_args(query,func_name,func_params)
     else:
         answer,ref_doc = agent_tools.run(query)
+
+
+    answer,ref_doc = agent_tools.run(query)
     pattern = r'^根据[^，,]*[,|，]'
     answer = re.sub(pattern, "", answer)
     message = {"answer" : answer ,"ref_doc":ref_doc, "question": query }
@@ -312,3 +339,13 @@ def lambda_handler(event, context):
         'headers': {'Content-Type': 'application/json'},
         'body':message
     }
+
+##for local test only
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--query", type=str, default='查询g4dn在美西2的价格')
+    args = parser.parse_args()
+    query = args.query
+    event = {'params':{'query':query},'use_bedrock':True}
+    response = lambda_handler(event,{})
+    print(response['body'])
