@@ -25,13 +25,15 @@ BEDROCK_REGION = None
 REFUSE_ANSWER = '对不起, 根据{func_name}({args}),没有查询到您想要的信息，请您更具体的描述下您的要求.'
 
 ERROR_ANSWER = """
-            You are acting as a developer to explain the exception error message raised from a function in <error></error> when you call a function name:{func_name}.
-            and the input argument is:
-            {args}
-            <exception>
+            You are acting as a assistant.
+            When a user asked a prompt:{query}
+            a Large Language Model extracted the input arguments as {args}, and then use the args to call a function named:{func_name}.
+            but it raised exception error in:
+            <error>
             {error}
-            </exception>,
-            please tell me how to correct it. Skip the preamble, go straight into the answer.  请用中文
+            </error>,
+            please concisely response how to correct it, don't use code in response.
+            Skip the preamble, go straight into the answer. 请用中文
 """
 
 FUNCTION_CALL_TEMPLATE = """here is a list of functions you can use, contains in <tools> tags
@@ -161,13 +163,13 @@ class AgentTools(BaseModel):
             logger.info(str(e))
             return None,function_call['name'],args,str(e)
 
-    def _add_error_answer(cls,func_name,args,error) ->str:
+    def _add_error_answer(cls,query,func_name,args,error) ->str:
         prompt = PromptTemplate(
                 template=ERROR_ANSWER,
-                input_variables=["func_name",'args','error']
+                input_variables=["func_name",'args','error','query']
             )
         llmchain = LLMChain(llm=cls.llm,verbose=False,prompt = prompt)
-        answer = llmchain.run({'func_name':func_name, "args": args,"error":error})
+        answer = llmchain.run({'func_name':func_name, "args": args,"error":error,"query":query})
         answer = answer.strip()
         return answer
 
@@ -189,7 +191,7 @@ class AgentTools(BaseModel):
         context,func_name,args,error = cls.dispatch_function_call(query)
         logger.info(f"****function_call [{func_name}] result ****:\n{context}")
         if error:
-            answer = cls._add_error_answer(func_name,args,error)
+            answer = cls._add_error_answer(query,func_name,args,error)
         else:
             answer = cls._add_context_answer(query,context)
         if answer: 
@@ -303,7 +305,7 @@ def lambda_handler(event, context):
     else:
         answer,ref_doc = agent_tools.run(query)
 
-        
+
     answer,ref_doc = agent_tools.run(query)
     pattern = r'^根据[^，,]*[,|，]'
     answer = re.sub(pattern, "", answer)
@@ -323,4 +325,5 @@ if __name__ == '__main__':
     args = parser.parse_args()
     query = args.query
     event = {'params':{'query':query},'use_bedrock':True}
-    print(lambda_handler(event,{}))
+    response = lambda_handler(event,{})
+    print(response['body'])

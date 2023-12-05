@@ -17,8 +17,13 @@ class EC2PriceRequest(BaseModel):
 
     @classmethod
     def validate_ec2_instance_type(cls,instance_type):
-        pattern = r'^(?:[a-z0-9][a-z0-9.-]*[a-z0-9])?(?:[a-z](?:[a-z0-9-]*[a-z0-9])?)?(\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*\.[a-z0-9]{2,63}$'
-        return re.match(pattern, instance_type) is not None
+        # support other instance ml.m5.xlarge
+        # pattern = r'^(?:[a-z0-9][a-z0-9.-]*[a-z0-9])?(?:[a-z](?:[a-z0-9-]*[a-z0-9])?)?(\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*\.[a-z0-9]{2,63}$'
+        
+        ## only ec2, for m5.xlarge
+        pattern = r"^(?:[a-z]+\d*\.[a-z]+){1,2}$"
+
+        return re.match(pattern, instance_type) is not None and not instance_type.endswith(".")
     
     @classmethod
     def validate_region_name(cls,region_name):
@@ -41,7 +46,7 @@ class EC2PriceRequest(BaseModel):
     
     @field_validator('purchase_option')
     def validate_option(cls, value:str,info: ValidationInfo):
-        allowed_values = ['No Upfront','All Upfront','Partial Upfront']
+        allowed_values = ['No Upfront','All Upfront','Partial Upfront','']
         if value not in allowed_values:
             raise ValueError(f'value must be one of {allowed_values}')
         return value
@@ -56,7 +61,7 @@ class EC2PriceRequest(BaseModel):
     @field_validator('instance_type')
     def validate_instance_type(cls, value:str,info: ValidationInfo):
         if not cls.validate_ec2_instance_type(value):
-            raise ValueError(f'{value} is a valid EC2 instance type')
+            raise ValueError(f'{value} is not a valid EC2 instance type name.')
         return value
 
 def purchase_option_filter(term_attri:dict, value:str) -> dict:

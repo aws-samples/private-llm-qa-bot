@@ -17,7 +17,12 @@ class EC2PriceRequest(BaseModel):
 
     @classmethod
     def validate_ec2_instance_type(cls,instance_type):
-        pattern = r'^(?:[a-z0-9][a-z0-9.-]*[a-z0-9])?(?:[a-z](?:[a-z0-9-]*[a-z0-9])?)?(\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*\.[a-z0-9]{2,63}$'
+        # support other instance ml.m5.xlarge
+        # pattern = r'^(?:[a-z0-9][a-z0-9.-]*[a-z0-9])?(?:[a-z](?:[a-z0-9-]*[a-z0-9])?)?(\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*\.[a-z0-9]{2,63}$'
+        
+        ## only ec2, for m5.xlarge
+        pattern = r"^(?:[a-z]+\.){0,2}[a-z0-9]+(?:\.[a-z]+){0,2}$"
+
         return re.match(pattern, instance_type) is not None
     
     @classmethod
@@ -41,7 +46,7 @@ class EC2PriceRequest(BaseModel):
     
     @field_validator('purchase_option')
     def validate_option(cls, value:str,info: ValidationInfo):
-        allowed_values = ['No Upfront','All Upfront','Partial Upfront']
+        allowed_values = ['No Upfront','All Upfront','Partial Upfront','']
         if value not in allowed_values:
             raise ValueError(f'value must be one of {allowed_values}')
         return value
