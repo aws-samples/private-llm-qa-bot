@@ -26,14 +26,14 @@ REFUSE_ANSWER = '对不起, 根据{func_name}({args}),没有查询到您想要�
 
 ERROR_ANSWER = """
             You are acting as a assistant.
-            When a user asked a prompt:{query}
+            When a user asked a question:{query}
             a Large Language Model extracted the input arguments as {args}, and then use the args to call a function named:{func_name}.
             but it raised exception error in:
             <error>
             {error}
             </error>,
             please concisely response how to correct it, don't use code in response.
-            Skip the preamble, go straight into the answer. 请用中文
+            Skip the preamble, go straight into the answer. Respond in the original language of user's question.
 """
 
 FUNCTION_CALL_TEMPLATE = """here is a list of functions you can use, contains in <tools> tags
