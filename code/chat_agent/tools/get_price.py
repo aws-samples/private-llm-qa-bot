@@ -21,7 +21,7 @@ class EC2PriceRequest(BaseModel):
         # pattern = r'^(?:[a-z0-9][a-z0-9.-]*[a-z0-9])?(?:[a-z](?:[a-z0-9-]*[a-z0-9])?)?(\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*\.[a-z0-9]{2,63}$'
         
         ## only ec2, for m5.xlarge
-        pattern = r"^(?:[a-z]+\d*\.[a-z]+){1,2}$"
+        pattern = r"^([a-z0-9]+\.[a-z0-9]+)$"
 
         return re.match(pattern, instance_type) is not None and not instance_type.endswith(".")
     

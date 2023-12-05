@@ -26,14 +26,14 @@ REFUSE_ANSWER = '对不起, 根据{func_name}({args}),没有查询到您想要�
 
 ERROR_ANSWER = """
             You are acting as a assistant.
-            When a user asked a prompt:{query}
+            When a user asked a question:{query}
             a Large Language Model extracted the input arguments as {args}, and then use the args to call a function named:{func_name}.
             but it raised exception error in:
             <error>
             {error}
             </error>,
             please concisely response how to correct it, don't use code in response.
-            Skip the preamble, go straight into the answer. 请用中文
+            Skip the preamble, go straight into the answer. Respond in the original language of user's question.
 """
 
 FUNCTION_CALL_TEMPLATE = """here is a list of functions you can use, contains in <tools> tags
@@ -121,6 +121,9 @@ class AgentTools(BaseModel):
     def register_tool(cls,name:str,func:callable) -> None:
         cls.function_map[name] = func
 
+    def check_tool(cls,name:str) -> bool:
+        return name in cls.function_map
+
     def _tool_call(cls,name,**args) -> Union[str,None]:
         callback_func = cls.function_map.get(name)
         return callback_func(**args) if callback_func else None
@@ -199,7 +202,26 @@ class AgentTools(BaseModel):
             return answer,ref_doc
         else :
             return REFUSE_ANSWER.format(func_name=func_name,args=args),''
-        
+    
+    def run_with_func_args(cls,query,func_name,args) ->Dict[str,str]:
+        context= ''
+        try:
+            context = cls._tool_call(func_name,**args)
+            logger.info(f"****function_call [{func_name}] result ****:\n{context}")
+            answer = cls._add_context_answer(query,context)
+            ref_doc = f"本次回答基于使用工具[{func_name}]为您查询到结果:\n\n{context}\n\n"
+            if answer: 
+                return answer,ref_doc
+            else:
+                return REFUSE_ANSWER.format(func_name=func_name,args=args),''
+        except Exception as e:
+            logger.info(str(e))
+            answer = cls._add_error_answer(query,func_name,args,str(e))
+            if answer: 
+                ref_doc = f"本次回答基于使用工具[{func_name}]为您查询到结果:\n\n{context}\n\n"
+                return answer,ref_doc
+            else :
+                return REFUSE_ANSWER.format(func_name=func_name,args=args),''
 
 
 class APIException(Exception):
