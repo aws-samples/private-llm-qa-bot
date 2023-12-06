@@ -17,6 +17,7 @@ import { join } from "path";
 import * as dotenv from "dotenv";
 import { WebSocketLambdaIntegration } from "@aws-cdk/aws-apigatewayv2-integrations-alpha";
 import * as apigwv2 from "@aws-cdk/aws-apigatewayv2-alpha";
+import { addAutoScaling } from "./autoscalling.js";
 
 
 dotenv.config();
@@ -151,7 +152,7 @@ export class LambdaStack extends NestedStack {
       },
       memorySize: 256,
     })
-
+    addAutoScaling(this.lambda_chat_py,1)
     //read sd image data from s3 
     const sgbucket = s3.Bucket.fromBucketAttributes(this,'sagemakerbucket',{bucketName:`sagemaker-${process.env.CDK_DEFAULT_REGION}-${process.env.CDK_DEFAULT_ACCOUNT}`});
     sgbucket.grantRead(this.lambda_chat_py);
@@ -180,6 +181,7 @@ export class LambdaStack extends NestedStack {
         ...commonProps,
       }
     );
+    addAutoScaling(this.lambda_handle_chat,1)
 
     this.lambda_list_idx = createNodeJsLambdaFn(
       this,

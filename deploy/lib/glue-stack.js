@@ -30,6 +30,13 @@ export class GlueStack extends NestedStack {
         subnet:props.subnets[0],
       });
 
+      const connection2 = new glue.Connection(this, 'GlueJobConnection2', {
+        type: glue.ConnectionType.NETWORK,
+        vpc: props.vpc,
+        securityGroups: props.securityGroups,
+        subnet:props.subnets[1],
+      });
+
 
       const job = new glue.Job(this, 'chatbot-from-s3-to-aos',{
             executable: glue.JobExecutable.pythonShell({
@@ -40,7 +47,7 @@ export class GlueStack extends NestedStack {
           // jobName:'chatbot-from-s3-to-aos',
           maxConcurrentRuns:200,
           maxRetries:3,
-          connections:[connection],
+          connections:[connection,connection2],
           maxCapacity:1,
           defaultArguments:{
               '--AOS_ENDPOINT':props.opensearch_endpoint,

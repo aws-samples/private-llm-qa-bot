@@ -15,6 +15,7 @@ import {ApiGatewayStack} from './apigw-stack.js';
 import { Ec2Stack } from "./ec2-stack.js";
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as s3n from 'aws-cdk-lib/aws-s3-notifications';
+import { addAutoScaling } from "./autoscalling.js";
 import * as dotenv from "dotenv";
 
 dotenv.config();
@@ -143,6 +144,7 @@ export class DeployStack extends Stack {
       code: lambda.Code.fromAsset(path.join(__dirname,'../../code/lambda_feedback')),
       vpc:vpc,
       vpcSubnets:subnets,
+      securityGroups:securityGroups,
     });
     user_feedback_table.grantReadWriteData(fn_feedback);
     chat_session_table.grantReadWriteData(fn_feedback);
@@ -182,7 +184,7 @@ export class DeployStack extends Stack {
         TOP_K:process.env.TOP_K
       },
     });
-
+    addAutoScaling(lambda_main_brain);
     // Grant the Lambda function can invoke sagemaker
     lambda_main_brain.addToRolePolicy(new iam.PolicyStatement({
       // principals: [new iam.AnyPrincipal()],
@@ -206,7 +208,7 @@ export class DeployStack extends Stack {
       "lambda_intention", {
       code: DockerImageCode.fromImageAsset(join(__dirname, "../../code/intention_detect")),
       timeout: Duration.minutes(15),
-      memorySize: 1024,
+      memorySize: 512,
       runtime: 'python3.9',
       functionName: 'Detect_Intention',
       vpc:vpc,
@@ -222,7 +224,7 @@ export class DeployStack extends Stack {
         region:region
       },
     });
-
+    addAutoScaling(lambda_intention);
     // Grant the Lambda function can invoke sagemaker
     lambda_intention.addToRolePolicy(new iam.PolicyStatement({
       // principals: [new iam.AnyPrincipal()],
@@ -245,7 +247,7 @@ export class DeployStack extends Stack {
       "lambda_query_rewrite", {
       code: DockerImageCode.fromImageAsset(join(__dirname, "../../code/query_rewriter")),
       timeout: Duration.minutes(15),
-      memorySize: 1024,
+      memorySize: 512,
       runtime: 'python3.9',
       functionName: 'Query_Rewrite',
       vpc:vpc,
@@ -257,7 +259,7 @@ export class DeployStack extends Stack {
         region:region
       },
     });
-
+    addAutoScaling(lambda_query_rewrite);
     // Grant the Lambda function can invoke sagemaker
     lambda_query_rewrite.addToRolePolicy(new iam.PolicyStatement({
       // principals: [new iam.AnyPrincipal()],
@@ -280,7 +282,7 @@ export class DeployStack extends Stack {
       "lambda_chat_agent", {
       code: DockerImageCode.fromImageAsset(join(__dirname, "../../code/chat_agent")),
       timeout: Duration.minutes(15),
-      memorySize: 1024,
+      memorySize: 512,
       runtime: 'python3.9',
       functionName: 'Chat_Agent',
       vpc:vpc,
@@ -292,6 +294,7 @@ export class DeployStack extends Stack {
         region:region
       },
     });
+    addAutoScaling(lambda_chat_agent,1);
 
     // Grant the Lambda function can invoke sagemaker
     lambda_chat_agent.addToRolePolicy(new iam.PolicyStatement({
@@ -402,6 +405,7 @@ export class DeployStack extends Stack {
           code: lambda.Code.fromAsset(path.join(__dirname,'../../code/lambda_offline_trigger')),
           vpc:vpc,
           vpcSubnets:subnets,
+          securityGroups:securityGroups,
         });
 
     offline_trigger_lambda.addToRolePolicy(

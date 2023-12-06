@@ -24,7 +24,7 @@ export class VpcStack extends NestedStack {
     if (!existing_vpc_id || existing_vpc_id === 'optional')
     {
         this.vpc = new ec2.Vpc(this, 'QAChat-workshop-Vpc', {
-          ipAddresses: ec2.IpAddresses.cidr('10.22.0.0/16'),
+          ipAddresses: ec2.IpAddresses.cidr('10.24.0.0/16'),
             maxAzs: 2,
           });
     }

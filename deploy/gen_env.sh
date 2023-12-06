@@ -48,4 +48,4 @@ echo "neighbors=1" >>.env
 echo "TOP_K=4" >>.env
 echo "MAIN_FUN_ARN=${main_fun_arn}" >>.env
 echo "TOKEN_KEY=${token_key}" >>.env
-
+echo "deploy_ui=1" >>.env
