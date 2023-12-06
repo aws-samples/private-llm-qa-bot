@@ -30,86 +30,36 @@
     "examples":[
         {
             "query":"请问Lex是哪位SSA老师负责啊？有个api的问题请教一下",
-            "detection":{
-                "func":"get_contact",
-                "parameters":{
-                    "scope":"Lex",
-                    "role":"SSA"
-                }
-            }
+            "detection": {"func":"get_contact", "param":{"role":"SSA","scope":"Lex"}}
         },
         {
             "query":"quicksight的GTMS是谁",
-            "detection":{
-                "func":"get_contact",
-                "parameters":{
-                    "scope":"quicksight",
-                    "role":"GTMS"
-                }
-            }
+            "detection":{"func":"get_contact", "param":{"role":"GTMS", "scope":"quicksight"}}
         },
         
         {
             "query":"quicksight的产品经理是谁？",
-            "detection":{
-                "func":"get_contact",
-                "parameters":{
-                    "scope":"quicksight",
-                    "role":"GTMS"
-                }
-            }
+            "detection":{"func":"get_contact", "param":{"role":"GTMS", "scope":"quicksight"}}
         },
         {
             "query":"数据治理的GTMS是谁？",
-            "detection":{
-                "func":"get_contact",
-                "parameters":{
-                    "scope":"数据治理",
-                    "role":"GTMS"
-                }
-            }
+            "detection":{"func":"get_contact", "param":{"role":"GTMS", "scope":"数据治理"}}
         },
         {
             "query":"AIML北区的Sales是谁？",
-            "detection":{
-                "func":"get_contact",
-                "parameters":{
-                    "domain":"AIML",
-                    "scope":"north",
-                    "role":"SS"
-                }
-            }
+            "detection":{"func":"get_contact", "param":{"role":"SS", "domain":"AIML","scope":"north"}}
         },
         {
             "query":"AIML北区的BD是谁？",
-            "detection":{
-                "func":"get_contact",
-                "parameters":{
-                    "domain":"AIML",
-                    "scope":"north",
-                    "role":"SS"
-                }
-            }
+            "detection":{"func":"get_contact", "param":{"role":"SS", "domain":"AIML", "scope":"north"}}
         },
         {
             "query":"Sagemaker相关问题应该联系谁？",
-            "detection":{
-                "func":"get_contact",
-                "parameters":{
-                    "scope":"SageMaker",
-                    "role":"GTMS"
-                }
-            }
+            "detection":{"func":"get_contact", "param":{"role":"GTMS", "scope":"SageMaker"}}
         },
         {
             "query":"Emr相关问题应该联系谁？",
-            "detection":{
-                "func":"get_contact",
-                "parameters":{
-                    "scope":"EMR",
-                    "role":"GTMS"
-                }
-            }
+            "detection":{"func":"get_contact", "param":{"role":"GTMS", "scope":"EMR"}}
         }
     ]
 }

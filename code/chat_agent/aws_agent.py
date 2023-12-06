@@ -333,8 +333,6 @@ def lambda_handler(event, context):
     else:
         answer,ref_doc = agent_tools.run(query)
 
-
-    answer,ref_doc = agent_tools.run(query)
     pattern = r'^根据[^，,]*[,|，]'
     answer = re.sub(pattern, "", answer)
     message = {"answer" : answer ,"ref_doc":ref_doc, "question": query }
