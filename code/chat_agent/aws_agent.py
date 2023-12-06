@@ -314,9 +314,14 @@ def lambda_handler(event, context):
     agent_tools.register_tool(name='get_contact',func=get_contact)
 
     func_name, func_params = None, None
+
+    logger.info("detection:{}".format(detection))
     if detection:
         func_name = detection.get('func')
         func_params = detection.get('param')
+        logger.info("func_name:{}".format(func_name))
+        logger.info("func_params:{}".format(func_params))
+
 
     ## 已经从外面传入了识别出的意图和参数
     if func_name and func_params:

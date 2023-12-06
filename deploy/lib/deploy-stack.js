@@ -305,7 +305,8 @@ export class DeployStack extends Stack {
           "es:*",
           "secretsmanager:GetSecretValue",
           "bedrock:*",
-          "pricing:GetProducts"
+          "pricing:GetProducts",
+          "lambda:InvokeFunction"
           ],
         effect: iam.Effect.ALLOW,
         resources: ['*'],
