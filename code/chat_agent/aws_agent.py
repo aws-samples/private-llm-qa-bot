@@ -15,6 +15,7 @@ import requests
 from pydantic import BaseModel
 from tools.get_price import query_ec2_price
 from tools.service_org_demo import service_org
+from tools.get_contact import get_contact
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -310,7 +311,7 @@ def lambda_handler(event, context):
 
     agent_tools = AgentTools(api_schema=API_SCHEMA,llm=llm)
     agent_tools.register_tool(name='ec2_price',func=query_ec2_price)
-    agent_tools.register_tool(name='service_org',func=service_org)
+    agent_tools.register_tool(name='get_contact',func=get_contact)
 
     func_name, func_params = None, None
     if detection:

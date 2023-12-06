@@ -1,25 +1,25 @@
 {
     "api_schema":{
-        "name":"service_role",
-        "description":"query the contact person in the organization",
+        "name":"get_contact",
+        "description":"query the contact person in the 'SSO' organization",
         "parameters":{
             "type":"object",
             "properties":{
                 "employee":{
                     "type":"string",
-                    "description":"user's original input for query the service contact person"
+                    "description":"employee name in the 'SSO' organization"
                 },
-                "service":{
+                "role":{
                     "type":"string",
-                    "description":"the AWS service name"
+                    "description":"employee's role, usually it's SS(Sale Specialist), SSA(Specialist Solution Architect), GTMS(产品经理), PM(Project Manager项目经理)"
                 },
-                "territory":{
+                "domain":{
                     "type":"string",
-                    "description":"Generally, it is in [South, East, North, West]"
+                    "description":"Techical domain for the employee，For Example AIML, Analytics, Compute"
                 },
-                "Role":{
+                "scope":{
                     "type":"string",
-                    "description":"Generally, it is in [SSA, SA, BD, Sales, GTMS]"
+                    "description":"employee's scope of responsibility. For Sales role, it could be territory like north/east/south/west, For tech role, it could be specific service"
                 }
             },
             "required":[
@@ -29,21 +29,32 @@
     },
     "examples":[
         {
-            "query":"quicksight的GTMS是谁",
+            "query":"请问Lex是哪位SSA老师负责啊？有个api的问题请教一下",
             "detection":{
-                "func":"service_role",
+                "func":"get_contact",
                 "parameters":{
-                    "service":"quicksight",
-                    "role":"GTMS"
+                    "scope":"Lex",
+                    "role":"SSA"
                 }
             }
         },
         {
+            "query":"quicksight的GTMS是谁",
+            "detection":{
+                "func":"get_contact",
+                "parameters":{
+                    "scope":"quicksight",
+                    "role":"GTMS"
+                }
+            }
+        },
+        
+        {
             "query":"quicksight的产品经理是谁？",
             "detection":{
-                "func":"service_role",
+                "func":"get_contact",
                 "parameters":{
-                    "service":"quicksight",
+                    "scope":"quicksight",
                     "role":"GTMS"
                 }
             }
@@ -51,9 +62,9 @@
         {
             "query":"数据治理的GTMS是谁？",
             "detection":{
-                "func":"service_role",
+                "func":"get_contact",
                 "parameters":{
-                    "service":"数据治理",
+                    "scope":"数据治理",
                     "role":"GTMS"
                 }
             }
@@ -61,31 +72,31 @@
         {
             "query":"AIML北区的Sales是谁？",
             "detection":{
-                "func":"service_role",
+                "func":"get_contact",
                 "parameters":{
-                    "service":"AIML",
-                    "territory":"north",
-                    "role":"Sales"
+                    "domain":"AIML",
+                    "scope":"north",
+                    "role":"SS"
                 }
             }
         },
         {
             "query":"AIML北区的BD是谁？",
             "detection":{
-                "func":"service_role",
+                "func":"get_contact",
                 "parameters":{
-                    "service":"AIML",
-                    "territory":"north",
-                    "role":"BD"
+                    "domain":"AIML",
+                    "scope":"north",
+                    "role":"SS"
                 }
             }
         },
         {
             "query":"Sagemaker相关问题应该联系谁？",
             "detection":{
-                "func":"service_role",
+                "func":"get_contact",
                 "parameters":{
-                    "service":"SageMaker",
+                    "scope":"SageMaker",
                     "role":"GTMS"
                 }
             }
@@ -93,9 +104,9 @@
         {
             "query":"Emr相关问题应该联系谁？",
             "detection":{
-                "func":"service_role",
+                "func":"get_contact",
                 "parameters":{
-                    "service":"EMR",
+                    "scope":"EMR",
                     "role":"GTMS"
                 }
             }
