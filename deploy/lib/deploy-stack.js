@@ -129,7 +129,7 @@ export class DeployStack extends Stack {
       removalPolicy: RemovalPolicy.DESTROY, // NOT recommended for production code
     });
 
-    const fn_feedback = new lambda.Function(this,'lambda_feedback',{
+    const fn_feedback = addAutoScaling(new lambda.Function(this,'lambda_feedback',{
       environment: {
         user_feedback_table:"user_feedback_table",
         chat_session_table:chat_session_table.tableName,
@@ -145,11 +145,11 @@ export class DeployStack extends Stack {
       vpc:vpc,
       vpcSubnets:subnets,
       securityGroups:securityGroups,
-    });
+    }));
     user_feedback_table.grantReadWriteData(fn_feedback);
     chat_session_table.grantReadWriteData(fn_feedback);
 
-    const lambda_main_brain = new DockerImageFunction(this,
+    const lambda_main_brain = addAutoScaling(new DockerImageFunction(this,
       "lambda_main_brain", {
       code: DockerImageCode.fromImageAsset(join(__dirname, "../../code/main")),
       timeout: Duration.minutes(15),
@@ -172,19 +172,18 @@ export class DeployStack extends Stack {
         cross_model_endpoint:process.env.cross_model_endpoint,
         chat_session_table:chat_session_table.tableName,
         prompt_template_table:prompt_template_table.tableName,
-        bm25_qd_threshold_hard:'7',
-        bm25_qd_threshold_soft:'10',
-        knn_qq_threshold_hard:'0.6',
+        bm25_qd_threshold_hard:'15',
+        bm25_qd_threshold_soft:'18',
+        knn_qq_threshold_hard:'0.7',
         knn_qq_threshold_soft:'0.8',
-        knn_qd_threshold_hard:'0.6',
+        knn_qd_threshold_hard:'0.7',
         knn_qd_threshold_soft:'0.8',
         lambda_feedback:"lambda_feedback",
         intention_list:"ec2_price,service_role,service_availability",
         neighbors:process.env.neighbors,
         TOP_K:process.env.TOP_K
       },
-    });
-    addAutoScaling(lambda_main_brain);
+    }));
     // Grant the Lambda function can invoke sagemaker
     lambda_main_brain.addToRolePolicy(new iam.PolicyStatement({
       // principals: [new iam.AnyPrincipal()],
@@ -204,7 +203,7 @@ export class DeployStack extends Stack {
         resources: ['*'],
         }))
       
-    const lambda_intention = new DockerImageFunction(this,
+    const lambda_intention = addAutoScaling(new DockerImageFunction(this,
       "lambda_intention", {
       code: DockerImageCode.fromImageAsset(join(__dirname, "../../code/intention_detect")),
       timeout: Duration.minutes(15),
@@ -220,11 +219,10 @@ export class DeployStack extends Stack {
         index_name:"chatbot-example-index" ,
         aos_knn_field:process.env.aos_knn_field,
         embedding_endpoint:process.env.embedding_endpoint,
-        llm_model_endpoint:"anthropic.claude-instant-v1",
+        llm_model_endpoint:"anthropic.claude-v2:1",
         region:region
       },
-    });
-    addAutoScaling(lambda_intention);
+    }));
     // Grant the Lambda function can invoke sagemaker
     lambda_intention.addToRolePolicy(new iam.PolicyStatement({
       // principals: [new iam.AnyPrincipal()],
@@ -243,7 +241,7 @@ export class DeployStack extends Stack {
         resources: ['*'],
         }))
 
-    const lambda_query_rewrite = new DockerImageFunction(this,
+    const lambda_query_rewrite = addAutoScaling(new DockerImageFunction(this,
       "lambda_query_rewrite", {
       code: DockerImageCode.fromImageAsset(join(__dirname, "../../code/query_rewriter")),
       timeout: Duration.minutes(15),
@@ -258,8 +256,7 @@ export class DeployStack extends Stack {
         llm_model_endpoint:process.env.llm_model_endpoint,
         region:region
       },
-    });
-    addAutoScaling(lambda_query_rewrite);
+    }));
     // Grant the Lambda function can invoke sagemaker
     lambda_query_rewrite.addToRolePolicy(new iam.PolicyStatement({
       // principals: [new iam.AnyPrincipal()],
@@ -278,7 +275,7 @@ export class DeployStack extends Stack {
         resources: ['*'],
         }))
 
-    const lambda_chat_agent = new DockerImageFunction(this,
+    const lambda_chat_agent = addAutoScaling(new DockerImageFunction(this,
       "lambda_chat_agent", {
       code: DockerImageCode.fromImageAsset(join(__dirname, "../../code/chat_agent")),
       timeout: Duration.minutes(15),
@@ -293,8 +290,7 @@ export class DeployStack extends Stack {
         llm_model_endpoint:process.env.llm_model_endpoint,
         region:region
       },
-    });
-    addAutoScaling(lambda_chat_agent,1);
+    }));
 
     // Grant the Lambda function can invoke sagemaker
     lambda_chat_agent.addToRolePolicy(new iam.PolicyStatement({

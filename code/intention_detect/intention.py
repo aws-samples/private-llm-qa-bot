@@ -21,7 +21,8 @@ logger.setLevel(logging.INFO)
 
 credentials = boto3.Session().get_credentials()
 BEDROCK_EMBEDDING_MODELID_LIST = ["cohere.embed-multilingual-v3","cohere.embed-english-v3","amazon.titan-embed-text-v1"]
-
+BEDROCK_LLM_MODELID_LIST = {'claude-instant':'anthropic.claude-instant-v1',
+                            'claude-v2':'anthropic.claude-v2:1'}
 
 from typing import Any, Dict, List, Optional
 from langchain.embeddings.base import Embeddings
@@ -180,7 +181,7 @@ def lambda_handler(event, context):
     index_name = os.environ.get('index_name')
     query = event.get('query')
     fewshot_cnt = event.get('fewshot_cnt')
-    llm_model_endpoint = os.environ.get('llm_model_endpoint', 'anthropic.claude-instant-v1')
+    llm_model_endpoint = os.environ.get('llm_model_endpoint', BEDROCK_LLM_MODELID_LIST["claude-v2"])
     
     logger.info("embedding_endpoint: {}".format(embedding_endpoint))
     logger.info("region:{}".format(region))
@@ -246,7 +247,7 @@ def lambda_handler(event, context):
     }
 
     llm = None
-    if llm_model_endpoint not in ["anthropic.claude-instant-v1", "anthropic.claude-v2"]:
+    if llm_model_endpoint not in list(BEDROCK_LLM_MODELID_LIST.values()):
         llmcontent_handler = llmContentHandler()
         llm=SagemakerEndpoint(
                 endpoint_name=llm_model_endpoint, 

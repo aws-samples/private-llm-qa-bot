@@ -138,7 +138,7 @@ export class LambdaStack extends NestedStack {
       layerVersionName:'ChatbotFELayer',
     });
 
-    this.lambda_chat_py = new lambda.Function(this, 'handle_chat_py',{
+    this.lambda_chat_py = addAutoScaling(new lambda.Function(this, 'handle_chat_py',{
       code: lambda.Code.fromAsset('../chatbotFE/deploy/lambda/lambda_chat_py'),
       layers:[layer],
       handler: 'app.handler',
@@ -151,8 +151,7 @@ export class LambdaStack extends NestedStack {
         sd_endpoint_name:process.env.sd_endpoint_name
       },
       memorySize: 256,
-    })
-    addAutoScaling(this.lambda_chat_py,1)
+    }));
     //read sd image data from s3 
     const sgbucket = s3.Bucket.fromBucketAttributes(this,'sagemakerbucket',{bucketName:`sagemaker-${process.env.CDK_DEFAULT_REGION}-${process.env.CDK_DEFAULT_ACCOUNT}`});
     sgbucket.grantRead(this.lambda_chat_py);
@@ -172,7 +171,7 @@ export class LambdaStack extends NestedStack {
       }
     );
 
-    this.lambda_handle_chat = createNodeJsLambdaFn(
+    this.lambda_handle_chat =addAutoScaling(createNodeJsLambdaFn(
       this,
       "../chatbotFE/deploy/lambda/lambda_handle_chat",
       "index.mjs",
@@ -180,8 +179,7 @@ export class LambdaStack extends NestedStack {
       {
         ...commonProps,
       }
-    );
-    addAutoScaling(this.lambda_handle_chat,1)
+    ));
 
     this.lambda_list_idx = createNodeJsLambdaFn(
       this,

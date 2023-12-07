@@ -21,7 +21,8 @@ logger.setLevel(logging.INFO)
 
 credentials = boto3.Session().get_credentials()
 BEDROCK_REGION = None
-
+BEDROCK_LLM_MODELID_LIST = {'claude-instant':'anthropic.claude-instant-v1',
+                            'claude-v2':'anthropic.claude-v2:1'}
 REFUSE_ANSWER = '对不起, 根据{func_name}({args}),没有查询到您想要的信息，请您更具体的描述下您的要求.'
 
 ERROR_ANSWER = """
@@ -304,8 +305,8 @@ def lambda_handler(event, context):
             "temperature":0.01,
             "top_p":0.85
         }
-        
-        model_id ="anthropic.claude-instant-v1" if llm_model_name == 'claude-instant' else "anthropic.claude-v2"
+
+        model_id = BEDROCK_LLM_MODELID_LIST[llm_model_name] if llm_model_name == 'claude-instant' else BEDROCK_LLM_MODELID_LIST['claude-v2']
         llm = Bedrock(model_id=model_id, client=boto3_bedrock, model_kwargs=parameters)
 
     agent_tools = AgentTools(api_schema=API_SCHEMA,llm=llm)
@@ -328,7 +329,7 @@ def lambda_handler(event, context):
         answer,ref_doc = agent_tools.run(query)
 
 
-    answer,ref_doc = agent_tools.run(query)
+    # answer,ref_doc = agent_tools.run(query)
     pattern = r'^根据[^，,]*[,|，]'
     answer = re.sub(pattern, "", answer)
     message = {"answer" : answer ,"ref_doc":ref_doc, "question": query }

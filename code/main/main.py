@@ -79,6 +79,9 @@ TOP_K = int(os.environ.get('TOP_K',4))
 NEIGHBORS = int(os.environ.get('neighbors',0))
 
 BEDROCK_EMBEDDING_MODELID_LIST = ["cohere.embed-multilingual-v3","cohere.embed-english-v3","amazon.titan-embed-text-v1"]
+BEDROCK_LLM_MODELID_LIST = {'claude-instant':'anthropic.claude-instant-v1',
+                            'claude-v2':'anthropic.claude-v2:1'}
+
 
 boto3_bedrock = boto3.client(
     service_name="bedrock-runtime",
@@ -650,7 +653,7 @@ def rewrite_query(query, session_history, round_cnt=2, use_bedrock="True"):
         "query": query
       },
       "use_bedrock" : use_bedrock,
-      "llm_model_name" : "claude-instant"
+      "llm_model_name" : "claude-v2"
     }
     response = lambda_client.invoke(FunctionName="Query_Rewrite",
                                            InvocationType='RequestResponse',
@@ -668,7 +671,7 @@ def chat_agent(query, detection, use_bedrock="True"):
         "detection": detection 
       },
       "use_bedrock" : use_bedrock,
-      "llm_model_name" : "anthropic.claude-v2"
+      "llm_model_name" : "claude-v2"
     }
     response = lambda_client.invoke(FunctionName="Chat_Agent",
                                            InvocationType='RequestResponse',
@@ -1121,7 +1124,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
             "top_p":0.95
         }
 
-        model_id ="anthropic.claude-instant-v1" if llm_model_name == 'claude-instant' else "anthropic.claude-v2"
+        model_id = BEDROCK_LLM_MODELID_LIST[llm_model_name] if llm_model_name == 'claude-instant' else BEDROCK_LLM_MODELID_LIST['claude-v2']
 
         llm = Bedrock(model_id=model_id, 
                       client=boto3_bedrock,

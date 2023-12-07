@@ -12,11 +12,11 @@ new DeployStack(app, 'QAChatDeployStack', {
   env: { account: process.env.CDK_DEFAULT_ACCOUNT, region: process.env.CDK_DEFAULT_REGION },
 });
 
-if (process.env.deploy_ui){
-  new FrontendCdkStack(app, 'ChatFrontendDeployStack', {
-    env: { account: process.env.CDK_DEFAULT_ACCOUNT, region: process.env.CDK_DEFAULT_REGION },
-  });
-}
+
+new FrontendCdkStack(app, 'ChatFrontendDeployStack', {
+  env: { account: process.env.CDK_DEFAULT_ACCOUNT, region: process.env.CDK_DEFAULT_REGION },
+});
+
 
 
 // const frontEndScriptPath = '../chatbotFE/gen_env.sh';
