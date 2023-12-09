@@ -15,12 +15,13 @@ import requests
 from pydantic import BaseModel
 from tools.get_price import query_ec2_price
 from tools.service_org_demo import service_org
-from tools.get_contact import get_contact
+# from tools.get_contact import get_contact
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 credentials = boto3.Session().get_credentials()
+lambda_client= boto3.client('lambda')
 BEDROCK_REGION = None
 
 REFUSE_ANSWER = '对不起, 根据{func_name}({args}),没有查询到您想要的信息，请您更具体的描述下您的要求.'
@@ -119,15 +120,29 @@ class AgentTools(BaseModel):
     api_schema: list
     llm: Any
 
-    def register_tool(cls,name:str,func:callable) -> None:
+    def register_tool(cls,name:str,func:Union[callable,str]) -> None:
         cls.function_map[name] = func
 
     def check_tool(cls,name:str) -> bool:
         return name in cls.function_map
 
     def _tool_call(cls,name,**args) -> Union[str,None]:
-        callback_func = cls.function_map.get(name)
-        return callback_func(**args) if callback_func else None
+        func = cls.function_map.get(name)
+        if callable(func):
+            return func(**args) if func else None
+        elif isinstance(func, str):
+            # call lambda
+            logger.info("call lambda:{}".format(func))
+            payload = { "param" : args }
+            invoke_response = lambda_client.invoke(FunctionName=func,
+                                                   InvocationType='RequestResponse',
+                                                   Payload=json.dumps(payload))
+
+            response_body = invoke_response['Payload']
+            response_str = response_body.read().decode("unicode_escape")
+            response_str = response_str.strip('"')
+
+            return response_str
 
     @staticmethod
     def extract_function_call(content: str):
@@ -270,6 +285,8 @@ def lambda_handler(event, context):
     use_bedrock = event.get('use_bedrock')
     
     region = os.environ.get('region')
+    agent_lambdas = os.environ.get('agent_tools')
+
     global BEDROCK_REGION
     BEDROCK_REGION = region
     llm_model_endpoint = os.environ.get('llm_model_endpoint')
@@ -311,7 +328,14 @@ def lambda_handler(event, context):
 
     agent_tools = AgentTools(api_schema=API_SCHEMA,llm=llm)
     agent_tools.register_tool(name='ec2_price',func=query_ec2_price)
-    agent_tools.register_tool(name='get_contact',func=get_contact)
+    agent_tools.register_tool(name='service_org',func=service_org)
+
+    if len(agent_lambdas) > 0:
+        agent_lambda_list = agent_lambdas.split(',')
+        for lambda_name in agent_lambda_list:
+            tool_name = lambda_name.replace('agent_tool_', '')
+            logger.info("register lambda tool:{}".format(lambda_name))
+            agent_tools.register_tool(name=tool_name,func=lambda_name)
 
     func_name, func_params = None, None
 
