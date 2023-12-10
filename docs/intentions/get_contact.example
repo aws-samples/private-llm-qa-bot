@@ -11,7 +11,7 @@
                 },
                 "role":{
                     "type":"string",
-                    "description":"employee's role, usually it's SS(Sale Specialist), SSA(Specialist Solution Architect), GTMS(产品经理), PM(Project Manager项目经理)"
+                    "description":"employee's role, usually it's Sales, Product Manager, Tech, Program Manager, Leader"
                 },
                 "domain":{
                     "type":"string",
@@ -29,37 +29,45 @@
     },
     "examples":[
         {
+            "query":"Bruce负责哪一块？",
+            "detection": {"func":"get_contact", "param":{"employee":"Bruce"}}
+        },
+        {
+            "query":"Lily 负责哪一部份？？",
+            "detection": {"func":"get_contact", "param":{"employee":"Lily"}}
+        },
+        {
             "query":"请问Lex是哪位SSA老师负责啊？有个api的问题请教一下",
-            "detection": {"func":"get_contact", "param":{"role":"SSA","scope":"Lex"}}
+            "detection": {"func":"get_contact", "param":{"role":"Tech","scope":"Lex"}}
         },
         {
             "query":"quicksight的GTMS是谁",
-            "detection":{"func":"get_contact", "param":{"role":"GTMS", "scope":"quicksight"}}
+            "detection":{"func":"get_contact", "param":{"role":"Product Manager", "scope":"quicksight"}}
         },
         
         {
             "query":"quicksight的产品经理是谁？",
-            "detection":{"func":"get_contact", "param":{"role":"GTMS", "scope":"quicksight"}}
+            "detection":{"func":"get_contact", "param":{"role":"Product Manager", "scope":"quicksight"}}
         },
         {
             "query":"数据治理的GTMS是谁？",
-            "detection":{"func":"get_contact", "param":{"role":"GTMS", "scope":"数据治理"}}
+            "detection":{"func":"get_contact", "param":{"role":"Product Manager", "scope":"Analytics"}}
         },
         {
             "query":"AIML北区的Sales是谁？",
-            "detection":{"func":"get_contact", "param":{"role":"SS", "domain":"AIML","scope":"north"}}
+            "detection":{"func":"get_contact", "param":{"role":"Sales", "domain":"AIML","scope":"north"}}
         },
         {
             "query":"AIML北区的BD是谁？",
-            "detection":{"func":"get_contact", "param":{"role":"SS", "domain":"AIML", "scope":"north"}}
+            "detection":{"func":"get_contact", "param":{"role":"Sales", "domain":"AIML", "scope":"north"}}
         },
         {
             "query":"Sagemaker相关问题应该联系谁？",
-            "detection":{"func":"get_contact", "param":{"role":"GTMS", "scope":"SageMaker"}}
+            "detection":{"func":"get_contact", "param":{"scope":"SageMaker"}}
         },
         {
             "query":"Emr相关问题应该联系谁？",
-            "detection":{"func":"get_contact", "param":{"role":"GTMS", "scope":"EMR"}}
+            "detection":{"func":"get_contact", "param":{"scope":"EMR"}}
         }
     ]
 }
