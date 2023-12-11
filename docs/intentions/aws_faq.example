@@ -237,6 +237,12 @@
             "detection":{
                 "func":"QA"
             }
+        },
+        {
+            "query":"SageMaker Feature Store 与 Azure 托管功能商店有什么不同?",
+            "detection":{
+                "func":"QA"
+            }
         }
     ]
 }

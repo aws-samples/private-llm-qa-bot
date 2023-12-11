@@ -395,6 +395,7 @@ class CustomDocRetriever(BaseRetriever):
                 item['doc_title'].endswith('.wiki.json') or 
                 item['doc_title'].endswith('.blog.json') or 
                 item['doc_title'].endswith('.txt') or 
+                item['doc_title'].endswith('.docx') or 
                 item['doc_title'].endswith('.pdf')) :
                 #check if has duplicate content in Paragraph/Sentence types
                 key = f"{item['doc_title']}-{item['doc_category']}-{item['idx']}"
@@ -464,7 +465,8 @@ class CustomDocRetriever(BaseRetriever):
         )
         json_str = response_model['Body'].read().decode('utf8')
         json_obj = json.loads(json_str)
-        scores = [item[1] for item in json_obj['scores']]
+        # scores = [item[1] for item in json_obj['scores']]
+        scores = json_obj['scores']
         return scores
     
     def de_duplicate(self,docs):
@@ -772,7 +774,8 @@ def search_using_aos_knn(client, q_embedding, index, size=10):
         body=query,
         index=index
     )
-    opensearch_knn_respose = [{'idx':item['_source'].get('idx',1),'doc_category':item['_source']['doc_category'],'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc':item['_source']['content'],"doc_type":item["_source"]["doc_type"],"score":item["_score"],'doc_author': item['_source']['doc_author']}  for item in query_response["hits"]["hits"]]
+    opensearch_knn_respose = [{'idx':item['_source'].get('idx',1),'doc_category':item['_source']['doc_category'],'doc_classify':item['_source']['doc_classify'],
+                               'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc':item['_source']['content'],"doc_type":item["_source"]["doc_type"],"score":item["_score"],'doc_author': item['_source']['doc_author']}  for item in query_response["hits"]["hits"]]
     return opensearch_knn_respose
     
 
@@ -856,9 +859,11 @@ def aos_search(client, index_name, field, query_term, exactly_match=False, size=
     )
 
     if exactly_match:
-        result_arr = [ {'idx':item['_source'].get('idx',0),'doc_category':item['_source']['doc_category'],'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc': item['_source']['content'], 'doc_type': item['_source']['doc_type'], 'score': item['_score'],'doc_author': item['_source']['doc_author']} for item in query_response["hits"]["hits"]]
+        result_arr = [ {'idx':item['_source'].get('idx',0),'doc_category':item['_source']['doc_category'],'doc_classify':item['_source']['doc_classify'],
+                        'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc': item['_source']['content'], 'doc_type': item['_source']['doc_type'], 'score': item['_score'],'doc_author': item['_source']['doc_author']} for item in query_response["hits"]["hits"]]
     else:
-        result_arr = [ {'idx':item['_source'].get('idx',0),'doc_category':item['_source']['doc_category'],'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc':item['_source']['content'], 'doc_type': item['_source']['doc_type'], 'score': item['_score'],'doc_author': item['_source']['doc_author']} for item in query_response["hits"]["hits"]]
+        result_arr = [ {'idx':item['_source'].get('idx',0),'doc_category':item['_source']['doc_category'],'doc_classify':item['_source']['doc_classify'],
+                        'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc':item['_source']['content'], 'doc_type': item['_source']['doc_type'], 'score': item['_score'],'doc_author': item['_source']['doc_author']} for item in query_response["hits"]["hits"]]
     return result_arr
 
 def delete_session(session_id):
@@ -959,7 +964,12 @@ def qa_knowledge_fewshot_build(recalls):
     #         ret_context.append(recall['doc'])
 
     # context_str = "\n\n".join(ret_context)
-    context_str = "\n\n".join([ recall['doc'] for recall in recalls])
+    for i, recall in enumerate(recalls):
+        ref = f"[{i+1}] Doc title:\"{recall['doc_title']}\",Doc category:\"{recall['doc_classify']}\"\n{recall['doc']}"
+        ret_context.append(ref)
+
+    context_str = "\n\n".join(ret_context)
+    # context_str = "\n\n".join([ recall['doc'] for  recall in recalls])
     return context_str
 
 
@@ -1060,7 +1070,7 @@ def format_reference(recall_knowledge):
     text = '\n```json\n#Reference\n'
     for sn,item in enumerate(recall_knowledge):
         displaydata = { "doc": item['doc'],"score": item['score']}
-        doc_category  = item['doc_category'] 
+        doc_category  = item['doc_classify'] 
         doc_title =  item['doc_title']
         text += f'Doc[{sn+1}]:["{doc_title}"]-["{doc_category}"]\n{json.dumps(displaydata,ensure_ascii=False)}\n'
     text += '\n```'
@@ -1232,7 +1242,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
             cache_answer = last_cache.split('\nAnswer:')[1]
             TRACE_LOGGER.trace(f"**Found caches:**")
             for sn,item in enumerate(cache_repsonses[::-1]):
-                TRACE_LOGGER.trace(f"**[{sn+1}] [{item['doc_title']}] [{item['doc_category']}] [{item['score']:.3f}] author:[{item['doc_author']}]**")
+                TRACE_LOGGER.trace(f"**[{sn+1}] [{item['doc_title']}] [{item['doc_type']}] [{item['doc_classify']}] [{item['score']:.3f}] author:[{item['doc_author']}]**")
                 TRACE_LOGGER.trace(f"{item['doc']}")
         else:
             TRACE_LOGGER.trace(f"**No cache found**")
@@ -1303,9 +1313,9 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
 
         ##添加召回文档到refdoc和tracelog, 按score倒序展示
         for sn,item in enumerate(recall_knowledge[::-1]):
-            TRACE_LOGGER.trace(f"**[{sn+1}] [{item['doc_title']}] [{item['doc_category']}] [{item['score']:.3f}] [{item['rank_score']:.3f}] author:[{item['doc_author']}]**")
+            TRACE_LOGGER.trace(f"**[{sn+1}] [{item['doc_title']}] [{item['doc_classify']}] [{item['score']:.3f}] [{item['rank_score']:.3f}] author:[{item['doc_author']}]**")
             TRACE_LOGGER.trace(f"{item['doc']}")
-            TRACE_LOGGER.add_ref(f"**[{sn+1}] [{item['doc_title']}] [{item['doc_category']}] [{item['score']:.3f}] [{item['rank_score']:.3f}] author:[{item['doc_author']}]**")
+            TRACE_LOGGER.add_ref(f"**[{sn+1}] [{item['doc_title']}] [{item['doc_classify']}] [{item['score']:.3f}] [{item['rank_score']:.3f}] author:[{item['doc_author']}]**")
             TRACE_LOGGER.add_ref(f"{item['doc']}")
         TRACE_LOGGER.trace('**Answer:**')
 
