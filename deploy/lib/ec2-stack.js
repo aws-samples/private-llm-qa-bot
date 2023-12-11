@@ -42,6 +42,12 @@ export class Ec2Stack extends NestedStack {
 
   role.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonSSMManagedInstanceCore'))
   role.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonS3ReadOnlyAccess'))
+  const customPolicyStatement = new iam.PolicyStatement({
+    effect: iam.Effect.ALLOW,
+    actions: ['lambda:GetFunctionConfiguration'], 
+    resources: ['*'] 
+  });
+  role.addToPolicy(customPolicyStatement);
 
   const ami = new ec2.AmazonLinuxImage({
     generation: ec2.AmazonLinuxGeneration.AMAZON_LINUX_2,
