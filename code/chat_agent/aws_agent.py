@@ -115,6 +115,22 @@ CONTEXT_TEMPLATE = """
         Question: {question}
         """
 
+Enhanced_TEMPLATE = """Human: You are acting as an AWS assistant, according to user question in <question>, you call API to get the response in <api_response>.
+
+<question>{question}</question>
+
+<api_response>
+{context}
+</api_response>
+
+Please answer user's question in <answer>, and follow below requirements:
+1. Respond in the original language of the question.
+2. If there is no relevant information in message, you should reply user that you can't find any information by his original question, don't say anything else.
+3. if suggestion is provided and is not empty,  you should suggest user to ask by referring suggestion. If no suggestion is empty, don't say anything else.
+3. Do not begin with phrases like "API", skip the preamble, go straight into the answer. 
+
+Assistant: <answer>"""
+
 class AgentTools(BaseModel):
     function_map: dict = {}
     api_schema: list
@@ -196,14 +212,14 @@ class AgentTools(BaseModel):
         if not context:
             return None 
         prompt = PromptTemplate(
-                template=CONTEXT_TEMPLATE,
+                template=Enhanced_TEMPLATE,
                 input_variables=["context",'question']
             )
         llmchain = LLMChain(llm=cls.llm,verbose=False,prompt = prompt)
 
         logger.info(f'llm input:{CONTEXT_TEMPLATE.format(context=context,question=query)}')
         answer = llmchain.run({'context':context, "question": query})
-        answer = answer.strip()
+        answer = answer.replace('</answer>','').strip()
         return answer
 
     def run(cls,query) ->Dict[str,str]:
