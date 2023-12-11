@@ -142,14 +142,14 @@ class AgentTools(BaseModel):
     def check_tool(cls,name:str) -> bool:
         return name in cls.function_map
 
-    def _tool_call(cls,name,**args) -> Union[str,None]:
+    def _tool_call(cls,query,name,**args) -> Union[str,None]:
         func = cls.function_map.get(name)
         if callable(func):
             return func(**args) if func else None
         elif isinstance(func, str):
             # call lambda
             logger.info("call lambda:{}".format(func))
-            payload = { "param" : args }
+            payload = { "param" : args, "query": query }
             invoke_response = lambda_client.invoke(FunctionName=func,
                                                    InvocationType='RequestResponse',
                                                    Payload=json.dumps(payload))
@@ -191,7 +191,7 @@ class AgentTools(BaseModel):
         try:
             args = json.loads(function_call['arguments'])
             func_name = function_call['name']
-            result = cls._tool_call(func_name,**args)
+            result = cls._tool_call(query, func_name, **args)
             return result,func_name,args,None
         except Exception as e:
             print(str(e))
@@ -238,7 +238,7 @@ class AgentTools(BaseModel):
     def run_with_func_args(cls,query,func_name,args) ->Dict[str,str]:
         context= ''
         try:
-            context = cls._tool_call(func_name,**args)
+            context = cls._tool_call(query, func_name, **args)
             logger.info(f"****function_call [{func_name}] result ****:\n{context}")
             answer = cls._add_context_answer(query,context)
             ref_doc = f"本次回答基于使用工具[{func_name}]为您查询到结果:\n\n{context}\n\n"
