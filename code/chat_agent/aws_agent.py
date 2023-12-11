@@ -15,11 +15,13 @@ import requests
 from pydantic import BaseModel
 from tools.get_price import query_ec2_price
 from tools.service_org_demo import service_org
+# from tools.get_contact import get_contact
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 credentials = boto3.Session().get_credentials()
+lambda_client= boto3.client('lambda')
 BEDROCK_REGION = None
 
 REFUSE_ANSWER = '对不起, 根据{func_name}({args}),没有查询到您想要的信息，请您更具体的描述下您的要求.'
@@ -113,20 +115,50 @@ CONTEXT_TEMPLATE = """
         Question: {question}
         """
 
+Enhanced_TEMPLATE = """Human: You are acting as an AWS assistant, according to user question in <question>, you call API to get the response in <api_response>.
+
+<question>{question}</question>
+
+<api_response>
+{context}
+</api_response>
+
+Please answer user's question in <answer>, and follow below requirements:
+1. Respond in the original language of the question.
+2. If there is no relevant information in message, you should reply user that you can't find any information by his original question, don't say anything else.
+3. if suggestion is provided and is not empty,  you should suggest user to ask by referring suggestion. If no suggestion is empty, don't say anything else.
+3. Do not begin with phrases like "API", skip the preamble, go straight into the answer. 
+
+Assistant: <answer>"""
+
 class AgentTools(BaseModel):
     function_map: dict = {}
     api_schema: list
     llm: Any
 
-    def register_tool(cls,name:str,func:callable) -> None:
+    def register_tool(cls,name:str,func:Union[callable,str]) -> None:
         cls.function_map[name] = func
 
     def check_tool(cls,name:str) -> bool:
         return name in cls.function_map
 
-    def _tool_call(cls,name,**args) -> Union[str,None]:
-        callback_func = cls.function_map.get(name)
-        return callback_func(**args) if callback_func else None
+    def _tool_call(cls,query,name,**args) -> Union[str,None]:
+        func = cls.function_map.get(name)
+        if callable(func):
+            return func(**args) if func else None
+        elif isinstance(func, str):
+            # call lambda
+            logger.info("call lambda:{}".format(func))
+            payload = { "param" : args, "query": query }
+            invoke_response = lambda_client.invoke(FunctionName=func,
+                                                   InvocationType='RequestResponse',
+                                                   Payload=json.dumps(payload))
+
+            response_body = invoke_response['Payload']
+            response_str = response_body.read().decode("unicode_escape")
+            response_str = response_str.strip('"')
+
+            return response_str
 
     @staticmethod
     def extract_function_call(content: str):
@@ -159,7 +191,7 @@ class AgentTools(BaseModel):
         try:
             args = json.loads(function_call['arguments'])
             func_name = function_call['name']
-            result = cls._tool_call(func_name,**args)
+            result = cls._tool_call(query, func_name, **args)
             return result,func_name,args,None
         except Exception as e:
             print(str(e))
@@ -180,14 +212,14 @@ class AgentTools(BaseModel):
         if not context:
             return None 
         prompt = PromptTemplate(
-                template=CONTEXT_TEMPLATE,
+                template=Enhanced_TEMPLATE,
                 input_variables=["context",'question']
             )
         llmchain = LLMChain(llm=cls.llm,verbose=False,prompt = prompt)
 
         logger.info(f'llm input:{CONTEXT_TEMPLATE.format(context=context,question=query)}')
         answer = llmchain.run({'context':context, "question": query})
-        answer = answer.strip()
+        answer = answer.replace('</answer>','').strip()
         return answer
 
     def run(cls,query) ->Dict[str,str]:
@@ -206,7 +238,7 @@ class AgentTools(BaseModel):
     def run_with_func_args(cls,query,func_name,args) ->Dict[str,str]:
         context= ''
         try:
-            context = cls._tool_call(func_name,**args)
+            context = cls._tool_call(query, func_name, **args)
             logger.info(f"****function_call [{func_name}] result ****:\n{context}")
             answer = cls._add_context_answer(query,context)
             ref_doc = f"本次回答基于使用工具[{func_name}]为您查询到结果:\n\n{context}\n\n"
@@ -269,6 +301,8 @@ def lambda_handler(event, context):
     use_bedrock = event.get('use_bedrock')
     
     region = os.environ.get('region')
+    agent_lambdas = os.environ.get('agent_tools')
+
     global BEDROCK_REGION
     BEDROCK_REGION = region
     llm_model_endpoint = os.environ.get('llm_model_endpoint')
@@ -312,10 +346,22 @@ def lambda_handler(event, context):
     agent_tools.register_tool(name='ec2_price',func=query_ec2_price)
     agent_tools.register_tool(name='service_org',func=service_org)
 
+    if len(agent_lambdas) > 0:
+        agent_lambda_list = agent_lambdas.split(',')
+        for lambda_name in agent_lambda_list:
+            tool_name = lambda_name.replace('agent_tool_', '')
+            logger.info("register lambda tool:{}".format(lambda_name))
+            agent_tools.register_tool(name=tool_name,func=lambda_name)
+
     func_name, func_params = None, None
+
+    logger.info("detection:{}".format(detection))
     if detection:
         func_name = detection.get('func')
         func_params = detection.get('param')
+        logger.info("func_name:{}".format(func_name))
+        logger.info("func_params:{}".format(func_params))
+
 
     ## 已经从外面传入了识别出的意图和参数
     if func_name and func_params:
@@ -327,8 +373,6 @@ def lambda_handler(event, context):
     else:
         answer,ref_doc = agent_tools.run(query)
 
-
-    answer,ref_doc = agent_tools.run(query)
     pattern = r'^根据[^，,]*[,|，]'
     answer = re.sub(pattern, "", answer)
     message = {"answer" : answer ,"ref_doc":ref_doc, "question": query }
