@@ -15,7 +15,6 @@ import requests
 from pydantic import BaseModel
 from tools.get_price import query_ec2_price
 from tools.service_org_demo import service_org
-# from tools.get_contact import get_contact
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
