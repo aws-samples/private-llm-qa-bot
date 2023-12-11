@@ -965,7 +965,7 @@ def qa_knowledge_fewshot_build(recalls):
 
     # context_str = "\n\n".join(ret_context)
     for i, recall in enumerate(recalls):
-        ref = f"[{i+1}] Doc title:\"{recall['doc_title']}\",Doc category:\"{recall['doc_classify']}\"\n{recall['doc']}"
+        ref = f"[{i+1}] {recall['doc']}"
         ret_context.append(ref)
 
     context_str = "\n\n".join(ret_context)
