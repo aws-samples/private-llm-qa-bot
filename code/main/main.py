@@ -578,7 +578,7 @@ class CustomDocRetriever(BaseRetriever):
                 scores = self.rerank(query_input, all_docs,sm_client,cross_model_endpoint)
                 ##sort by scores
                 sorted_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=False)
-                recall_knowledge = [{**all_docs[idx],'rank_score':scores[idx] } for idx in sorted_indices[-TOP_K:]]
+                recall_knowledge = [{**all_docs[idx],'rank_score':scores[idx] } for idx in sorted_indices[-TOP_K:] if scores[idx]>0] ##filter out no relevant docs 
             else:
                 recall_knowledge = []
 
@@ -1448,7 +1448,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
     elpase_time1 = time.time() - start1
     logger.info(f'runing time of update_session : {elpase_time}s seconds')
     logger.info(f'runing time of all  : {elpase_time1}s seconds')
-    return answer,ref_text,use_stream,query_input,opensearch_query_response,opensearch_knn_respose
+    return answer,ref_text,use_stream,query_input,opensearch_query_response,opensearch_knn_respose,recall_knowledge
 
 def delete_doc_index(obj_key,embedding_model,index_name):
     def delete_aos_index(obj_key,index_name,size=50):
@@ -1717,6 +1717,7 @@ def lambda_handler(event, context):
     global openai_api_key
     openai_api_key = event.get('OPENAI_API_KEY') 
     hide_ref = event.get('hide_ref',False)
+    retrieve_only = event.get('retrieve_only',False)
     session_id = event['chat_name']
     question = event['prompt']
     model_name = event['model'] if event.get('model') else event.get('model_name','')
@@ -1738,6 +1739,19 @@ def lambda_handler(event, context):
             bucket,imgobj = imgurl.split('/',1)
             image_path = generate_s3_image_url(bucket,imgobj)
         logger.info(f"image_path:{image_path}")
+
+    ## 用于trulength接口，只返回recall 知识
+    if retrieve_only:
+        doc_retriever = CustomDocRetriever.from_endpoints(embedding_model_endpoint=embedding_endpoint,
+                                    aos_endpoint= os.environ.get("aos_endpoint", ""),
+                                    aos_index=os.environ.get("aos_index", ""))
+        recall_knowledge,opensearch_knn_respose,opensearch_query_response = doc_retriever.get_relevant_documents_custom(question) 
+        extra_info = {"query_input": question, "opensearch_query_response" : opensearch_query_response, "opensearch_knn_respose": opensearch_knn_respose,"recall_knowledge":recall_knowledge }
+        return {
+            'statusCode': 200,
+            'headers': {'Content-Type': 'application/json'},
+            'body': [{"id": str(uuid.uuid4()), "extra_info" : extra_info,} ]
+        }
 
     ##获取前端给的系统设定，如果没有，则使用lambda里的默认值
     global B_Role,SYSTEM_ROLE_PROMPT
@@ -1795,9 +1809,8 @@ def lambda_handler(event, context):
     logger.info(f'intention list: {INTENTION_LIST}')
     global TRACE_LOGGER
     TRACE_LOGGER = TraceLogger(wsclient=wsclient,msgid=msgid,connectionId=session_id,stream=use_stream,use_trace=use_trace,hide_ref=hide_ref)
-
     main_entry_start = time.time()  # 或者使用 time.time_ns() 获取纳秒级别的时间戳
-    answer,ref_text,use_stream,query_input,opensearch_query_response,opensearch_knn_respose = main_entry_new(session_id, question, embedding_endpoint, llm_endpoint, model_name, aos_endpoint, aos_index, aos_knn_field, aos_result_num,
+    answer,ref_text,use_stream,query_input,opensearch_query_response,opensearch_knn_respose,recall_knowledge = main_entry_new(session_id, question, embedding_endpoint, llm_endpoint, model_name, aos_endpoint, aos_index, aos_knn_field, aos_result_num,
                        Kendra_index_id, Kendra_result_num,use_qa,wsclient,msgid,max_tokens,temperature,prompt_template,image_path,multi_rounds,hide_ref,use_stream)
     main_entry_elpase = time.time() - main_entry_start  # 或者使用 time.time_ns() 获取纳秒级别的时间戳
     logger.info(f'runing time of main_entry : {main_entry_elpase}s seconds')
@@ -1821,7 +1834,7 @@ def lambda_handler(event, context):
     # "usage": {"prompt_tokens": 58, "completion_tokens": 15, "total_tokens": 73}}]
     extra_info = {}
     if session_id == 'OnlyForDEBUG':
-        extra_info = {"query_input": query_input, "opensearch_query_response" : opensearch_query_response, "opensearch_knn_respose": opensearch_knn_respose }
+        extra_info = {"query_input": query_input, "opensearch_query_response" : opensearch_query_response, "opensearch_knn_respose": opensearch_knn_respose,"recall_knowledge":recall_knowledge }
     return {
         'statusCode': 200,
         'headers': {'Content-Type': 'application/json'},
