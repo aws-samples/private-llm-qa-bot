@@ -79,6 +79,8 @@ TOP_K = int(os.environ.get('TOP_K',4))
 NEIGHBORS = int(os.environ.get('neighbors',0))
 
 BEDROCK_EMBEDDING_MODELID_LIST = ["cohere.embed-multilingual-v3","cohere.embed-english-v3","amazon.titan-embed-text-v1"]
+BEDROCK_LLM_MODELID_LIST = {'claude-instant':'anthropic.claude-instant-v1',
+                            'claude-v2':'anthropic.claude-v2:1'}
 
 boto3_bedrock = boto3.client(
     service_name="bedrock-runtime",
@@ -461,7 +463,7 @@ class CustomDocRetriever(BaseRetriever):
         )
         json_str = response_model['Body'].read().decode('utf8')
         json_obj = json.loads(json_str)
-        scores = [item[1] for item in json_obj['scores']]
+        scores = json_obj['scores']
         return scores
     
     def de_duplicate(self,docs):
@@ -668,7 +670,7 @@ def chat_agent(query, detection, use_bedrock="True"):
         "detection": detection 
       },
       "use_bedrock" : use_bedrock,
-      "llm_model_name" : "anthropic.claude-v2"
+      "llm_model_name" : "claude-v2"
     }
     response = lambda_client.invoke(FunctionName="Chat_Agent",
                                            InvocationType='RequestResponse',
@@ -1007,7 +1009,20 @@ def create_soft_refuse_template(prompt_template):
 
 def create_qa_prompt_templete(prompt_template):
     if prompt_template == '':
-        prompt_template_zh = """{system_role_prompt} {role_bot}\n请根据反引号中的内容提取相关信息回答问题:\n```\n{chat_history}{context}\n```\n如果反引号中的内容为空,则回答不知道.\n用户:{question}"""
+        #prompt_template_zh = """{system_role_prompt} {role_bot}\n请根据反引号中的内容提取相关信息回答问题:\n```\n{chat_history}{context}\n```\n如果反引号中的内容为空,则回答不知道.\n用户:{question}"""
+        prompt_template_zh = \
+"""{system_role_prompt}{role_bot}请根据以下的知识，回答用户的问题。
+<context>
+{context}
+</context> 
+如果知识中的内容的包含markdown格式的内容，如参考图片，示意图，链接等，请尽可能利用并按markdown格式输出参考图片，示意图，链接。请严格基于跟问题相关的知识来回答问题，不要随意发挥和编造答案。请简洁有条理的回答，如果知识内容为空或者跟问题不相关，则回答不知道。
+前几轮的聊天记录如下，如果有需要请参考以下的记录。
+<chat_history>
+{chat_history} 
+</chat_history>
+Skip the preamble, go straight into the answer.
+用户问:{question} 
+"""
     else:
         prompt_template_zh = prompt_template
     PROMPT = PromptTemplate(
@@ -1106,7 +1121,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         json_obj_str = json.dumps(json_obj, ensure_ascii=False)
         logger.info(json_obj_str)
         use_stream = False
-        return answer,'',use_stream,'',[],[]
+        return answer,'',use_stream,'',[],[],[]
     
     logger.info("llm_model_name : {} ,use_stream :{}".format(llm_model_name,use_stream))
     llm = None
@@ -1121,7 +1136,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
             "top_p":0.95
         }
 
-        model_id ="anthropic.claude-instant-v1" if llm_model_name == 'claude-instant' else "anthropic.claude-v2"
+        model_id = BEDROCK_LLM_MODELID_LIST[llm_model_name] if llm_model_name == 'claude-instant' else BEDROCK_LLM_MODELID_LIST['claude-v2']
 
         llm = Bedrock(model_id=model_id, 
                       client=boto3_bedrock,
@@ -1229,7 +1244,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
             cache_answer = last_cache.split('\nAnswer:')[1]
             TRACE_LOGGER.trace(f"**Found caches:**")
             for sn,item in enumerate(cache_repsonses[::-1]):
-                TRACE_LOGGER.trace(f"**[{sn+1}] [{item['doc_title']}] [{item['doc_category']}] [{item['score']:.3f}] author:[{item['doc_author']}]**")
+                TRACE_LOGGER.trace(f"**[{sn+1}] [{item['doc_title']}] [{item['doc_type']}] [{item['score']:.3f}] author:[{item['doc_author']}]**")
                 TRACE_LOGGER.trace(f"{item['doc']}")
         else:
             TRACE_LOGGER.trace(f"**No cache found**")
@@ -1300,9 +1315,9 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
 
         ##添加召回文档到refdoc和tracelog, 按score倒序展示
         for sn,item in enumerate(recall_knowledge[::-1]):
-            TRACE_LOGGER.trace(f"**[{sn+1}] [{item['doc_title']}] [{item['doc_category']}] [{item['score']:.3f}] [{item['rank_score']:.3f}] author:[{item['doc_author']}]**")
+            TRACE_LOGGER.trace(f"**[{sn+1}] [{item['doc_title']}] [{item['doc_type']}] [{item['score']:.3f}] [{item['rank_score']:.3f}] author:[{item['doc_author']}]**")
             TRACE_LOGGER.trace(f"{item['doc']}")
-            TRACE_LOGGER.add_ref(f"**[{sn+1}] [{item['doc_title']}] [{item['doc_category']}] [{item['score']:.3f}] [{item['rank_score']:.3f}] author:[{item['doc_author']}]**")
+            TRACE_LOGGER.add_ref(f"**[{sn+1}] [{item['doc_title']}] [{item['doc_type']}] [{item['score']:.3f}] [{item['rank_score']:.3f}] author:[{item['doc_author']}]**")
             TRACE_LOGGER.add_ref(f"{item['doc']}")
         TRACE_LOGGER.trace('**Answer:**')
 
@@ -1435,7 +1450,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
     elpase_time1 = time.time() - start1
     logger.info(f'runing time of update_session : {elpase_time}s seconds')
     logger.info(f'runing time of all  : {elpase_time1}s seconds')
-    return answer,ref_text,use_stream,query_input,opensearch_query_response,opensearch_knn_respose
+    return answer,ref_text,use_stream,query_input,opensearch_query_response,opensearch_knn_respose,recall_knowledge
 
 def delete_doc_index(obj_key,embedding_model,index_name):
     def delete_aos_index(obj_key,index_name,size=50):
@@ -1704,6 +1719,7 @@ def lambda_handler(event, context):
     global openai_api_key
     openai_api_key = event.get('OPENAI_API_KEY') 
     hide_ref = event.get('hide_ref',False)
+    retrieve_only = event.get('retrieve_only',False)
     session_id = event['chat_name']
     question = event['prompt']
     model_name = event['model'] if event.get('model') else event.get('model_name','')
@@ -1726,6 +1742,19 @@ def lambda_handler(event, context):
             image_path = generate_s3_image_url(bucket,imgobj)
         logger.info(f"image_path:{image_path}")
 
+    ## 用于trulength接口，只返回recall 知识
+    if retrieve_only:
+        doc_retriever = CustomDocRetriever.from_endpoints(embedding_model_endpoint=embedding_endpoint,
+                                    aos_endpoint= os.environ.get("aos_endpoint", ""),
+                                    aos_index=os.environ.get("aos_index", ""))
+        recall_knowledge,opensearch_knn_respose,opensearch_query_response = doc_retriever.get_relevant_documents_custom(question) 
+        extra_info = {"query_input": question, "opensearch_query_response" : opensearch_query_response, "opensearch_knn_respose": opensearch_knn_respose,"recall_knowledge":recall_knowledge }
+        return {
+            'statusCode': 200,
+            'headers': {'Content-Type': 'application/json'},
+            'body': [{"id": str(uuid.uuid4()), "extra_info" : extra_info,} ]
+        }
+        
     ##获取前端给的系统设定，如果没有，则使用lambda里的默认值
     global B_Role,SYSTEM_ROLE_PROMPT
     B_Role = event.get('system_role',B_Role)
@@ -1784,7 +1813,7 @@ def lambda_handler(event, context):
     TRACE_LOGGER = TraceLogger(wsclient=wsclient,msgid=msgid,connectionId=session_id,stream=use_stream,use_trace=use_trace,hide_ref=hide_ref)
 
     main_entry_start = time.time()  # 或者使用 time.time_ns() 获取纳秒级别的时间戳
-    answer,ref_text,use_stream,query_input,opensearch_query_response,opensearch_knn_respose = main_entry_new(session_id, question, embedding_endpoint, llm_endpoint, model_name, aos_endpoint, aos_index, aos_knn_field, aos_result_num,
+    answer,ref_text,use_stream,query_input,opensearch_query_response,opensearch_knn_respose,recall_knowledge = main_entry_new(session_id, question, embedding_endpoint, llm_endpoint, model_name, aos_endpoint, aos_index, aos_knn_field, aos_result_num,
                        Kendra_index_id, Kendra_result_num,use_qa,wsclient,msgid,max_tokens,temperature,prompt_template,image_path,multi_rounds,hide_ref,use_stream)
     main_entry_elpase = time.time() - main_entry_start  # 或者使用 time.time_ns() 获取纳秒级别的时间戳
     logger.info(f'runing time of main_entry : {main_entry_elpase}s seconds')
@@ -1808,7 +1837,7 @@ def lambda_handler(event, context):
     # "usage": {"prompt_tokens": 58, "completion_tokens": 15, "total_tokens": 73}}]
     extra_info = {}
     if session_id == 'OnlyForDEBUG':
-        extra_info = {"query_input": query_input, "opensearch_query_response" : opensearch_query_response, "opensearch_knn_respose": opensearch_knn_respose }
+        extra_info = {"query_input": query_input, "opensearch_query_response" : opensearch_query_response, "opensearch_knn_respose": opensearch_knn_respose, "recall_knowledge":recall_knowledge }
     return {
         'statusCode': 200,
         'headers': {'Content-Type': 'application/json'},

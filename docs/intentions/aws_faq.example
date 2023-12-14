@@ -219,6 +219,30 @@
             "detection":{
                 "func":"QA"
             }
+        },
+        {
+            "query":"OCI的资料有哪些？",
+            "detection":{
+                "func":"QA"
+            }
+        },
+        {
+            "query":"什么是生成式AI?",
+            "detection":{
+                "func":"QA"
+            }
+        },
+        {
+            "query":"什么是Gen-AI?",
+            "detection":{
+                "func":"QA"
+            }
+        },
+        {
+            "query":"SageMaker Feature Store 与 Azure 托管功能商店有什么不同?",
+            "detection":{
+                "func":"QA"
+            }
         }
     ]
 }
