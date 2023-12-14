@@ -172,7 +172,7 @@ export class DeployStack extends Stack {
         cross_model_endpoint:process.env.cross_model_endpoint,
         chat_session_table:chat_session_table.tableName,
         prompt_template_table:prompt_template_table.tableName,
-        bm25_qd_threshold_hard:'10',
+        bm25_qd_threshold_hard:'8',
         bm25_qd_threshold_soft:'12',
         knn_qq_threshold_hard:'0.7',
         knn_qq_threshold_soft:'0.8',

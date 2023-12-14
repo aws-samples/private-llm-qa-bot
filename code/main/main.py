@@ -578,7 +578,7 @@ class CustomDocRetriever(BaseRetriever):
                 scores = self.rerank(query_input, all_docs,sm_client,cross_model_endpoint)
                 ##sort by scores
                 sorted_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=False)
-                recall_knowledge = [{**all_docs[idx],'rank_score':scores[idx] } for idx in sorted_indices[-TOP_K:] if scores[idx]>0] ##filter out no relevant docs 
+                recall_knowledge = [{**all_docs[idx],'rank_score':scores[idx] } for idx in sorted_indices[-TOP_K:] ] 
             else:
                 recall_knowledge = []
 
@@ -1020,7 +1020,19 @@ def create_soft_refuse_template(prompt_template):
 
 def create_qa_prompt_templete(prompt_template):
     if prompt_template == '':
-        prompt_template_zh = """{system_role_prompt} {role_bot}\n请根据反引号中的内容提取相关信息回答问题:\n```\n{chat_history}{context}\n```\n如果反引号中的内容为空,则回答不知道.\n用户:{question}"""
+        # prompt_template_zh = """{system_role_prompt} {role_bot}\n请根据反引号中的内容提取相关信息回答问题:\n```\n{chat_history}{context}\n```\n如果反引号中的内容为空,则回答不知道.\n用户:{question}"""
+        prompt_template_zh = """{system_role_prompt}{role_bot}请根据以下的知识，回答用户的问题。
+        <context>
+        {context}
+        </context> 
+
+        如果知识中的内容的包含markdown格式的内容，如参考图片，示意图，链接等，请尽可能利用并按markdown格式输出参考图片，示意图，链接。请严格基于跟问题相关的知识来回答问题，不要随意发挥和编造答案。请简洁有条理的回答，如果知识内容为空或者跟问题不相关，则回答不知道。
+        前几轮的聊天记录如下，如果有需要请参考以下的记录。
+        <chat_history>
+        {chat_history} 
+        </chat_history>
+        Skip the preamble, go straight into the answer.
+        用户问:{question} """
     else:
         prompt_template_zh = prompt_template
     PROMPT = PromptTemplate(
@@ -1119,7 +1131,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         json_obj_str = json.dumps(json_obj, ensure_ascii=False)
         logger.info(json_obj_str)
         use_stream = False
-        return answer,'',use_stream,'',[],[]
+        return answer,'',use_stream,'',[],[],[]
     
     logger.info("llm_model_name : {} ,use_stream :{}".format(llm_model_name,use_stream))
     llm = None
@@ -1214,12 +1226,11 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
 
         chat_history=''
         TRACE_LOGGER.trace(f'**Rewrite: {origin_query} => {query_input}**')
-            ##add history parameter
-            # if isinstance(llm,SagemakerStreamEndpoint) or isinstance(llm,SagemakerEndpoint):
-            #     chat_history=''
-            #     llm.model_kwargs['history'] = chat_coversions[-1:]
-            # else:
-            #     chat_history= get_chat_history(chat_coversions[-1:])
+        #add history parameter
+        if isinstance(llm,SagemakerStreamEndpoint) or isinstance(llm,SagemakerEndpoint):
+            llm.model_kwargs['history'] = chat_coversions[-1:]
+        else:
+            chat_history= get_chat_history(chat_coversions[-1:])
     else:
         chat_history=''
 
@@ -1383,6 +1394,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
 
             # context = "\n".join([doc['doc'] for doc in recall_knowledge])
             context = qa_knowledge_fewshot_build(recall_knowledge)
+            chat_history = '' ##QA 场景下先不使用history
             ##最终的answer
             try:
                 answer = llmchain.run({'question':query_input,'context':context,'chat_history':chat_history,'role_bot':B_Role })

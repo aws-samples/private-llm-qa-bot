@@ -144,36 +144,41 @@ def iterate_paragraph(file_content, object_key, doc_classify,smr_client, index_n
         chunk_overlap  = CHUNK_OVERLAP,
         length_function = token_length_function,
     )
-    def chunk_generator(json_arr):
-        for idx, json_item in enumerate(json_arr):
-            header = ""
-            if len(json_item['heading']) > 0:
-                header = json_item['heading'][0]['heading']
-
-            paragraph_content = json_item['content']
-            # if len(paragraph_content) > 1024 or len(paragraph_content) < Sentence_Len_Threshold:
-            #     continue
-
-            if len(paragraph_content) < Sentence_Len_Threshold:
-                continue
-
-            yield (idx, paragraph_content, 'Paragraph', paragraph_content)
-
-            sentences = re.split('[。？?.！!]', paragraph_content)
-            for sent in (sent for sent in sentences if len(sent) > Sentence_Len_Threshold): 
-                yield (idx, sent, 'Sentence', paragraph_content)
-
+    ##临时修改，对content做了chunk切分，以规避cohere embeding token过长报错问题
     # def chunk_generator(json_arr):
-    #     idx = 0
-    #     texts = []
-    #     for json_item in json_arr:
+    #     for idx, json_item in enumerate(json_arr):
     #         header = ""
     #         if len(json_item['heading']) > 0:
     #             header = json_item['heading'][0]['heading']
-    #         texts += text_splitter.split_text(f"{header}-{json_item['content']}")
-    #         for paragraph_content in texts:
-    #             idx += 1
-    #             yield (idx, paragraph_content, 'Paragraph', paragraph_content)
+
+    #         paragraph_content = json_item['content']
+    #         # if len(paragraph_content) > 1024 or len(paragraph_content) < Sentence_Len_Threshold:
+    #         #     continue
+
+    #         if len(paragraph_content) < Sentence_Len_Threshold:
+    #             continue
+
+    #         yield (idx, paragraph_content, 'Paragraph', paragraph_content)
+
+    #         sentences = re.split('[。？?.！!]', paragraph_content)
+    #         for sent in (sent for sent in sentences if len(sent) > Sentence_Len_Threshold): 
+    #             yield (idx, sent, 'Sentence', paragraph_content)
+
+    ##临时修改，对content做了chunk切分，以规避cohere embeding token过长报错问题
+    def chunk_generator(json_arr):
+        idx = 0
+        texts = []
+        for json_item in json_arr:
+            header = ""
+            if len(json_item['heading']) > 0:
+                header = json_item['heading'][0]['heading']
+            texts += text_splitter.split_text(f"{json_item['content']}")
+            for paragraph_content in texts:
+                idx += 1
+                yield (idx, paragraph_content, 'Paragraph', paragraph_content)
+            sentences = re.split('[。？?.！!]', json_item['content'])
+            for sent in (sent for sent in sentences if len(sent) > Sentence_Len_Threshold): 
+                yield (idx, sent, 'Sentence', paragraph_content)
 
     generator = chunk_generator(json_arr)
     batches = batch_generator(generator, batch_size=EMB_BATCH_SIZE)
@@ -189,12 +194,20 @@ def iterate_paragraph(file_content, object_key, doc_classify,smr_client, index_n
                  "doc_title": doc_title,"doc_author":doc_author, "doc_classify":doc_classify,"doc_category": doc_title, "embedding" : emb}
                 yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document['doc']).encode('utf-8')).hexdigest()}
 
+##临时修改，对content做了chunk切分，以规避cohere embeding token过长报错问题
 def iterate_pdf_json(file_content, object_key,doc_classify, smr_client, index_name, endpoint_name):
     json_arr = json.loads(file_content)
     doc_title = json_arr[0]['doc_title']
 
+    text_splitter = RecursiveCharacterTextSplitter(        
+        chunk_size = CHUNK_SIZE,
+        chunk_overlap  = CHUNK_OVERLAP,
+        length_function = token_length_function,
+    )
+    
     def chunk_generator(json_arr):
-        for idx, json_item in enumerate(json_arr):
+        idx = 0
+        for i, json_item in enumerate(json_arr):
             paragraph_content = None
             content = json_item['content']
             # print("----{}----".format(idx))
@@ -204,19 +217,16 @@ def iterate_pdf_json(file_content, object_key,doc_classify, smr_client, index_na
             doc_category = 'table' if is_table else 'paragraph'
             if is_table:
                 paragraph_content = "Table - {}\n{}\n\n{}".format(content['table'], json.dumps(content['data']), content['footer'])
-            else:
-                paragraph_content = "#{}\n{}".format(doc_title, content)
-                if len(paragraph_content) > 1024 or len(paragraph_content) < Paragraph_Len_Threshold:
-                    continue
-
-            yield (idx, paragraph_content, 'Paragraph', paragraph_content, doc_category)
-
-            if is_table:
+                idx += 1
                 yield (idx, content['footer'], 'Sentence', content['footer'], doc_category)
             else:
-                sentences = re.split('[。？?.！!]', paragraph_content)
-                for sent in (sent for sent in sentences if len(sent) > Sentence_Len_Threshold): 
-                    yield (idx, sent, 'Sentence', paragraph_content, doc_category)
+                paragraph_content = "#{}\n{}".format(doc_title, content)
+                if len(paragraph_content) < Paragraph_Len_Threshold:
+                    continue
+                texts = text_splitter.split_text(paragraph_content)
+                for paragraph_content in texts:
+                    idx += 1
+                    yield (idx, paragraph_content, 'Paragraph', paragraph_content, doc_category)
 
     generator = chunk_generator(json_arr)
     batches = batch_generator(generator, batch_size=EMB_BATCH_SIZE)
@@ -232,6 +242,51 @@ def iterate_pdf_json(file_content, object_key,doc_classify, smr_client, index_na
                     yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document['doc']).encode('utf-8')).hexdigest()}
     except Exception as e:
         logging.exception(e)
+
+##临时修改，对content做了chunk切分，以规避cohere embeding token过长报错问题
+# def iterate_pdf_json(file_content, object_key,doc_classify, smr_client, index_name, endpoint_name):
+#     json_arr = json.loads(file_content)
+#     doc_title = json_arr[0]['doc_title']
+
+#     def chunk_generator(json_arr):
+#         for idx, json_item in enumerate(json_arr):
+#             paragraph_content = None
+#             content = json_item['content']
+#             # print("----{}----".format(idx))
+#             # print(content)
+
+#             is_table = not isinstance(content, str)
+#             doc_category = 'table' if is_table else 'paragraph'
+#             if is_table:
+#                 paragraph_content = "Table - {}\n{}\n\n{}".format(content['table'], json.dumps(content['data']), content['footer'])
+#             else:
+#                 paragraph_content = "#{}\n{}".format(doc_title, content)
+#                 if len(paragraph_content) > 1024 or len(paragraph_content) < Paragraph_Len_Threshold:
+#                     continue
+
+#             yield (idx, paragraph_content, 'Paragraph', paragraph_content, doc_category)
+
+#             if is_table:
+#                 yield (idx, content['footer'], 'Sentence', content['footer'], doc_category)
+#             else:
+#                 sentences = re.split('[。？?.！!]', paragraph_content)
+#                 for sent in (sent for sent in sentences if len(sent) > Sentence_Len_Threshold): 
+#                     yield (idx, sent, 'Sentence', paragraph_content, doc_category)
+
+#     generator = chunk_generator(json_arr)
+#     batches = batch_generator(generator, batch_size=EMB_BATCH_SIZE)
+#     doc_author = get_filename_from_obj_key(object_key)
+#     try:
+#         for batch in batches:
+#             if batch is not None:
+#                 emb_src_texts = [item[1] for item in batch]
+#                 print("len of emb_src_texts :{}".format(len(emb_src_texts)))
+#                 embeddings = get_embedding(smr_client, emb_src_texts, endpoint_name)
+#                 for i, emb in enumerate(embeddings):
+#                     document = { "publish_date": publish_date, "idx": batch[i][0], "doc" : batch[i][1], "doc_type" : batch[i][2], "content" : batch[i][3], "doc_title": doc_title,"doc_author":doc_author, "doc_category": batch[i][4],"doc_classify":doc_classify, "embedding" : emb}
+#                     yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document['doc']).encode('utf-8')).hexdigest()}
+#     except Exception as e:
+#         logging.exception(e)
 
 def iterate_QA(file_content, object_key,doc_classify,smr_client, index_name, endpoint_name):
     json_content = json.loads(file_content)
