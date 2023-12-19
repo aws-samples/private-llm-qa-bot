@@ -20,7 +20,7 @@ constructor(scope, id, props) {
 
 
     const devDomain = new Domain(this, 'Domain', {
-        version: EngineVersion.OPENSEARCH_2_11,
+        version: EngineVersion.openSearch('2.11'),
         removalPolicy: RemovalPolicy.DESTROY,
         vpc:props.vpc,
         zoneAwareness: {
