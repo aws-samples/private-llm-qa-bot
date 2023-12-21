@@ -15,7 +15,7 @@ import {ApiGatewayStack} from './apigw-stack.js';
 import { Ec2Stack } from "./ec2-stack.js";
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as s3n from 'aws-cdk-lib/aws-s3-notifications';
-import { addAutoScaling } from "./autoscalling.js";
+import { addAutoScaling,addAutoScalingDDb } from "./autoscalling.js";
 import * as dotenv from "dotenv";
 
 dotenv.config();
@@ -96,7 +96,6 @@ export class DeployStack extends Stack {
       removalPolicy: RemovalPolicy.DESTROY, // NOT recommended for production code
     });
 
-
     const prompt_template_table = new Table(this, "prompt_template", {
       partitionKey: {
         name: "id",
@@ -105,7 +104,7 @@ export class DeployStack extends Stack {
       // tableName:'prompt_template',
       removalPolicy: RemovalPolicy.DESTROY, // NOT recommended for production code
     });
-
+    addAutoScalingDDb(prompt_template_table);
 
 
     const chat_session_table = new Table(this, "chatbot_session_info", {
@@ -115,6 +114,7 @@ export class DeployStack extends Stack {
       },
       removalPolicy: RemovalPolicy.DESTROY, // NOT recommended for production code
     });
+    addAutoScalingDDb(chat_session_table);
 
     const user_feedback_table = new Table(this, "user_feedback_table", {
       partitionKey: {
@@ -128,6 +128,7 @@ export class DeployStack extends Stack {
       tableName:"user_feedback_table",
       removalPolicy: RemovalPolicy.DESTROY, // NOT recommended for production code
     });
+    addAutoScalingDDb(user_feedback_table);
 
     const fn_feedback = addAutoScaling(new lambda.Function(this,'lambda_feedback',{
       environment: {
@@ -153,7 +154,7 @@ export class DeployStack extends Stack {
       "lambda_main_brain", {
       code: DockerImageCode.fromImageAsset(join(__dirname, "../../code/main")),
       timeout: Duration.minutes(15),
-      memorySize: 1024,
+      memorySize: 512,
       runtime: 'python3.9',
       functionName: 'Ask_Assistant',
       vpc:vpc,
@@ -178,6 +179,7 @@ export class DeployStack extends Stack {
         knn_qq_threshold_soft:'0.8',
         knn_qd_threshold_hard:'0.7',
         knn_qd_threshold_soft:'0.8',
+        rerank_threshold_soft:'-2',
         lambda_feedback:"lambda_feedback",
         intention_list:"ec2_price,service_role,service_availability",
         neighbors:process.env.neighbors,
@@ -206,7 +208,7 @@ export class DeployStack extends Stack {
     const lambda_intention = addAutoScaling(new DockerImageFunction(this,
       "lambda_intention", {
       code: DockerImageCode.fromImageAsset(join(__dirname, "../../code/intention_detect")),
-      timeout: Duration.minutes(15),
+      timeout: Duration.minutes(3),
       memorySize: 512,
       runtime: 'python3.9',
       functionName: 'Detect_Intention',
@@ -244,7 +246,7 @@ export class DeployStack extends Stack {
     const lambda_query_rewrite = addAutoScaling(new DockerImageFunction(this,
       "lambda_query_rewrite", {
       code: DockerImageCode.fromImageAsset(join(__dirname, "../../code/query_rewriter")),
-      timeout: Duration.minutes(15),
+      timeout: Duration.minutes(3),
       memorySize: 512,
       runtime: 'python3.9',
       functionName: 'Query_Rewrite',
@@ -278,7 +280,7 @@ export class DeployStack extends Stack {
     const lambda_chat_agent = addAutoScaling(new DockerImageFunction(this,
       "lambda_chat_agent", {
       code: DockerImageCode.fromImageAsset(join(__dirname, "../../code/chat_agent")),
-      timeout: Duration.minutes(15),
+      timeout: Duration.minutes(3),
       memorySize: 512,
       runtime: 'python3.9',
       functionName: 'Chat_Agent',

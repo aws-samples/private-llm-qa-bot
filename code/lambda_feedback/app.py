@@ -204,7 +204,7 @@ def save_string_to_s3_bucket(text_string, bucket_name, file_name,s3_prefix=""):
     try:
         temp_file.write(text_string.encode('utf-8'))
         temp_file.close()
-        s3.upload_file(temp_file_name,bucket_name,s3_key)
+        s3.upload_file(temp_file_name,bucket_name,s3_key,ExtraArgs={'Metadata': {"category":"UGC"}})
         logger.info(f"uploaded file to:{bucket_name}/{s3_key}")
         if os.path.exists(temp_file_name):
             os.remove(temp_file_name)

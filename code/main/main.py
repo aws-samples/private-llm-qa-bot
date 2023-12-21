@@ -70,6 +70,7 @@ KNN_QQ_THRESHOLD_HARD_REFUSE = float(os.environ.get('knn_qq_threshold_hard',0.6)
 KNN_QQ_THRESHOLD_SOFT_REFUSE = float(os.environ.get('knn_qq_threshold_soft',0.8))
 KNN_QD_THRESHOLD_HARD_REFUSE = float(os.environ.get('knn_qd_threshold_hard',0.6))
 KNN_QD_THRESHOLD_SOFT_REFUSE = float(os.environ.get('knn_qd_threshold_soft',0.8))
+RERANK_THRESHOLD = float(os.environ.get('rerank_threshold_soft',-2))
 
 KNN_QUICK_PEFETCH_THRESHOLD = float(os.environ.get('knn_quick_prefetch_threshold',0.95))
 
@@ -1088,7 +1089,54 @@ def format_reference(recall_knowledge):
     text += '\n```'
     return text
 
-def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str, llm_model_endpoint:str, llm_model_name:str, aos_endpoint:str, aos_index:str, aos_knn_field:str, aos_result_num:int, kendra_index_id:str, 
+      
+def get_reply_stratgy(recall_knowledge):
+    if not recall_knowledge:
+        stratgy = ReplyStratgy.LLM_ONLY
+        return stratgy
+    
+    global RERANK_THRESHOLD 
+    rank_score = [item['rank_score'] for item in recall_knowledge]
+    if max(rank_score) < RERANK_THRESHOLD:  ##如果所有的知识都不超过rank score阈值，则采用LLM ONLY
+        stratgy = ReplyStratgy.LLM_ONLY
+        return stratgy
+
+    global BM25_QD_THRESHOLD_HARD_REFUSE, BM25_QD_THRESHOLD_SOFT_REFUSE
+    global KNN_QQ_THRESHOLD_HARD_REFUSE, KNN_QQ_THRESHOLD_SOFT_REFUSE
+    global KNN_QD_THRESHOLD_HARD_REFUSE, KNN_QD_THRESHOLD_SOFT_REFUSE
+
+    stratgy = ReplyStratgy.RETURN_OPTIONS
+    for item in recall_knowledge:
+        if item['score'] > 1.0:
+            if item['score'] > BM25_QD_THRESHOLD_SOFT_REFUSE:
+                stratgy = ReplyStratgy.WITH_LLM
+            elif item['score'] > BM25_QD_THRESHOLD_HARD_REFUSE:
+                stratgy = ReplyStratgy(min(ReplyStratgy.HINT_LLM_REFUSE.value, stratgy.value))
+            else:
+                stratgy = ReplyStratgy(min(ReplyStratgy.RETURN_OPTIONS.value, stratgy.value))
+
+        elif item['score'] <= 1.0:
+            if item['score'] > KNN_QD_THRESHOLD_SOFT_REFUSE:
+                stratgy = ReplyStratgy.WITH_LLM
+            elif item['score'] > KNN_QD_THRESHOLD_HARD_REFUSE:
+                stratgy = ReplyStratgy(min(ReplyStratgy.HINT_LLM_REFUSE.value, stratgy.value))
+            else:
+                stratgy = ReplyStratgy(min(ReplyStratgy.RETURN_OPTIONS.value, stratgy.value))
+    return stratgy
+
+def choose_prompt_template(stratgy:Enum, template:str, llm_model_name:str):
+    if stratgy == ReplyStratgy.WITH_LLM:
+        return create_baichuan_prompt_template(template) if llm_model_name.startswith('baichuan') else create_qa_prompt_templete(template)
+    elif stratgy == ReplyStratgy.HINT_LLM_REFUSE:
+        return create_soft_refuse_template(template)
+    else:
+        raise RuntimeError(
+            "unsupported startgy..."
+        )
+                
+                
+
+def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:str, embedding_model_endpoint:str, llm_model_endpoint:str, llm_model_name:str, aos_endpoint:str, aos_index:str, aos_knn_field:str, aos_result_num:int, kendra_index_id:str, 
                    kendra_result_num:int,use_qa:bool,wsclient=None,msgid:str='',max_tokens:int = 2048,temperature:float = 0.1,template:str = '',imgurl:str = None,multi_rounds:bool = False, hide_ref:bool = False,use_stream:bool=False):
     """
     Entry point for the Lambda function.
@@ -1122,7 +1170,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
             "detect_query_type": '',
             "LLM_input": ''
         }
-
+        json_obj['user_id'] = user_id
         json_obj['session_id'] = session_id
         json_obj['chatbot_answer'] = answer
         json_obj['conversations'] = []
@@ -1135,7 +1183,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
     
     logger.info("llm_model_name : {} ,use_stream :{}".format(llm_model_name,use_stream))
     llm = None
-    stream_callback = CustomStreamingOutCallbackHandler(wsclient,msgid, session_id,llm_model_name,hide_ref,use_stream)
+    stream_callback = CustomStreamingOutCallbackHandler(wsclient,msgid, wsconnection_id,llm_model_name,hide_ref,use_stream)
     if llm_model_name.startswith('claude'):
         # ACCESS_KEY, SECRET_KEY=get_bedrock_aksk()
 
@@ -1304,11 +1352,6 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         TRACE_LOGGER.trace('**Using RAG Chat...**')
         TRACE_LOGGER.trace('**Retrieving knowledge...**')
 
-        # doc_retriever = CustomDocRetriever.from_endpoints(embedding_model_endpoint=embedding_model_endpoint,
-        #                             aos_endpoint= aos_endpoint,
-        #                             aos_index=aos_index)
-        # 3. check is it keyword search
-        # exactly_match_result = aos_search(aos_endpoint, aos_index, "doc", query_input, exactly_match=True)
         ## 精准匹配对paragraph类型文档不太适用，先屏蔽掉 
         exactly_match_result = None
 
@@ -1330,43 +1373,6 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
             TRACE_LOGGER.add_ref(f"{item['doc']}")
         TRACE_LOGGER.trace('**Answer:**')
 
-        def get_reply_stratgy(recall_knowledge):
-            if not recall_knowledge:
-                stratgy = ReplyStratgy.SAY_DONT_KNOW
-                return stratgy
-
-            global BM25_QD_THRESHOLD_HARD_REFUSE, BM25_QD_THRESHOLD_SOFT_REFUSE
-            global KNN_QQ_THRESHOLD_HARD_REFUSE, KNN_QQ_THRESHOLD_SOFT_REFUSE
-            global KNN_QD_THRESHOLD_HARD_REFUSE, KNN_QD_THRESHOLD_SOFT_REFUSE
-
-            stratgy = ReplyStratgy.RETURN_OPTIONS
-            for item in recall_knowledge:
-                if item['score'] > 1.0:
-                    if item['score'] > BM25_QD_THRESHOLD_SOFT_REFUSE:
-                        stratgy = ReplyStratgy.WITH_LLM
-                    elif item['score'] > BM25_QD_THRESHOLD_HARD_REFUSE:
-                        stratgy = ReplyStratgy(min(ReplyStratgy.HINT_LLM_REFUSE.value, stratgy.value))
-                    else:
-                        stratgy = ReplyStratgy(min(ReplyStratgy.RETURN_OPTIONS.value, stratgy.value))
-
-                elif item['score'] <= 1.0:
-                    if item['score'] > KNN_QD_THRESHOLD_SOFT_REFUSE:
-                        stratgy = ReplyStratgy.WITH_LLM
-                    elif item['score'] > KNN_QD_THRESHOLD_HARD_REFUSE:
-                        stratgy = ReplyStratgy(min(ReplyStratgy.HINT_LLM_REFUSE.value, stratgy.value))
-                    else:
-                        stratgy = ReplyStratgy(min(ReplyStratgy.RETURN_OPTIONS.value, stratgy.value))
-            return stratgy
-
-        def choose_prompt_template(stratgy:Enum, template:str, llm_model_name:str):
-            if stratgy == ReplyStratgy.WITH_LLM:
-                return create_baichuan_prompt_template(template) if llm_model_name.startswith('baichuan') else create_qa_prompt_templete(template)
-            elif stratgy == ReplyStratgy.HINT_LLM_REFUSE:
-                return create_soft_refuse_template(template)
-            else:
-                raise RuntimeError(
-                    "unsupported startgy..."
-                )
 
         reply_stratgy = get_reply_stratgy(recall_knowledge)
 
@@ -1383,11 +1389,25 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
             hide_ref= True ## 隐藏ref doc
             if use_stream:
                 TRACE_LOGGER.postMessage(answer)
+                
         elif reply_stratgy == ReplyStratgy.SAY_DONT_KNOW:
             answer = "我不太清楚，问问人工吧。"
             hide_ref= True ## 隐藏ref doc
             if use_stream:
                 TRACE_LOGGER.postMessage(answer)
+                
+        elif reply_stratgy == ReplyStratgy.LLM_ONLY: ##走LLM默认知识
+            TRACE_LOGGER.trace('**Using Non-RAG Chat...**')
+            TRACE_LOGGER.trace('**Answer:**')
+            prompt_template = create_chat_prompt_templete()
+            hide_ref= True ## 隐藏ref doc
+            llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
+            ##最终的answer
+            answer = llmchain.run({'question':query_input,'chat_history':chat_history,'role_bot':B_Role})
+            ##最终的prompt日志
+            final_prompt = prompt_template.format(question=query_input,role_bot=B_Role,chat_history=chat_history)    
+            recall_knowledge = []         
+            
         else:      
             prompt_template = choose_prompt_template(reply_stratgy, template, llm_model_name)
             llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
@@ -1442,7 +1462,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         "LLM_model_name": llm_model_name,
         "reply_stratgy" : reply_stratgy.name
     }
-
+    json_obj['user_id'] = user_id
     json_obj['session_id'] = session_id
     json_obj['msgid'] = msgid
     json_obj['chatbot_answer'] = answer
@@ -1731,12 +1751,14 @@ def lambda_handler(event, context):
     hide_ref = event.get('hide_ref',False)
     retrieve_only = event.get('retrieve_only',False)
     session_id = event['chat_name']
+    wsconnection_id = event.get('wsconnection_id',session_id)
     question = event['prompt']
     model_name = event['model'] if event.get('model') else event.get('model_name','')
     embedding_endpoint = event.get('embedding_model',os.environ.get("embedding_endpoint")) 
     use_qa = event.get('use_qa',False)
     multi_rounds = event.get('multi_rounds',False)
     use_stream = event.get('use_stream',False)
+    user_id = event.get('user_id','')
     use_trace = event.get('use_trace',True)
     template_id = event.get('template_id')
     msgid = event.get('msgid')
@@ -1806,6 +1828,7 @@ def lambda_handler(event, context):
         prompt_template = get_template(template_id)
         prompt_template = '' if prompt_template is None else prompt_template['template']['S']
             
+    logger.info(f'user_id : {user_id}')
     logger.info(f'prompt_template_id : {template_id}')
     logger.info(f'prompt_template : {prompt_template}')
     logger.info(f'model_name : {model_name}')
@@ -1820,9 +1843,9 @@ def lambda_handler(event, context):
     logger.info(f'use multiple rounds: {multi_rounds}')
     logger.info(f'intention list: {INTENTION_LIST}')
     global TRACE_LOGGER
-    TRACE_LOGGER = TraceLogger(wsclient=wsclient,msgid=msgid,connectionId=session_id,stream=use_stream,use_trace=use_trace,hide_ref=hide_ref)
+    TRACE_LOGGER = TraceLogger(wsclient=wsclient,msgid=msgid,connectionId=wsconnection_id,stream=use_stream,use_trace=use_trace,hide_ref=hide_ref)
     main_entry_start = time.time()  # 或者使用 time.time_ns() 获取纳秒级别的时间戳
-    answer,ref_text,use_stream,query_input,opensearch_query_response,opensearch_knn_respose,recall_knowledge = main_entry_new(session_id, question, embedding_endpoint, llm_endpoint, model_name, aos_endpoint, aos_index, aos_knn_field, aos_result_num,
+    answer,ref_text,use_stream,query_input,opensearch_query_response,opensearch_knn_respose,recall_knowledge = main_entry_new(user_id,wsconnection_id,session_id, question, embedding_endpoint, llm_endpoint, model_name, aos_endpoint, aos_index, aos_knn_field, aos_result_num,
                        Kendra_index_id, Kendra_result_num,use_qa,wsclient,msgid,max_tokens,temperature,prompt_template,image_path,multi_rounds,hide_ref,use_stream)
     main_entry_elpase = time.time() - main_entry_start  # 或者使用 time.time_ns() 获取纳秒级别的时间戳
     logger.info(f'runing time of main_entry : {main_entry_elpase}s seconds')

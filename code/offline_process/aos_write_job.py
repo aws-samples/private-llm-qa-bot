@@ -20,6 +20,7 @@ import logging
 import urllib.parse
 import numpy as np
 from urllib.parse import unquote
+from datetime import datetime
 
 args = getResolvedOptions(sys.argv, ['bucket', 'object_key','AOS_ENDPOINT','REGION','EMB_MODEL_ENDPOINT','PUBLISH_DATE'])
 s3 = boto3.resource('s3')
@@ -77,14 +78,18 @@ def get_embedding_bedrock(texts,model_id):
     provider = model_id.split(".")[0]
     if provider == "cohere":
         body = json.dumps({
-            "texts": [texts] if isinstance(texts, str) else texts,
-            "input_type": "search_document"
+            "texts": [texts[:2048]] if isinstance(texts, str) else [text[:2048] for text in texts],
+            "input_type": "search_document",
+            "truncate":"RIGHT" ## 该参数目前不起作用，只能通过text[:2048]来截断
         })
     else:
         # includes common provider == "amazon"
+        if isinstance(texts, list) and len(texts) > 1:
+            raise ('titan embedding cannot support batch inference')
         body = json.dumps({
             "inputText": texts if isinstance(texts, str) else texts[0],
         })
+        
     bedrock_resp = bedrock.invoke_model(
             body=body,
             modelId=model_id,
@@ -176,23 +181,25 @@ def iterate_paragraph(file_content, object_key, doc_classify,smr_client, index_n
             for paragraph_content in texts:
                 idx += 1
                 yield (idx, paragraph_content, 'Paragraph', paragraph_content)
-            sentences = re.split('[。？?.！!]', json_item['content'])
-            for sent in (sent for sent in sentences if len(sent) > Sentence_Len_Threshold): 
-                yield (idx, sent, 'Sentence', paragraph_content)
+            # sentences = re.split('[。？?.！!]', json_item['content'])
+            # for sent in (sent for sent in sentences if len(sent) > Sentence_Len_Threshold): 
+            #     yield (idx, sent, 'Sentence', paragraph_content)
 
     generator = chunk_generator(json_arr)
     batches = batch_generator(generator, batch_size=EMB_BATCH_SIZE)
     doc_author = get_filename_from_obj_key(object_key)
-
     for batch in batches:
         if batch is not None:
-            emb_src_texts = [item[1] for item in batch]
-            print("len of emb_src_texts :{}".format(len(emb_src_texts)))
-            embeddings = get_embedding(smr_client, emb_src_texts, endpoint_name)
-            for i, emb in enumerate(embeddings):
-                document = { "publish_date": publish_date, "idx": batch[i][0], "doc" : batch[i][1], "doc_type" : batch[i][2], "content" : batch[i][3],
-                 "doc_title": doc_title,"doc_author":doc_author, "doc_classify":doc_classify,"doc_category": doc_title, "embedding" : emb}
-                yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document['doc']).encode('utf-8')).hexdigest()}
+            try:
+                emb_src_texts = [item[1] for item in batch]
+                print("len of emb_src_texts :{}".format(len(emb_src_texts)))
+                embeddings = get_embedding(smr_client, emb_src_texts, endpoint_name)
+                for i, emb in enumerate(embeddings):
+                    document = { "publish_date": publish_date, "idx": batch[i][0], "doc" : batch[i][1], "doc_type" : batch[i][2], "content" : batch[i][3],
+                     "doc_title": doc_title,"doc_author":doc_author, "doc_classify":doc_classify,"doc_category": doc_title, "embedding" : emb}
+                    yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document['doc']).encode('utf-8')).hexdigest()}
+            except Exception as e:
+                print(str(e))
 
 ##临时修改，对content做了chunk切分，以规避cohere embeding token过长报错问题
 def iterate_pdf_json(file_content, object_key,doc_classify, smr_client, index_name, endpoint_name):
@@ -684,7 +691,7 @@ def iterate_paragraph_wiki(content_json, object_key,doc_classify,smr_client, ind
 
 
 
-def put_idx_to_ddb(filename,username,index_name,embedding_model):
+def put_idx_to_ddb(filename,username,index_name,embedding_model,category,createtime):
     try:
         dynamodb.put_item(
             Item={
@@ -699,6 +706,12 @@ def put_idx_to_ddb(filename,username,index_name,embedding_model):
                 },
                 'embedding_model':{
                     'S':embedding_model,
+                },
+                'category':{
+                    'S':category,
+                },
+                'createtime':{
+                    'S':createtime,
                 }
             },
             TableName = DOC_INDEX_TABLE,
@@ -738,7 +751,7 @@ def query_idx_from_ddb(filename,username,embedding_model):
         return index_name
     
     except Exception as e:
-        print(f"There was an error an error query filename:{filename} index from ddb: {str(e)}")
+        print(f"Not found filename:{filename} index from ddb: {str(e)}")
         return ''
 
 def get_idx_from_ddb(filename,embedding_model):
@@ -870,9 +883,12 @@ def process_s3_uploaded_file(bucket, object_key):
     print("response:")
     print(response)
     print("ingest {} chunk to AOS".format(response[0]))
+    timestamp_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     put_idx_to_ddb(filename=object_key,username=username,
                         index_name=index_name,
-                            embedding_model=EMB_MODEL_ENDPOINT)
+                            embedding_model=EMB_MODEL_ENDPOINT,
+                            category=doc_classify,
+                            createtime=timestamp_str)
 
 ##如果是从chatbot上传，则是ai-content/username/filename
 def get_filename_from_obj_key(object_key):

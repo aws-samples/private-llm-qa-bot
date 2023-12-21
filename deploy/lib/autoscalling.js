@@ -12,3 +12,20 @@ export function addAutoScaling(fn,minCapacity=1,maxCapacity=100){
   });
   return alias
 }
+
+export function addAutoScalingDDb(table,minCapacity=5,maxCapacity=1000){
+  const readCapacity = table.autoScaleReadCapacity({
+    minCapacity: minCapacity,
+    maxCapacity: maxCapacity
+  });
+  readCapacity.scaleOnUtilization({
+    targetUtilizationPercent: 60
+  });
+  const writeCapacity = table.autoScaleWriteCapacity({
+    minCapacity: minCapacity,
+    maxCapacity: maxCapacity
+  });
+  writeCapacity.scaleOnUtilization({
+    targetUtilizationPercent: 60
+  });
+}
