@@ -19,6 +19,8 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter,CharacterText
 import logging
 import urllib.parse
 import numpy as np
+from urllib.parse import unquote
+from datetime import datetime
 
 args = getResolvedOptions(sys.argv, ['bucket', 'object_key','AOS_ENDPOINT','REGION','EMB_MODEL_ENDPOINT','PUBLISH_DATE'])
 s3 = boto3.resource('s3')
@@ -54,16 +56,36 @@ BEDROCK_EMBEDDING_MODELID_LIST = ["cohere.embed-multilingual-v3","cohere.embed-e
 bedrock = boto3.client(service_name='bedrock-runtime',
                        region_name= os.environ.get('bedrock_region',REGION))
 
+from anthropic_bedrock import AnthropicBedrock
+anthropic_bedrock = AnthropicBedrock(
+    aws_region=os.environ.get('bedrock_region',REGION),
+)
 
+def num_tokens_from_string(string: str) -> int:
+    """Returns the number of tokens in a text string."""
+    num_tokens = anthropic_bedrock.count_tokens(string)  # 
+    # print(f"num_tokens:{num_tokens}")
+    return num_tokens
+
+def token_length_function(string:str) -> int:
+    try:
+        return num_tokens_from_string(string)
+    except Exception as e:
+        print(f'str(e),using len()')
+        return len(string)
+    
 def get_embedding_bedrock(texts,model_id):
     provider = model_id.split(".")[0]
     if provider == "cohere":
         body = json.dumps({
-            "texts": [texts] if isinstance(texts, str) else texts,
-            "input_type": "search_document"
+            "texts": [texts[:2048]] if isinstance(texts, str) else [text[:2048] for text in texts],
+            "input_type": "search_document",
+            "truncate":"RIGHT" ## 该参数目前不起作用，只能通过text[:2048]来截断
         })
     else:
         # includes common provider == "amazon"
+        if isinstance(texts, list) and len(texts) > 1:
+            raise ('titan embedding cannot support batch inference')
         body = json.dumps({
             "inputText": texts if isinstance(texts, str) else texts[0],
         })
@@ -118,7 +140,7 @@ def batch_generator(generator, batch_size):
             break
         yield batch
 
-def iterate_paragraph(file_content, object_key, smr_client, index_name, endpoint_name):
+def iterate_paragraph(file_content, object_key, doc_classify,smr_client, index_name, endpoint_name):
     json_arr = json.loads(file_content)
     doc_title = object_key
     text_splitter = RecursiveCharacterTextSplitter(        
@@ -164,10 +186,10 @@ def iterate_paragraph(file_content, object_key, smr_client, index_name, endpoint
             print("len of emb_src_texts :{}".format(len(emb_src_texts)))
             embeddings = get_embedding(smr_client, emb_src_texts, endpoint_name)
             for i, emb in enumerate(embeddings):
-                document = { "publish_date": publish_date, "idx": batch[i][0], "doc" : batch[i][1], "doc_type" : batch[i][2], "content" : batch[i][3], "doc_title": doc_title,"doc_author":doc_author, "doc_category": doc_title, "embedding" : emb}
+                document = { "publish_date": publish_date, "idx": batch[i][0], "doc" : batch[i][1], "doc_type" : batch[i][2], "content" : batch[i][3], "doc_title": doc_title,"doc_author":doc_author,"doc_classify":doc_classify, "doc_category": doc_title, "embedding" : emb}
                 yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document['doc']).encode('utf-8')).hexdigest()}
 
-def iterate_pdf_json(file_content, object_key, smr_client, index_name, endpoint_name):
+def iterate_pdf_json(file_content, object_key,doc_classify, smr_client, index_name, endpoint_name):
     json_arr = json.loads(file_content)
     doc_title = json_arr[0]['doc_title']
 
@@ -206,12 +228,12 @@ def iterate_pdf_json(file_content, object_key, smr_client, index_name, endpoint_
                 print("len of emb_src_texts :{}".format(len(emb_src_texts)))
                 embeddings = get_embedding(smr_client, emb_src_texts, endpoint_name)
                 for i, emb in enumerate(embeddings):
-                    document = { "publish_date": publish_date, "idx": batch[i][0], "doc" : batch[i][1], "doc_type" : batch[i][2], "content" : batch[i][3], "doc_title": doc_title,"doc_author":doc_author, "doc_category": batch[i][4], "embedding" : emb}
+                    document = { "publish_date": publish_date, "idx": batch[i][0], "doc" : batch[i][1], "doc_type" : batch[i][2], "content" : batch[i][3], "doc_title": doc_title,"doc_author":doc_author, "doc_category": batch[i][4], "doc_classify":doc_classify,"embedding" : emb}
                     yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document['doc']).encode('utf-8')).hexdigest()}
     except Exception as e:
         logging.exception(e)
 
-def iterate_QA(file_content, object_key,smr_client, index_name, endpoint_name):
+def iterate_QA(file_content, object_key,doc_classify,smr_client, index_name, endpoint_name):
     json_content = json.loads(file_content)
     json_arr = json_content["qa_list"]
     doc_title = object_key
@@ -230,12 +252,12 @@ def iterate_QA(file_content, object_key,smr_client, index_name, endpoint_name):
         embeddings_q = get_embedding(smr_client, questions, endpoint_name)
 
         for i in range(len(embeddings_q)):
-            document = { "publish_date": publish_date, "doc" : questions[i], "idx": idx,"doc_type" : "Question", "content" : docs[i], "doc_title": doc_title,"doc_author":authors[i] if authors[i] else doc_author, "doc_category": doc_category, "embedding" : embeddings_q[i]}
+            document = { "publish_date": publish_date, "doc" : questions[i], "idx": idx,"doc_type" : "Question", "content" : docs[i], "doc_title": doc_title,"doc_author":authors[i] if authors[i] else doc_author, "doc_category": doc_category, "doc_classify":doc_classify,"embedding" : embeddings_q[i]}
             yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document).encode('utf-8')).hexdigest()}
 
         embeddings_a = get_embedding(smr_client, answers, endpoint_name)
         for i in range(len(embeddings_a)):
-            document = { "publish_date": publish_date, "doc" : answers[i], "idx": idx,"doc_type" : "Paragraph", "content" : docs[i], "doc_title": doc_title,"doc_author":authors[i] if authors[i] else doc_author, "doc_category": doc_category, "embedding" : embeddings_a[i]}
+            document = { "publish_date": publish_date, "doc" : answers[i], "idx": idx,"doc_type" : "Paragraph", "content" : docs[i], "doc_title": doc_title,"doc_author":authors[i] if authors[i] else doc_author, "doc_category": doc_category, "doc_classify":doc_classify,"embedding" : embeddings_a[i]}
             yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document).encode('utf-8')).hexdigest()}
 
 def iterate_examples(file_content, object_key, smr_client, index_name, endpoint_name):
@@ -420,7 +442,7 @@ def parse_html_to_json(html_docs):
     )
 
     results = []
-    chunks = text_splitter.create_documents([ doc.page_content for doc in docs ] )
+    chunks = text_splitter.create_documents([ doc.page_content for doc in html_docs ] )
     for chunk in chunks:
         snippet_info = {
             "heading" : [],
@@ -467,16 +489,45 @@ def parse_csv_to_json(file_content):
     json_content = json.dumps(qa_content, ensure_ascii=False)
     return json_content
 
+def parse_docx_to_json(file_content):
+    import docx
+    doc = docx.Document(file_content)
+    text = ''
+    for para in doc.paragraphs:
+        text += '\n'+para.text
+    text_splitter = RecursiveCharacterTextSplitter(        
+        chunk_size = CHUNK_SIZE,
+        chunk_overlap  = CHUNK_OVERLAP,
+        length_function = token_length_function,
+    )
+    results = []
+    chunks = text_splitter.create_documents([ text ] )
+    for chunk in chunks:
+        snippet_info = {
+            "heading" : [],
+            "content" : chunk.page_content
+        }
+        results.append(snippet_info)
+
+    json_content = json.dumps(results, ensure_ascii=False)
+    return json_content
+
+
 def load_content_json_from_s3(bucket, object_key, content_type, credentials):
-    if content_type == 'pdf':
+    if content_type in ['pdf','docx']:
         pdf_path=os.path.basename(object_key)
         s3_client=boto3.client('s3', region_name=REGION)
         s3_client.download_file(Bucket=bucket, Key=object_key, Filename=pdf_path)
-        loader = PDFMinerPDFasHTMLLoader(pdf_path)
-        file_content = loader.load()[0].page_content
-        json_content = parse_pdf_to_json(file_content)
-        return json_content
+        if content_type == 'pdf':
+            loader = PDFMinerPDFasHTMLLoader(pdf_path)
+            file_content = loader.load()[0].page_content
+            json_content = parse_pdf_to_json(file_content)
+            return json_content
+        elif content_type == 'docx':
+            json_content = parse_docx_to_json(pdf_path)
+            return json_content
     else:
+        s3 = boto3.resource('s3')
         obj = s3.Object(bucket,object_key)
         file_content = obj.get()['Body'].read().decode('utf-8', errors='ignore').strip()
         try:
@@ -502,12 +553,12 @@ def load_content_json_from_s3(bucket, object_key, content_type, credentials):
         
         return json_content
 
-def iterate_paragraph_blog(content_json, object_key,smr_client, index_name, endpoint_name):
+def iterate_paragraph_blog(content_json, object_key,doc_classify,smr_client, index_name, endpoint_name):
     doc_title = object_key
     text_splitter = RecursiveCharacterTextSplitter(        
         chunk_size = CHUNK_SIZE,
         chunk_overlap  = CHUNK_OVERLAP,
-        length_function = len,
+        length_function = token_length_function,
     )
     def chunk_generator(json_arr):
         for blog in json_arr:
@@ -535,16 +586,16 @@ def iterate_paragraph_blog(content_json, object_key,smr_client, index_name, endp
             print("len of emb_src_texts :{}".format(len(emb_src_texts)))
             embeddings = get_embedding(smr_client, emb_src_texts, endpoint_name)
             for i, emb in enumerate(embeddings):
-                document = { "publish_date": publish_date, "idx": batch[i][0], "doc" : batch[i][1], "doc_type" : batch[i][2], "content" : batch[i][3], "doc_title": doc_title, "doc_author":doc_author,"doc_category": batch[i][4], "embedding" : emb}
+                document = { "publish_date": publish_date, "idx": batch[i][0], "doc" : batch[i][1], "doc_type" : batch[i][2], "content" : batch[i][3], "doc_title": doc_title, "doc_author":doc_author,"doc_category": batch[i][4], "doc_classify":doc_classify,"embedding" : emb}
                 yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document['doc']).encode('utf-8')).hexdigest()}
                 
 
-def iterate_paragraph_wiki(content_json, object_key,smr_client, index_name, endpoint_name):
+def iterate_paragraph_wiki(content_json, object_key,doc_classify,smr_client, index_name, endpoint_name):
     doc_title = object_key
     text_splitter = RecursiveCharacterTextSplitter(        
         chunk_size = CHUNK_SIZE,
         chunk_overlap  = CHUNK_OVERLAP,
-        length_function = len,
+        length_function = token_length_function,
     )
     def chunk_generator(json_arr):
         for page in json_arr:
@@ -572,12 +623,12 @@ def iterate_paragraph_wiki(content_json, object_key,smr_client, index_name, endp
             print("len of emb_src_texts :{}".format(len(emb_src_texts)))
             embeddings = get_embedding(smr_client, emb_src_texts, endpoint_name)
             for i, emb in enumerate(embeddings):
-                document = { "publish_date": publish_date, "idx": batch[i][0], "doc" : batch[i][1], "doc_type" : batch[i][2], "content" : batch[i][3], "doc_title": doc_title, "doc_author":doc_author,"doc_category": batch[i][4], "embedding" : emb}
+                document = { "publish_date": publish_date, "idx": batch[i][0], "doc" : batch[i][1], "doc_type" : batch[i][2], "content" : batch[i][3], "doc_title": doc_title, "doc_author":doc_author,"doc_category": batch[i][4], "doc_classify":doc_classify,"embedding" : emb}
                 yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document['doc']).encode('utf-8')).hexdigest()}
 
 
 
-def put_idx_to_ddb(filename,username,index_name,embedding_model):
+def put_idx_to_ddb(filename,username,index_name,embedding_model,category,createtime):
     try:
         dynamodb.put_item(
             Item={
@@ -592,6 +643,12 @@ def put_idx_to_ddb(filename,username,index_name,embedding_model):
                 },
                 'embedding_model':{
                     'S':embedding_model,
+                },
+                'category':{
+                    'S':category,
+                },
+                'createtime':{
+                    'S':createtime,
                 }
             },
             TableName = DOC_INDEX_TABLE,
@@ -599,7 +656,7 @@ def put_idx_to_ddb(filename,username,index_name,embedding_model):
         print(f"Put filename:{filename} with embedding:{embedding_model} index_name:{index_name} by user:{username} to ddb success")
         return True
     except Exception as e:
-        print(f"There was an error put filename:{filename} with embedding:{embedding_model} index_name:{index_name} to ddb: {str(e)}")
+        print(f"Not found filename:{filename} with embedding:{embedding_model} index_name:{index_name} to ddb: {str(e)}")
         return False 
 
 
@@ -616,7 +673,7 @@ def query_idx_from_ddb(filename,username,embedding_model):
                 },
                 ':v3': {
                     'S': embedding_model,
-                },
+                }
             },
             KeyConditionExpression='filename = :v1 and username = :v2',
             ExpressionAttributeNames={"#e":"embedding_model"},
@@ -631,7 +688,7 @@ def query_idx_from_ddb(filename,username,embedding_model):
         return index_name
     
     except Exception as e:
-        print(f"There was an error an error query filename:{filename} index from ddb: {str(e)}")
+        print(f"Not found filename:{filename} index from ddb: {str(e)}")
         return ''
 
 def get_idx_from_ddb(filename,embedding_model):
@@ -653,10 +710,10 @@ def get_idx_from_ddb(filename,embedding_model):
             print (f"Get filename:{filename} with index_name:{index_name} from ddb")
         return index_name
     except Exception as e:
-        print(f"There was an error get filename:{filename} with embedding:{embedding_model} index from ddb: {str(e)}")
+        print(f"Not found filename:{filename} with embedding:{embedding_model} index from ddb: {str(e)}")
         return ''
     
-def WriteVecIndexToAOS(bucket, object_key, content_type, smr_client, aos_endpoint=AOS_ENDPOINT, region=REGION, index_name=INDEX_NAME):
+def WriteVecIndexToAOS(bucket, object_key, content_type, doc_classify,smr_client, aos_endpoint=AOS_ENDPOINT, region=REGION, index_name=INDEX_NAME):
     credentials = boto3.Session().get_credentials()
     auth = AWSV4SignerAuth(credentials, region)
     # auth = ('xxxx', 'yyyy') master user/pwd
@@ -680,17 +737,17 @@ def WriteVecIndexToAOS(bucket, object_key, content_type, smr_client, aos_endpoin
         print("---------flag------")
         gen_aos_record_func = None
         if content_type in ["faq","csv"]:
-            gen_aos_record_func = iterate_QA(file_content, object_key,smr_client, index_name, EMB_MODEL_ENDPOINT)
-        elif content_type in ['txt', 'pdf', 'json']:
-            gen_aos_record_func = iterate_paragraph(file_content,object_key, smr_client, index_name, EMB_MODEL_ENDPOINT)
+            gen_aos_record_func = iterate_QA(file_content, object_key,doc_classify,smr_client, index_name, EMB_MODEL_ENDPOINT)
+        elif content_type in ['txt', 'pdf', 'json','docx']:
+            gen_aos_record_func = iterate_paragraph(file_content,object_key, doc_classify,smr_client, index_name, EMB_MODEL_ENDPOINT)
         elif content_type in [ 'pdf.json' ]:
-            gen_aos_record_func = iterate_pdf_json(file_content,object_key, smr_client, index_name, EMB_MODEL_ENDPOINT)
+            gen_aos_record_func = iterate_pdf_json(file_content,object_key, doc_classify,smr_client, index_name, EMB_MODEL_ENDPOINT)
         elif content_type in ['example']:
-            gen_aos_record_func = iterate_examples(file_content,object_key, smr_client, index_name, EMB_MODEL_ENDPOINT)
+            gen_aos_record_func = iterate_examples(file_content,object_key,smr_client, index_name, EMB_MODEL_ENDPOINT)
         elif content_type in ['wiki']:
-            gen_aos_record_func = iterate_paragraph_wiki(file_content,object_key, smr_client, index_name, EMB_MODEL_ENDPOINT)
+            gen_aos_record_func = iterate_paragraph_wiki(file_content,object_key,doc_classify, smr_client, index_name, EMB_MODEL_ENDPOINT)
         elif content_type in ['blog']:
-            gen_aos_record_func = iterate_paragraph_blog(file_content,object_key, smr_client, index_name, EMB_MODEL_ENDPOINT)
+            gen_aos_record_func = iterate_paragraph_blog(file_content,object_key,doc_classify, smr_client, index_name, EMB_MODEL_ENDPOINT)
         else:
             raise RuntimeError('No Such Content type supported') 
 
@@ -737,10 +794,20 @@ def process_s3_uploaded_file(bucket, object_key):
     elif object_key.endswith(".csv"):
         print("********** pre-processing csv file")
         content_type = 'csv'
+    elif object_key.endswith(".docx"):
+        print("********** pre-processing docx file")
+        content_type = 'docx'
     else:
         raise RuntimeError("unsupport content type...(pdf, faq, txt, pdf.json are supported.)")
     
     username = get_filename_from_obj_key(object_key)
+    
+    s3 = boto3.resource('s3')
+    obj = s3.Object(bucket,object_key)
+    metadata = obj.metadata
+    doc_classify = unquote(metadata.get('category','') if metadata else '')
+    print(metadata)
+    print(doc_classify)
     #check if it is already built
     idx_name = query_idx_from_ddb(object_key,username,EMB_MODEL_ENDPOINT)
     # idx_name = get_idx_from_ddb(object_key,EMB_MODEL_ENDPOINT)
@@ -749,13 +816,16 @@ def process_s3_uploaded_file(bucket, object_key):
         return
     
 
-    response = WriteVecIndexToAOS(bucket, object_key, content_type, smr_client, index_name=index_name)
+    response = WriteVecIndexToAOS(bucket, object_key, content_type,doc_classify, smr_client, index_name=index_name)
     print("response:")
     print(response)
     print("ingest {} chunk to AOS".format(response[0]))
+    timestamp_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     put_idx_to_ddb(filename=object_key,username=username,
                         index_name=index_name,
-                            embedding_model=EMB_MODEL_ENDPOINT)
+                            embedding_model=EMB_MODEL_ENDPOINT,
+                            category=doc_classify,
+                            createtime=timestamp_str)
 
 ##如果是从chatbot上传，则是ai-content/username/filename
 def get_filename_from_obj_key(object_key):

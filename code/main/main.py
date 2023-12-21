@@ -394,6 +394,7 @@ class CustomDocRetriever(BaseRetriever):
                 item['doc_title'].endswith('.wiki.json') or 
                 item['doc_title'].endswith('.blog.json') or 
                 item['doc_title'].endswith('.txt') or 
+                item['doc_title'].endswith('.docx') or
                 item['doc_title'].endswith('.pdf')) :
                 #check if has duplicate content in Paragraph/Sentence types
                 key = f"{item['doc_title']}-{item['doc_category']}-{item['idx']}"
@@ -771,7 +772,7 @@ def search_using_aos_knn(client, q_embedding, index, size=10):
         body=query,
         index=index
     )
-    opensearch_knn_respose = [{'idx':item['_source'].get('idx',1),'doc_category':item['_source']['doc_category'],'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc':item['_source']['content'],"doc_type":item["_source"]["doc_type"],"score":item["_score"],'doc_author': item['_source']['doc_author']}  for item in query_response["hits"]["hits"]]
+    opensearch_knn_respose = [{'idx':item['_source'].get('idx',1),'doc_category':item['_source']['doc_category'],'doc_classify':item['_source']['doc_classify'],'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc':item['_source']['content'],"doc_type":item["_source"]["doc_type"],"score":item["_score"],'doc_author': item['_source']['doc_author']}  for item in query_response["hits"]["hits"]]
     return opensearch_knn_respose
     
 
@@ -855,9 +856,9 @@ def aos_search(client, index_name, field, query_term, exactly_match=False, size=
     )
 
     if exactly_match:
-        result_arr = [ {'idx':item['_source'].get('idx',0),'doc_category':item['_source']['doc_category'],'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc': item['_source']['content'], 'doc_type': item['_source']['doc_type'], 'score': item['_score'],'doc_author': item['_source']['doc_author']} for item in query_response["hits"]["hits"]]
+        result_arr = [ {'idx':item['_source'].get('idx',0),'doc_category':item['_source']['doc_category'],'doc_classify':item['_source']['doc_classify'],'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc': item['_source']['content'], 'doc_type': item['_source']['doc_type'], 'score': item['_score'],'doc_author': item['_source']['doc_author']} for item in query_response["hits"]["hits"]]
     else:
-        result_arr = [ {'idx':item['_source'].get('idx',0),'doc_category':item['_source']['doc_category'],'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc':item['_source']['content'], 'doc_type': item['_source']['doc_type'], 'score': item['_score'],'doc_author': item['_source']['doc_author']} for item in query_response["hits"]["hits"]]
+        result_arr = [ {'idx':item['_source'].get('idx',0),'doc_category':item['_source']['doc_category'],'doc_classify':item['_source']['doc_classify'],'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc':item['_source']['content'], 'doc_type': item['_source']['doc_type'], 'score': item['_score'],'doc_author': item['_source']['doc_author']} for item in query_response["hits"]["hits"]]
     return result_arr
 
 def delete_session(session_id):
@@ -996,7 +997,19 @@ def create_baichuan_prompt_template(prompt_template):
 
 def create_soft_refuse_template(prompt_template):
     if prompt_template == '':
-        prompt_template_zh = """{system_role_prompt} {role_bot}\n请根据反引号中的内容提取相关信息回答问题:\n```\n{chat_history}{context}\n```\n如果反引号中信息不相关,则回答不知道.\n用户:{question}"""
+        # prompt_template_zh = """{system_role_prompt} {role_bot}\n请根据反引号中的内容提取相关信息回答问题:\n```\n{chat_history}{context}\n```\n如果反引号中信息不相关,则回答不知道.\n用户:{question}"""
+        prompt_template_zh = \
+"""{system_role_prompt}{role_bot}请根据以下的知识，回答用户的问题。
+<context>
+{context}
+</context> 
+如果知识中的内容的包含markdown格式的内容，如参考图片，示意图，链接等，请尽可能利用并按markdown格式输出参考图片，示意图，链接。请严格基于跟问题相关的知识来回答问题，不要随意发挥和编造答案。请简洁有条理的回答，如果知识内容为空或者跟问题不相关，则回答不知道。
+前几轮的聊天记录如下，如果有需要请参考以下的记录。
+<chat_history>
+{chat_history} 
+</chat_history>
+Skip the preamble, go straight into the answer.
+用户问:{question} """
     else:
         prompt_template_zh = prompt_template
     PROMPT = PromptTemplate(
@@ -1072,13 +1085,13 @@ def format_reference(recall_knowledge):
     text = '\n```json\n#Reference\n'
     for sn,item in enumerate(recall_knowledge):
         displaydata = { "doc": item['doc'],"score": item['score']}
-        doc_category  = item['doc_category'] 
+        doc_category  = item['doc_classify']
         doc_title =  item['doc_title']
         text += f'Doc[{sn+1}]:["{doc_title}"]-["{doc_category}"]\n{json.dumps(displaydata,ensure_ascii=False)}\n'
     text += '\n```'
     return text
 
-def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str, llm_model_endpoint:str, llm_model_name:str, aos_endpoint:str, aos_index:str, aos_knn_field:str, aos_result_num:int, kendra_index_id:str, 
+def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:str, embedding_model_endpoint:str, llm_model_endpoint:str, llm_model_name:str, aos_endpoint:str, aos_index:str, aos_knn_field:str, aos_result_num:int, kendra_index_id:str, 
                    kendra_result_num:int,use_qa:bool,wsclient=None,msgid:str='',max_tokens:int = 2048,temperature:float = 0.1,template:str = '',imgurl:str = None,multi_rounds:bool = False, hide_ref:bool = False,use_stream:bool=False):
     """
     Entry point for the Lambda function.
@@ -1112,7 +1125,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
             "detect_query_type": '',
             "LLM_input": ''
         }
-
+        json_obj['user_id'] = user_id
         json_obj['session_id'] = session_id
         json_obj['chatbot_answer'] = answer
         json_obj['conversations'] = []
@@ -1125,7 +1138,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
     
     logger.info("llm_model_name : {} ,use_stream :{}".format(llm_model_name,use_stream))
     llm = None
-    stream_callback = CustomStreamingOutCallbackHandler(wsclient,msgid, session_id,llm_model_name,hide_ref,use_stream)
+    stream_callback = CustomStreamingOutCallbackHandler(wsclient,msgid, wsconnection_id,llm_model_name,hide_ref,use_stream)
     if llm_model_name.startswith('claude'):
         # ACCESS_KEY, SECRET_KEY=get_bedrock_aksk()
 
@@ -1216,12 +1229,12 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
 
         chat_history=''
         TRACE_LOGGER.trace(f'**Rewrite: {origin_query} => {query_input}**')
-            ##add history parameter
-            # if isinstance(llm,SagemakerStreamEndpoint) or isinstance(llm,SagemakerEndpoint):
-            #     chat_history=''
-            #     llm.model_kwargs['history'] = chat_coversions[-1:]
-            # else:
-            #     chat_history= get_chat_history(chat_coversions[-1:])
+        #add history parameter
+        if isinstance(llm,SagemakerStreamEndpoint) or isinstance(llm,SagemakerEndpoint):
+            chat_history=''
+            llm.model_kwargs['history'] = chat_coversions[-1:]
+        else:
+            chat_history= get_chat_history(chat_coversions[-1:])
     else:
         chat_history=''
 
@@ -1244,7 +1257,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
             cache_answer = last_cache.split('\nAnswer:')[1]
             TRACE_LOGGER.trace(f"**Found caches:**")
             for sn,item in enumerate(cache_repsonses[::-1]):
-                TRACE_LOGGER.trace(f"**[{sn+1}] [{item['doc_title']}] [{item['doc_type']}] [{item['score']:.3f}] author:[{item['doc_author']}]**")
+                TRACE_LOGGER.trace(f"**[{sn+1}] [{item['doc_title']}] [{item['doc_type']}] [{item['doc_classify']}] [{item['score']:.3f}] author:[{item['doc_author']}]**")
                 TRACE_LOGGER.trace(f"{item['doc']}")
         else:
             TRACE_LOGGER.trace(f"**No cache found**")
@@ -1315,9 +1328,9 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
 
         ##添加召回文档到refdoc和tracelog, 按score倒序展示
         for sn,item in enumerate(recall_knowledge[::-1]):
-            TRACE_LOGGER.trace(f"**[{sn+1}] [{item['doc_title']}] [{item['doc_type']}] [{item['score']:.3f}] [{item['rank_score']:.3f}] author:[{item['doc_author']}]**")
+            TRACE_LOGGER.trace(f"**[{sn+1}] [{item['doc_title']}] [{item['doc_classify']}] [{item['score']:.3f}] [{item['rank_score']:.3f}] author:[{item['doc_author']}]**")
             TRACE_LOGGER.trace(f"{item['doc']}")
-            TRACE_LOGGER.add_ref(f"**[{sn+1}] [{item['doc_title']}] [{item['doc_type']}] [{item['score']:.3f}] [{item['rank_score']:.3f}] author:[{item['doc_author']}]**")
+            TRACE_LOGGER.add_ref(f"**[{sn+1}] [{item['doc_title']}] [{item['doc_classify']}] [{item['score']:.3f}] [{item['rank_score']:.3f}] author:[{item['doc_author']}]**")
             TRACE_LOGGER.add_ref(f"{item['doc']}")
         TRACE_LOGGER.trace('**Answer:**')
 
@@ -1385,6 +1398,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
 
             # context = "\n".join([doc['doc'] for doc in recall_knowledge])
             context = qa_knowledge_fewshot_build(recall_knowledge)
+            chat_history = '' ##QA 场景下先不使用history
             ##最终的answer
             try:
                 answer = llmchain.run({'question':query_input,'context':context,'chat_history':chat_history,'role_bot':B_Role })
@@ -1432,7 +1446,7 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
         "LLM_model_name": llm_model_name,
         "reply_stratgy" : reply_stratgy.name
     }
-
+    json_obj['user_id'] = user_id
     json_obj['session_id'] = session_id
     json_obj['msgid'] = msgid
     json_obj['chatbot_answer'] = answer
@@ -1721,12 +1735,14 @@ def lambda_handler(event, context):
     hide_ref = event.get('hide_ref',False)
     retrieve_only = event.get('retrieve_only',False)
     session_id = event['chat_name']
+    wsconnection_id = event.get('wsconnection_id',session_id)
     question = event['prompt']
     model_name = event['model'] if event.get('model') else event.get('model_name','')
     embedding_endpoint = event.get('embedding_model',os.environ.get("embedding_endpoint")) 
     use_qa = event.get('use_qa',False)
     multi_rounds = event.get('multi_rounds',False)
     use_stream = event.get('use_stream',False)
+    user_id = event.get('user_id','')
     use_trace = event.get('use_trace',True)
     template_id = event.get('template_id')
     msgid = event.get('msgid')
@@ -1795,7 +1811,7 @@ def lambda_handler(event, context):
     if template_id and template_id != 'default':
         prompt_template = get_template(template_id)
         prompt_template = '' if prompt_template is None else prompt_template['template']['S']
-            
+    logger.info(f'user_id : {user_id}')
     logger.info(f'prompt_template_id : {template_id}')
     logger.info(f'prompt_template : {prompt_template}')
     logger.info(f'model_name : {model_name}')
@@ -1810,10 +1826,10 @@ def lambda_handler(event, context):
     logger.info(f'use multiple rounds: {multi_rounds}')
     logger.info(f'intention list: {INTENTION_LIST}')
     global TRACE_LOGGER
-    TRACE_LOGGER = TraceLogger(wsclient=wsclient,msgid=msgid,connectionId=session_id,stream=use_stream,use_trace=use_trace,hide_ref=hide_ref)
+    TRACE_LOGGER = TraceLogger(wsclient=wsclient,msgid=msgid,connectionId=wsconnection_id,stream=use_stream,use_trace=use_trace,hide_ref=hide_ref)
 
     main_entry_start = time.time()  # 或者使用 time.time_ns() 获取纳秒级别的时间戳
-    answer,ref_text,use_stream,query_input,opensearch_query_response,opensearch_knn_respose,recall_knowledge = main_entry_new(session_id, question, embedding_endpoint, llm_endpoint, model_name, aos_endpoint, aos_index, aos_knn_field, aos_result_num,
+    answer,ref_text,use_stream,query_input,opensearch_query_response,opensearch_knn_respose,recall_knowledge = main_entry_new(user_id,wsconnection_id,session_id, question, embedding_endpoint, llm_endpoint, model_name, aos_endpoint, aos_index, aos_knn_field, aos_result_num,
                        Kendra_index_id, Kendra_result_num,use_qa,wsclient,msgid,max_tokens,temperature,prompt_template,image_path,multi_rounds,hide_ref,use_stream)
     main_entry_elpase = time.time() - main_entry_start  # 或者使用 time.time_ns() 获取纳秒级别的时间戳
     logger.info(f'runing time of main_entry : {main_entry_elpase}s seconds')
