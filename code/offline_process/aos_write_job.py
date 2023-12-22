@@ -133,14 +133,25 @@ def iterate_paragraph(file_content, object_key, smr_client, index_name, endpoint
                 header = json_item['heading'][0]['heading']
 
             paragraph_content = json_item['content']
-            if len(paragraph_content) > 1024 or len(paragraph_content) < Sentence_Len_Threshold:
+            
+            if len(paragraph_content) < Sentence_Len_Threshold:
+                print(f"skip paragraph_content as it's too short")
+                print(paragraph_content)
                 continue
-
-            yield (idx, paragraph_content, 'Paragraph', paragraph_content)
-
-            sentences = re.split('[。？?.！!]', paragraph_content)
-            for sent in (sent for sent in sentences if len(sent) > Sentence_Len_Threshold): 
-                yield (idx, sent, 'Sentence', paragraph_content)
+            
+            if len(paragraph_content) > 1024:
+                print("paragraph_content is too long, need to split")
+                chunks = text_splitter.create_documents([ paragraph_content ] )
+                for chunk in chunks:
+                    yield (idx, chunk.page_content, 'Paragraph', paragraph_content)
+            else:
+                print(f"paragraph_content:{paragraph_content}")
+                yield (idx, paragraph_content, 'Paragraph', paragraph_content)
+    
+                sentences = re.split('[。？?.！!]', paragraph_content)
+                for sent in (sent for sent in sentences if len(sent) > Sentence_Len_Threshold): 
+                    print(f"sentences: {paragraph_content}")
+                    yield (idx, sent, 'Sentence', paragraph_content)
 
     # def chunk_generator(json_arr):
     #     idx = 0
