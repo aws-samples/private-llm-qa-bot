@@ -77,6 +77,7 @@ INTENTION_LIST = os.environ.get('intention_list', "")
 
 TOP_K = int(os.environ.get('TOP_K',4))
 NEIGHBORS = int(os.environ.get('neighbors',0))
+KNOWLEDGE_BASE_ID = os.environ.get('knowledge_base_id',None)
 
 BEDROCK_EMBEDDING_MODELID_LIST = ["cohere.embed-multilingual-v3","cohere.embed-english-v3","amazon.titan-embed-text-v1"]
 BEDROCK_LLM_MODELID_LIST = {'claude-instant':'anthropic.claude-instant-v1',
@@ -86,6 +87,8 @@ boto3_bedrock = boto3.client(
     service_name="bedrock-runtime",
     region_name= os.environ.get('bedrock_region',region)
 )
+
+knowledgebase_client = boto3.client("bedrock-agent-runtime", region)
 
 ###记录跟踪日志，用于前端输出
 class TraceLogger(BaseModel):
@@ -355,7 +358,11 @@ class CustomDocRetriever(BaseRetriever):
     
     #this is for standard langchain interface
     def get_relevant_documents(self, query_input: str) -> List[Document]:
-        recall_knowledge,_,_= self.get_relevant_documents_custom(query_input)
+        recall_knowledge = None
+        if KNOWLEDGE_BASE_ID:
+            recall_knowledge = self.get_relevant_documents_from_bedrock(KNOWLEDGE_BASE_ID, query_input)
+        else:
+            recall_knowledge,_,_= self.get_relevant_documents_custom(query_input) 
         top_k_results = []
         for item in recall_knowledge:
             top_k_results.append(Document(page_content=item.get('doc')))
@@ -476,6 +483,23 @@ class CustomDocRetriever(BaseRetriever):
                 nodup.append(item)
                 unique_ids.add(doc_hash)
         return nodup
+
+    def get_relevant_documents_from_bedrock(self, knowledge_base_id:str, query_input:str):
+        response = knowledgebase_client.retrieve(
+            knowledgeBaseId=knowledge_base_id,
+            retrievalQuery={
+                'text': query_input
+            },
+            retrievalConfiguration={
+                'vectorSearchConfiguration': {
+                    'numberOfResults': TOP_K 
+                }
+            },
+        )
+
+        ret = [ {'idx': 1, 'rank_score':0, 'doc_author':'-', 'doc_category': '-', 'doc_type':'Paragraph', 'doc':item['content']['text'],'score':item['score'], 'doc_title': item['location']['s3Location']['uri'] } for item in response['retrievalResults']]
+
+        return ret
     
     def get_relevant_documents_custom(self, query_input: str):
         global BM25_QD_THRESHOLD_HARD_REFUSE, BM25_QD_THRESHOLD_SOFT_REFUSE
