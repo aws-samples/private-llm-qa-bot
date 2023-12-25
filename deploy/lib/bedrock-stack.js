@@ -12,7 +12,9 @@ import {
   CfnOutput,
 } from 'aws-cdk-lib';
 import { BedrockKnowledgeBase } from 'bedrock-agents-cdk';
-
+import { fileURLToPath } from "url";
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 export class BedrockCdkStack extends Stack {
   /**
@@ -148,7 +150,7 @@ export class BedrockCdkStack extends Stack {
       description: 'Required dependencies for Lambda',
     });
 
-    const role_for_chatbot = Role.fromRoleArn(this, 'admin_for_chatbot', adminUserArn)
+    const role_for_chatbot = iam.Role.fromRoleArn(this, 'admin_for_chatbot', adminUserArn)
 
     // Lambda function
     const onEvent = new lambda.Function(this, 'OpenSearchCustomResourceFunction', {
@@ -168,13 +170,13 @@ export class BedrockCdkStack extends Stack {
     });
 
     // Custom resource provider
-    const provider = new custom_resources.Provider(stack, 'CustomResourceProvider', {
+    const provider = new custom_resources.Provider(this, 'CustomResourceProvider', {
       onEventHandler: onEvent,
       logRetention: logs.RetentionDays.ONE_DAY,
     });
 
     // Custom resource
-    new CustomResource(stack, 'CustomResource', {
+    new CustomResource(this, 'CustomResource', {
       serviceToken: provider.serviceToken,
     });
 
