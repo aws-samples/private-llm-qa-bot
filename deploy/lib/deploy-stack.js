@@ -109,6 +109,10 @@ export class DeployStack extends Stack {
 
     const chat_session_table = new Table(this, "chatbot_session_info", {
       partitionKey: {
+        name: "user_id",
+        type: AttributeType.STRING,
+      },
+      sortKey: {
         name: "session-id",
         type: AttributeType.STRING,
       },

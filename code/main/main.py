@@ -873,7 +873,7 @@ def delete_session(session_id):
         logger.info(f"delete session failed {str(e)}")
 
         
-def get_session(session_id):
+def get_session(session_id,user_id):
 
     table_name = chat_session_table
     # dynamodb = boto3.resource('dynamodb')
@@ -882,7 +882,7 @@ def get_session(session_id):
     table = dynamodb_client.Table(table_name)
     operation_result = ""
     try:
-        response = table.get_item(Key={'session-id': session_id})
+        response = table.get_item(Key={'session-id': session_id,'user_id':user_id}})
         if "Item" in response.keys():
         # print("****** " + response["Item"]["content"])
             operation_result = json.loads(response["Item"]["content"])
@@ -902,7 +902,7 @@ def get_session(session_id):
 #           answer
 # return:   success
 #           failed
-def update_session(session_id,msgid, question, answer, intention):
+def update_session(session_id,user_id,msgid, question, answer, intention):
 
     table_name = chat_session_table
     # dynamodb = boto3.resource('dynamodb')
@@ -911,7 +911,7 @@ def update_session(session_id,msgid, question, answer, intention):
     table = dynamodb_client.Table(table_name)
     operation_result = ""
 
-    response = table.get_item(Key={'session-id': session_id})
+    response = table.get_item(Key={'session-id': session_id,'user_id':user_id})
 
     if "Item" in response.keys():
         # print("****** " + response["Item"]["content"])
@@ -919,15 +919,18 @@ def update_session(session_id,msgid, question, answer, intention):
     else:
         # print("****** No result")
         chat_history = []
-
-    chat_history.append([question, answer, intention,msgid])
+        
+    timestamp_str = str(datetime.now())
+    chat_history.append([question, answer, intention,msgid,timestamp_str])
     content = json.dumps(chat_history,ensure_ascii=False)
 
     # inserting values into table
     response = table.put_item(
         Item={
             'session-id': session_id,
-            'content': content
+            'user_id':user_id,
+            'content': content,
+            'last_updatetime':timestamp_str
         }
     )
 
@@ -1204,7 +1207,7 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
     
     # 1. get_session
     start1 = time.time()
-    session_history = get_session(session_id=session_id)
+    session_history = get_session(session_id=session_id,user_id=user_id)
 
     chat_coversions = [ (item[0],item[1]) for item in session_history]
 
@@ -1459,7 +1462,7 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
 
     start = time.time()
     if session_id != 'OnlyForDEBUG':
-        update_session(session_id=session_id, question=query_input, answer=answer, intention=intention,msgid=msgid)
+        update_session(session_id=session_id, user_id=user_id, question=query_input, answer=answer, intention=intention,msgid=msgid)
     elpase_time = time.time() - start
     elpase_time1 = time.time() - start1
     logger.info(f'runing time of update_session : {elpase_time}s seconds')
