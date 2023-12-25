@@ -2,6 +2,7 @@
 import cdk  from 'aws-cdk-lib';
 import { DeployStack } from '../lib/deploy-stack.js';
 import { FrontendCdkStack } from '../lib/frontend-cdk-stack.js';
+import { BedrockCdkStack } from '../lib/bedrock-stack.js';
 // import { exec } from 'child_process';
 import * as dotenv from 'dotenv' ;
 dotenv.config()
@@ -15,6 +16,13 @@ new DeployStack(app, 'QAChatDeployStack', {
 new FrontendCdkStack(app, 'ChatFrontendDeployStack', {
   env: { account: process.env.CDK_DEFAULT_ACCOUNT, region: process.env.CDK_DEFAULT_REGION },
 });
+
+// you need to install by `npm i bedrock-agents-cdk`
+new BedrockCdkStack(app, 'BedrockKDDeployStack', {
+  env: { account: process.env.CDK_DEFAULT_ACCOUNT, region: process.env.CDK_DEFAULT_REGION, s3bucket: process.env.UPLOAD_BUCKET, s3prefix : process.env.UPLOAD_OBJ_PREFIX },
+});
+
+
 
 // const frontEndScriptPath = '../chatbotFE/gen_env.sh';
 
