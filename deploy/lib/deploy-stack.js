@@ -109,12 +109,16 @@ export class DeployStack extends Stack {
 
     const chat_session_table = new Table(this, "chatbot_session_info", {
       partitionKey: {
+        name: "user_id",
+        type: AttributeType.STRING,
+      },
+      sortKey: {
         name: "session-id",
         type: AttributeType.STRING,
       },
       removalPolicy: RemovalPolicy.DESTROY, // NOT recommended for production code
     });
-    addAutoScalingDDb(chat_session_table);
+    // addAutoScalingDDb(chat_session_table);
 
     const user_feedback_table = new Table(this, "user_feedback_table", {
       partitionKey: {
