@@ -346,7 +346,7 @@ def lambda_handler(event, context):
     agent_tools.register_tool(name='ec2_price',func=query_ec2_price)
     agent_tools.register_tool(name='service_org',func=service_org)
 
-    if len(agent_lambdas) > 0:
+    if agent_lambdas and len(agent_lambdas) > 0:
         agent_lambda_list = agent_lambdas.split(',')
         for lambda_name in agent_lambda_list:
             tool_name = lambda_name.replace('agent_tool_', '')
