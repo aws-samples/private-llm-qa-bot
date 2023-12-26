@@ -28,7 +28,6 @@ export class BedrockCdkStack extends Stack {
 
     const region = props.env.region;
     const s3bucket = props.env.s3bucket;
-    const s3prefix = props.env.s3prefix;
     const account_id = Stack.of(this).account;
 
         // Change the resources' name or use parameters
@@ -214,7 +213,7 @@ export class BedrockCdkStack extends Stack {
         dataSourceConfiguration: {
           s3Configuration: {
             bucketArn: dataSourceBucketArn,
-            inclusionPrefixes: [ `${s3prefix}` ]
+            inclusionPrefixes: [ 'bedrock-kb-src' ]
           },
           type: 'S3',
         },
