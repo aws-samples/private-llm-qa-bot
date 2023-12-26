@@ -497,7 +497,10 @@ class CustomDocRetriever(BaseRetriever):
             },
         )
 
-        ret = [ {'idx': 1, 'rank_score':0, 'doc_author':'-', 'doc_category': '-', 'doc_type':'Paragraph', 'doc':item['content']['text'],'score':item['score'], 'doc_title': item['location']['s3Location']['uri'] } for item in response['retrievalResults']]
+        def remove_s3_prefix(s3_path):
+            return '/'.join(s3_path.split('/', 3)[3:])
+
+        ret = [ {'idx': 1, 'rank_score':0, 'doc_classify':'-', 'doc_author':'-', 'doc_category': '-', 'doc_type':'Paragraph', 'doc':item['content']['text'],'score':item['score'], 'doc_title': remove_s3_prefix(item['location']['s3Location']['uri']) } for item in response['retrievalResults']]
 
         return ret
     
@@ -1330,7 +1333,7 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
     elif intention == 'QA': ##如果使用QA
         # 2. aos retriever
         TRACE_LOGGER.trace('**Using RAG Chat...**')
-        TRACE_LOGGER.trace('**Retrieving knowledge...**')
+        
 
         # doc_retriever = CustomDocRetriever.from_endpoints(embedding_model_endpoint=embedding_model_endpoint,
         #                             aos_endpoint= aos_endpoint,
@@ -1343,7 +1346,16 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
         start = time.time()
         ## 加上一轮的问题拼接来召回内容
         # query_with_history= get_question_history(chat_coversions[-2:])+query_input
-        recall_knowledge,opensearch_knn_respose,opensearch_query_response = doc_retriever.get_relevant_documents_custom(query_input) 
+        recall_knowledge = None
+        opensearch_knn_respose = []
+        opensearch_query_response = []
+        if KNOWLEDGE_BASE_ID:
+            TRACE_LOGGER.trace('**Retrieving knowledge from bedrock knowledgebase...**')
+            recall_knowledge = doc_retriever.get_relevant_documents_from_bedrock(KNOWLEDGE_BASE_ID, query_input)
+        else:
+            TRACE_LOGGER.trace('**Retrieving knowledge from OpenSearch...**')
+            recall_knowledge, opensearch_knn_respose, opensearch_query_response = doc_retriever.get_relevant_documents_custom(query_input) 
+
         elpase_time = time.time() - start
         logger.info(f'running time of opensearch_query : {elpase_time:.3f}s seconds')
         TRACE_LOGGER.trace(f'**Running time of retrieving knowledge : {elpase_time:.3f}s**')
