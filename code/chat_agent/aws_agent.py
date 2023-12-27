@@ -100,6 +100,20 @@ API_SCHEMA = [
                     "required": ["query"],
                     },
                 },
+                {
+                    "name": "web_search",
+                    "description": "Search Google for recent results.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "query": {
+                                "type": "string",
+                                "description": "based on user's task, think of the best query for google search to complete the task",
+                            },
+                        },
+                        "required": ["query"],
+                    },
+                }
             ]
 
 
@@ -190,6 +204,12 @@ class AgentTools(BaseModel):
         answer = llmchain.run({'context':context, "question": query})
         answer = answer.strip()
         return answer
+    
+    def get_context_run(cls,query):
+        context,func_name,args,error = cls.dispatch_function_call(query)
+        logger.info(f"****function_call [{func_name}] result ****:\n{context}")
+        
+        return error if error else '',context
 
     def run(cls,query) ->Dict[str,str]:
         context,func_name,args,error = cls.dispatch_function_call(query)
@@ -317,14 +337,18 @@ def lambda_handler(event, context):
     if detection:
         func_name = detection.get('func')
         func_params = detection.get('param')
+    print(detection)
 
     ## 已经从外面传入了识别出的意图和参数
+    answer=''
+    ref_doc=''
     if func_name and func_params:
         if not agent_tools.check_tool(func_name):
             answer = f"对不起，该函数{func_name}还未实现"
             ref_doc = ''
         else:
             answer,ref_doc = agent_tools.run_with_func_args(query,func_name,func_params)
+        
     else:
         answer,ref_doc = agent_tools.run(query)
 
@@ -347,6 +371,8 @@ if __name__ == '__main__':
     parser.add_argument("--query", type=str, default='查询g4dn在美西2的价格')
     args = parser.parse_args()
     query = args.query
-    event = {'params':{'query':query},'use_bedrock':True}
+    # event = {'params':{'query':query},'use_bedrock':True}
+
+    event = {'params':{'query':query,'detection':{'func':'web_search'}},'use_bedrock':True}
     response = lambda_handler(event,{})
     print(response['body'])

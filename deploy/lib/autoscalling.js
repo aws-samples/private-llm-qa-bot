@@ -6,7 +6,7 @@ export function addAutoScaling(fn,minCapacity=1,maxCapacity=100){
   
   // Configure Target Tracking
   as.scaleOnUtilization({
-    utilizationTarget: 0.5,
+    utilizationTarget: 0.6,
     minCapacity: minCapacity,
     maxCapacity:maxCapacity,
   });

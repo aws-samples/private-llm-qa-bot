@@ -27,17 +27,18 @@ from langchain.schema import Document
 from langchain.llms.bedrock import Bedrock
 from pydantic import BaseModel,Field
 from langchain.pydantic_v1 import Extra, root_validator
-
-import openai
 from langchain.callbacks.base import BaseCallbackHandler
 from langchain.callbacks.manager import CallbackManagerForLLMRun
 from typing import Any, Dict, List, Union,Mapping, Optional, TypeVar, Union
 from langchain.schema import LLMResult
 from langchain.llms.base import LLM
+from langchain.agents import Tool
 import io
 import math
 from enum import Enum
 from boto3 import client as boto3_client
+from langchain.utilities import GoogleSearchAPIWrapper
+
 
 lambda_client= boto3.client('lambda')
 dynamodb_client = boto3.resource('dynamodb')
@@ -71,6 +72,8 @@ KNN_QQ_THRESHOLD_SOFT_REFUSE = float(os.environ.get('knn_qq_threshold_soft',0.8)
 KNN_QD_THRESHOLD_HARD_REFUSE = float(os.environ.get('knn_qd_threshold_hard',0.6))
 KNN_QD_THRESHOLD_SOFT_REFUSE = float(os.environ.get('knn_qd_threshold_soft',0.8))
 RERANK_THRESHOLD = float(os.environ.get('rerank_threshold_soft',-2))
+WEBSEARCH_THRESHOLD = float(os.environ.get('websearch_threshold_soft',1))
+
 
 KNN_QUICK_PEFETCH_THRESHOLD = float(os.environ.get('knn_quick_prefetch_threshold',0.95))
 
@@ -82,8 +85,6 @@ NEIGHBORS = int(os.environ.get('neighbors',0))
 BEDROCK_EMBEDDING_MODELID_LIST = ["cohere.embed-multilingual-v3","cohere.embed-english-v3","amazon.titan-embed-text-v1"]
 BEDROCK_LLM_MODELID_LIST = {'claude-instant':'anthropic.claude-instant-v1',
                             'claude-v2':'anthropic.claude-v2:1'}
-
-
 boto3_bedrock = boto3.client(
     service_name="bedrock-runtime",
     region_name= os.environ.get('bedrock_region',region)
@@ -315,6 +316,35 @@ class SagemakerStreamEndpoint(LLM):
             raise ValueError(f"Error raised by inference endpoint: {e}")
         text = self.content_handler.transform_output(response["Body"])
         return text
+    
+class GoogleSearchTool():
+    tool:Tool
+    topk:int = 10
+    
+    def __init__(self,top_k=10):  
+        self.topk = top_k
+        search = GoogleSearchAPIWrapper()
+        def top_results(query):
+            return search.results(query, self.topk)
+        self.tool = Tool(
+            name="Google Search Snippets",
+            description="Search Google for recent results.",
+            func=top_results,
+        )
+        
+    def run(self,query):
+        return self.tool.run(query)
+
+def web_search(**args):
+    tool = GoogleSearchTool(top_k=args.get('top_k',10))
+    result = tool.run(args['query'])
+    print('web_search:',result)
+    # 异常情况返回这个结果[{'Result': 'No good Google Search Result was found'}]
+    if result:
+        has_result = True if 'title' in result[0] else False
+        return result if has_result else []
+    else:
+        return []
        
 class ContentHandler(EmbeddingsContentHandler):
     parameters = {
@@ -480,10 +510,20 @@ class CustomDocRetriever(BaseRetriever):
                 unique_ids.add(doc_hash)
         return nodup
     
+    def get_websearch_documents(self, query_input: str) -> list:
+        # 使用agent方式速度比较慢，直接改成调用search api
+        # all_docs = chat_agent(query_input, {'func':'web_search'}, use_bedrock="True")
+        all_docs = web_search(query=query_input)
+        print('all_docs:',all_docs)
+        recall_knowledge = [{'doc_title':item['title'],'doc':item['title']+'\n'+item['snippet'],
+                             'doc_classify':'web_search','doc_type':'web_search','score':0.8,'doc_author':item['link']} for item in all_docs]
+        return recall_knowledge
+
+
     def get_relevant_documents_custom(self, query_input: str):
         global BM25_QD_THRESHOLD_HARD_REFUSE, BM25_QD_THRESHOLD_SOFT_REFUSE
         global KNN_QQ_THRESHOLD_HARD_REFUSE, KNN_QQ_THRESHOLD_SOFT_REFUSE
-        global KNN_QD_THRESHOLD_HARD_REFUSE, KNN_QD_THRESHOLD_SOFT_REFUSE
+        global KNN_QD_THRESHOLD_HARD_REFUSE, KNN_QD_THRESHOLD_SOFT_REFUSE, WEBSEARCH_THRESHOLD
         start = time.time()
         query_embedding = get_vector_by_sm_endpoint(query_input, sm_client, self.embedding_model_endpoint)
         aos_client = OpenSearch(
@@ -580,8 +620,26 @@ class CustomDocRetriever(BaseRetriever):
                 ##sort by scores
                 sorted_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=False)
                 recall_knowledge = [{**all_docs[idx],'rank_score':scores[idx] } for idx in sorted_indices[-TOP_K:] ] 
+                
+                ## 引入web search结果重新排序
+                if max(scores) < WEBSEARCH_THRESHOLD:
+                    web_knowledge = self.get_websearch_documents(query_input)
+                    if web_knowledge:
+                        search_scores = self.rerank(query_input, web_knowledge,sm_client,cross_model_endpoint)
+                        sorted_indices = sorted(range(len(search_scores)), key=lambda i: search_scores[i], reverse=False)
+                        
+                        ## 过滤websearch结果
+                        sorted_web_knowledge = [{**web_knowledge[idx],'rank_score':search_scores[idx] } for idx in sorted_indices if search_scores[idx]>=WEBSEARCH_THRESHOLD] 
+                        #添加到原有的知识里,并过滤到原来知识中的低分item
+                        recall_knowledge += sorted_web_knowledge
+                        recall_knowledge = [item for item in  recall_knowledge if item['rank_score'] >= RERANK_THRESHOLD]
             else:
-                recall_knowledge = []
+                ##如果没有找到知识，则直接搜索
+                web_knowledge = self.get_websearch_documents(query_input)
+                if web_knowledge:
+                    search_scores = self.rerank(query_input, web_knowledge,sm_client,cross_model_endpoint)
+                    sorted_indices = sorted(range(len(search_scores)), key=lambda i: search_scores[i], reverse=False)
+                    recall_knowledge = [{**web_knowledge[idx],'rank_score':search_scores[idx] } for idx in sorted_indices if search_scores[idx]>=WEBSEARCH_THRESHOLD]
 
         else:
             recall_knowledge = combine_recalls(filter_knn_result, filter_inverted_result)
@@ -664,7 +722,7 @@ def rewrite_query(query, session_history, round_cnt=2, use_bedrock="True"):
     response_body = response['Payload']
     response_str = response_body.read().decode("unicode_escape")
 
-    return response_str.strip()
+    return response_str.strip('"')
 
 def chat_agent(query, detection, use_bedrock="True"):
 
@@ -867,13 +925,14 @@ def aos_search(client, index_name, field, query_term, exactly_match=False, size=
                         'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc':item['_source']['content'], 'doc_type': item['_source']['doc_type'], 'score': item['_score'],'doc_author': item['_source']['doc_author']} for item in query_response["hits"]["hits"]]
     return result_arr
 
-def delete_session(session_id):
+def delete_session(session_id,user_id):
     # dynamodb = boto3.resource('dynamodb')
     table = dynamodb_client.Table(chat_session_table)
     try:
         table.delete_item(
         Key={
             'session-id': session_id,
+            'user_id':user_id
         })
     except Exception as e:
         logger.info(f"delete session failed {str(e)}")
@@ -1101,31 +1160,33 @@ def get_reply_stratgy(recall_knowledge):
     global RERANK_THRESHOLD 
     rank_score = [item['rank_score'] for item in recall_knowledge]
     if max(rank_score) < RERANK_THRESHOLD:  ##如果所有的知识都不超过rank score阈值，则采用LLM ONLY
-        stratgy = ReplyStratgy.LLM_ONLY
-        return stratgy
+        return ReplyStratgy.LLM_ONLY
+    else:
+        return ReplyStratgy.WITH_LLM
 
-    global BM25_QD_THRESHOLD_HARD_REFUSE, BM25_QD_THRESHOLD_SOFT_REFUSE
-    global KNN_QQ_THRESHOLD_HARD_REFUSE, KNN_QQ_THRESHOLD_SOFT_REFUSE
-    global KNN_QD_THRESHOLD_HARD_REFUSE, KNN_QD_THRESHOLD_SOFT_REFUSE
+    ##使用rerank之后，不需要这些策略
+    # global BM25_QD_THRESHOLD_HARD_REFUSE, BM25_QD_THRESHOLD_SOFT_REFUSE
+    # global KNN_QQ_THRESHOLD_HARD_REFUSE, KNN_QQ_THRESHOLD_SOFT_REFUSE
+    # global KNN_QD_THRESHOLD_HARD_REFUSE, KNN_QD_THRESHOLD_SOFT_REFUSE
 
-    stratgy = ReplyStratgy.RETURN_OPTIONS
-    for item in recall_knowledge:
-        if item['score'] > 1.0:
-            if item['score'] > BM25_QD_THRESHOLD_SOFT_REFUSE:
-                stratgy = ReplyStratgy.WITH_LLM
-            elif item['score'] > BM25_QD_THRESHOLD_HARD_REFUSE:
-                stratgy = ReplyStratgy(min(ReplyStratgy.HINT_LLM_REFUSE.value, stratgy.value))
-            else:
-                stratgy = ReplyStratgy(min(ReplyStratgy.RETURN_OPTIONS.value, stratgy.value))
+    # stratgy = ReplyStratgy.RETURN_OPTIONS
+    # for item in recall_knowledge:
+    #     if item['score'] > 1.0:
+    #         if item['score'] > BM25_QD_THRESHOLD_SOFT_REFUSE:
+    #             stratgy = ReplyStratgy.WITH_LLM
+    #         elif item['score'] > BM25_QD_THRESHOLD_HARD_REFUSE:
+    #             stratgy = ReplyStratgy(min(ReplyStratgy.HINT_LLM_REFUSE.value, stratgy.value))
+    #         else:
+    #             stratgy = ReplyStratgy(min(ReplyStratgy.RETURN_OPTIONS.value, stratgy.value))
 
-        elif item['score'] <= 1.0:
-            if item['score'] > KNN_QD_THRESHOLD_SOFT_REFUSE:
-                stratgy = ReplyStratgy.WITH_LLM
-            elif item['score'] > KNN_QD_THRESHOLD_HARD_REFUSE:
-                stratgy = ReplyStratgy(min(ReplyStratgy.HINT_LLM_REFUSE.value, stratgy.value))
-            else:
-                stratgy = ReplyStratgy(min(ReplyStratgy.RETURN_OPTIONS.value, stratgy.value))
-    return stratgy
+    #     elif item['score'] <= 1.0:
+    #         if item['score'] > KNN_QD_THRESHOLD_SOFT_REFUSE:
+    #             stratgy = ReplyStratgy.WITH_LLM
+    #         elif item['score'] > KNN_QD_THRESHOLD_HARD_REFUSE:
+    #             stratgy = ReplyStratgy(min(ReplyStratgy.HINT_LLM_REFUSE.value, stratgy.value))
+    #         else:
+    #             stratgy = ReplyStratgy(min(ReplyStratgy.RETURN_OPTIONS.value, stratgy.value))
+    # return stratgy
 
 def choose_prompt_template(stratgy:Enum, template:str, llm_model_name:str):
     if stratgy == ReplyStratgy.WITH_LLM:
@@ -1162,7 +1223,7 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
     global STOP,TRACE_LOGGER
     #如果是reset命令，则清空历史聊天
     if query_input == RESET:
-        delete_session(session_id)
+        delete_session(session_id,user_id)
         answer = '历史对话已清空'
         json_obj = {
             "query": query_input,
@@ -1277,6 +1338,7 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
 
         chat_history=''
         TRACE_LOGGER.trace(f'**Rewrite: {origin_query} => {query_input}**')
+        logger.info(f'Rewrite: {origin_query} => {query_input}')
         #add history parameter
         if isinstance(llm,SagemakerStreamEndpoint) or isinstance(llm,SagemakerEndpoint):
             llm.model_kwargs['history'] = chat_coversions[-1:]
@@ -1803,13 +1865,7 @@ def lambda_handler(event, context):
     # 获取当前时间戳
     request_timestamp = time.time()  # 或者使用 time.time_ns() 获取纳秒级别的时间戳
     logger.info(f'request_timestamp :{request_timestamp}')
-    logger.info(f"event:{event}")
-    # logger.info(f"context:{context}")
 
-    # 创建日志组和日志流
-    log_group_name = '/aws/lambda/{}'.format(context.function_name)
-    log_stream_name = context.aws_request_id
-    client = boto3.client('logs')
     # 接收触发AWS Lambda函数的事件
     logger.info('The main brain has been activated, aws🚀!')
 

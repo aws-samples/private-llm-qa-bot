@@ -1,7 +1,6 @@
 import json
 import os
 import logging
-
 from langchain.llms.sagemaker_endpoint import LLMContentHandler
 from langchain import PromptTemplate, SagemakerEndpoint
 from typing import Any, Dict, List, Union,Mapping, Optional, TypeVar, Union
@@ -159,8 +158,6 @@ def lambda_handler(event, context):
     
     llmchain = LLMChain(llm=llm, verbose=False, prompt=prompt_template)
     answer = llmchain.run({'history':history_str, "cur_query":query})
-    answer = answer.strip()
-
     log_dict = { "history" : history, "answer" : answer , "cur_query": query, "prompt":prompt }
     log_dict_str = json.dumps(log_dict, ensure_ascii=False)
     logger.info(log_dict_str)
