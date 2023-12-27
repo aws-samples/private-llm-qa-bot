@@ -99,20 +99,6 @@ API_SCHEMA = [
                     },
                     "required": ["query"],
                     },
-                },
-                {
-                    "name": "web_search",
-                    "description": "Search Google for recent results.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "query": {
-                                "type": "string",
-                                "description": "based on user's task, think of the best query for google search to complete the task",
-                            },
-                        },
-                        "required": ["query"],
-                    },
                 }
             ]
 

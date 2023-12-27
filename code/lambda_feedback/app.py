@@ -12,13 +12,13 @@ user_feedback_table = os.environ.get('user_feedback_table')
 chat_session_table = os.environ.get('chat_session_table')
 
 ## content  = [question, answer, intention,msgid]
-def get_session_by_msgid(session_id,msg_id):
+def get_session_by_msgid(session_id,msg_id,user_id):
 
     # table name
     table = dynamodb_client.Table(chat_session_table)
     operation_result = []
     try:
-        response = table.get_item(Key={'session-id': session_id})
+        response = table.get_item(Key={'session-id': session_id,'user_id':user_id})
         if "Item" in response.keys():
             operation_result = json.loads(response["Item"]["content"])
             operation_result = [(item[0],item[1],item[3]) for item in operation_result if item[3] == msg_id]
@@ -75,7 +75,7 @@ def update_qa_status(session_id,msg_id,status):
 
 def update_feedback(session_id,msgid,action,username,timestamp,feedback=''):
 
-    chat_data = get_session_by_msgid(session_id,msgid)
+    chat_data = get_session_by_msgid(session_id,msgid,username)
 
     if not chat_data:
         print('No chat data found')

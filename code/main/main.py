@@ -32,13 +32,11 @@ from langchain.callbacks.manager import CallbackManagerForLLMRun
 from typing import Any, Dict, List, Union,Mapping, Optional, TypeVar, Union
 from langchain.schema import LLMResult
 from langchain.llms.base import LLM
-from langchain.agents import Tool
 import io
 import math
 from enum import Enum
 from boto3 import client as boto3_client
-from langchain.utilities import GoogleSearchAPIWrapper
-
+from utils.web_search import web_search,add_webpage_content
 
 lambda_client= boto3.client('lambda')
 dynamodb_client = boto3.resource('dynamodb')
@@ -316,35 +314,6 @@ class SagemakerStreamEndpoint(LLM):
             raise ValueError(f"Error raised by inference endpoint: {e}")
         text = self.content_handler.transform_output(response["Body"])
         return text
-    
-class GoogleSearchTool():
-    tool:Tool
-    topk:int = 10
-    
-    def __init__(self,top_k=10):  
-        self.topk = top_k
-        search = GoogleSearchAPIWrapper()
-        def top_results(query):
-            return search.results(query, self.topk)
-        self.tool = Tool(
-            name="Google Search Snippets",
-            description="Search Google for recent results.",
-            func=top_results,
-        )
-        
-    def run(self,query):
-        return self.tool.run(query)
-
-def web_search(**args):
-    tool = GoogleSearchTool(top_k=args.get('top_k',10))
-    result = tool.run(args['query'])
-    print('web_search:',result)
-    # 异常情况返回这个结果[{'Result': 'No good Google Search Result was found'}]
-    if result:
-        has_result = True if 'title' in result[0] else False
-        return result if has_result else []
-    else:
-        return []
        
 class ContentHandler(EmbeddingsContentHandler):
     parameters = {
@@ -407,7 +376,7 @@ class CustomDocRetriever(BaseRetriever):
             )
         opensearch_knn_respose = search_using_aos_knn(aos_client,query_embedding[0], self.aos_index,size=3)
         elpase_time = time.time() - start
-        logger.info(f'runing time of quick_knn_fetch : {elpase_time:.3f}s')
+        logger.info(f'running time of quick_knn_fetch : {elpase_time:.3f}s')
         filter_knn_result = [item for item in opensearch_knn_respose if (item['score'] > KNN_QUICK_PEFETCH_THRESHOLD and item['doc_type'] == 'Question')]
         if len(filter_knn_result) :
             filter_knn_result.sort(key=lambda x:x['score'])
@@ -512,7 +481,6 @@ class CustomDocRetriever(BaseRetriever):
     
     def get_websearch_documents(self, query_input: str) -> list:
         # 使用agent方式速度比较慢，直接改成调用search api
-        # all_docs = chat_agent(query_input, {'func':'web_search'}, use_bedrock="True")
         all_docs = web_search(query=query_input)
         print('all_docs:',all_docs)
         recall_knowledge = [{'doc_title':item['title'],'doc':item['title']+'\n'+item['snippet'],
@@ -535,14 +503,14 @@ class CustomDocRetriever(BaseRetriever):
             )
         opensearch_knn_respose = search_using_aos_knn(aos_client,query_embedding[0], self.aos_index,size=CHANNEL_RET_CNT)
         elpase_time = time.time() - start
-        logger.info(f'runing time of opensearch_knn : {elpase_time}s seconds')
+        logger.info(f'running time of opensearch_knn : {elpase_time}s seconds')
         
         # 4. get AOS invertedIndex recall
         start = time.time()
         opensearch_query_response = aos_search(aos_client, self.aos_index, "doc", query_input,size=CHANNEL_RET_CNT)
         # logger.info(opensearch_query_response)
         elpase_time = time.time() - start
-        logger.info(f'runing time of opensearch_query : {elpase_time}s seconds')
+        logger.info(f'running time of opensearch_query : {elpase_time}s seconds')
 
         # 5. combine these two opensearch_knn_respose and opensearch_query_response
         def combine_recalls(opensearch_knn_respose, opensearch_query_response):
@@ -630,6 +598,9 @@ class CustomDocRetriever(BaseRetriever):
                         
                         ## 过滤websearch结果
                         sorted_web_knowledge = [{**web_knowledge[idx],'rank_score':search_scores[idx] } for idx in sorted_indices if search_scores[idx]>=WEBSEARCH_THRESHOLD] 
+                        ## 前面返回的是snippet内容，可以对结果继续用爬虫抓取完整内容
+                        sorted_web_knowledge = add_webpage_content(sorted_web_knowledge)
+                        
                         #添加到原有的知识里,并过滤到原来知识中的低分item
                         recall_knowledge += sorted_web_knowledge
                         recall_knowledge = [item for item in  recall_knowledge if item['rank_score'] >= RERANK_THRESHOLD]
@@ -639,7 +610,9 @@ class CustomDocRetriever(BaseRetriever):
                 if web_knowledge:
                     search_scores = self.rerank(query_input, web_knowledge,sm_client,cross_model_endpoint)
                     sorted_indices = sorted(range(len(search_scores)), key=lambda i: search_scores[i], reverse=False)
-                    recall_knowledge = [{**web_knowledge[idx],'rank_score':search_scores[idx] } for idx in sorted_indices if search_scores[idx]>=WEBSEARCH_THRESHOLD]
+                    sorted_web_knowledge = [{**web_knowledge[idx],'rank_score':search_scores[idx] } for idx in sorted_indices if search_scores[idx]>=WEBSEARCH_THRESHOLD]
+                    ## 前面返回的是snippet内容，可以对结果继续用爬虫抓取完整内容
+                    recall_knowledge = add_webpage_content(sorted_web_knowledge)
 
         else:
             recall_knowledge = combine_recalls(filter_knn_result, filter_inverted_result)
@@ -1318,7 +1291,7 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
     chat_coversions = [ (item[0],item[1]) for item in session_history]
 
     elpase_time = time.time() - start1
-    logger.info(f'runing time of get_session : {elpase_time}s seconds')
+    logger.info(f'running time of get_session : {elpase_time}s seconds')
     
     answer = None
     query_type = None
@@ -1435,7 +1408,8 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
             TRACE_LOGGER.trace(f"**[{sn+1}] [{item['doc_title']}] [{item['doc_classify']}] [{item['score']:.3f}] [{item['rank_score']:.3f}] author:[{item['doc_author']}]**")
             TRACE_LOGGER.trace(f"{item['doc']}")
             TRACE_LOGGER.add_ref(f"**[{sn+1}] [{item['doc_title']}] [{item['doc_classify']}] [{item['score']:.3f}] [{item['rank_score']:.3f}] author:[{item['doc_author']}]**")
-            TRACE_LOGGER.add_ref(f"{item['doc']}")
+            #doc 太长之后进行截断
+            TRACE_LOGGER.add_ref(f"{item['doc'][:200]}{'...' if len(item['doc'])>200 else ''}") 
         TRACE_LOGGER.trace('**Answer:**')
 
 
@@ -1543,8 +1517,8 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
         update_session(session_id=session_id, user_id=user_id, question=query_input, answer=answer, intention=intention,msgid=msgid)
     elpase_time = time.time() - start
     elpase_time1 = time.time() - start1
-    logger.info(f'runing time of update_session : {elpase_time}s seconds')
-    logger.info(f'runing time of all  : {elpase_time1}s seconds')
+    logger.info(f'running time of update_session : {elpase_time}s seconds')
+    logger.info(f'running time of all  : {elpase_time1}s seconds')
     return answer,ref_text,use_stream,query_input,opensearch_query_response,opensearch_knn_respose,recall_knowledge
 
 def delete_doc_index(obj_key,embedding_model,index_name):
@@ -1907,7 +1881,7 @@ def lambda_handler(event, context):
     answer,ref_text,use_stream,query_input,opensearch_query_response,opensearch_knn_respose,recall_knowledge = main_entry_new(user_id,wsconnection_id,session_id, question, embedding_endpoint, llm_endpoint, model_name, aos_endpoint, aos_index, aos_knn_field, aos_result_num,
                        Kendra_index_id, Kendra_result_num,use_qa,wsclient,msgid,max_tokens,temperature,prompt_template,image_path,multi_rounds,hide_ref,use_stream)
     main_entry_elpase = time.time() - main_entry_start  # 或者使用 time.time_ns() 获取纳秒级别的时间戳
-    logger.info(f'runing time of main_entry : {main_entry_elpase}s seconds')
+    logger.info(f'running time of main_entry : {main_entry_elpase}s seconds')
     if use_stream: ##只有当stream输出时，把这条trace放到最后一个chunk
         TRACE_LOGGER.trace(f'\n\n**Total running time : {main_entry_elpase:.3f}s**')
     if TRACE_LOGGER.use_trace:
