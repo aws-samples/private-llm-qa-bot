@@ -688,7 +688,7 @@ def rewrite_query(query, session_history, round_cnt=2, use_bedrock="True"):
     response_body = response['Payload']
     response_str = response_body.read().decode("unicode_escape")
 
-    return response_str.strip()
+    return response_str.strip('"')
 
 def chat_agent(query, detection, use_bedrock="True"):
 
@@ -888,13 +888,14 @@ def aos_search(client, index_name, field, query_term, exactly_match=False, size=
         result_arr = [ {'idx':item['_source'].get('idx',0),'doc_category':item['_source']['doc_category'],'doc_classify':item['_source']['doc_classify'],'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc':item['_source']['content'], 'doc_type': item['_source']['doc_type'], 'score': item['_score'],'doc_author': item['_source']['doc_author']} for item in query_response["hits"]["hits"]]
     return result_arr
 
-def delete_session(session_id):
+def delete_session(session_id,user_id):
     # dynamodb = boto3.resource('dynamodb')
     table = dynamodb_client.Table(chat_session_table)
     try:
         table.delete_item(
         Key={
             'session-id': session_id,
+            'user_id':user_id
         })
     except Exception as e:
         logger.info(f"delete session failed {str(e)}")
@@ -1141,7 +1142,7 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
     global STOP,TRACE_LOGGER
     #如果是reset命令，则清空历史聊天
     if query_input == RESET:
-        delete_session(session_id)
+        delete_session(session_id,user_id)
         answer = '历史对话已清空'
         json_obj = {
             "query": query_input,
@@ -1237,7 +1238,7 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
 
     elpase_time = time.time() - start1
     logger.info(f'runing time of get_session : {elpase_time}s seconds')
-    
+    logger.info(f'Rewrite: {origin_query} => {query_input}')
     answer = None
     query_type = None
     # free_chat_coversions = []
