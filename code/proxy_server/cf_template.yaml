@@ -1,0 +1,183 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: CloudFormation template to deploy Fargate service in China region with ALB
+
+Parameters:
+
+  ClusterName: 
+    Type: String
+    Default: PriceSevers
+
+  ServiceName:
+    Type: String  
+    Default: my-price-service
+
+  ECRImage:
+    Type: String  
+    Description: The ECR image URI
+    Default: 765922807571.dkr.ecr.cn-northwest-1.amazonaws.com.cn/price_server:latest
+
+  VPC: 
+    Type: String
+    Default: vpc-05c9e523810168720
+
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup::Id
+    Description: SecurityGroup
+    Default: sg-0d547faaffc931aa7
+
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet::Id
+    Description: Subnet
+    Default: subnet-0f57abbbbdd2cfcfa
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet::Id
+    Description: Subnet
+    Default: subnet-02248cdc37f871e25
+
+Resources:
+
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Ref ClusterName
+
+  ECSService:
+    Type: AWS::ECS::Service  
+    DependsOn: LoadBalancer
+    Properties:
+      Cluster: !Ref ECSCluster
+      ServiceName: !Ref ServiceName
+      LaunchType: FARGATE
+      TaskDefinition: !Ref TaskDefinition
+      DesiredCount: 2
+      LoadBalancers:
+        - ContainerName: !Ref ServiceName
+          ContainerPort: 8001
+          TargetGroupArn: !Ref TargetGroup
+      NetworkConfiguration: 
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            - !Ref SecurityGroup
+          Subnets:
+            - !Ref PublicSubnet1
+            - !Ref PublicSubnet2
+
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Ref ServiceName
+      Scheme: internet-facing
+      LoadBalancerAttributes:
+      - Key: idle_timeout.timeout_seconds
+        Value: '30'
+      SecurityGroups: 
+        - !Ref SecurityGroup
+      Subnets:
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+
+  Listener:
+    Type: AWS::ElasticLoadBalancingV2::Listener  
+    DependsOn: LoadBalancer
+    Properties:
+      DefaultActions:
+      - Type: forward
+        TargetGroupArn: !Ref TargetGroup
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 8001
+      Protocol: HTTP
+
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    DependsOn: LoadBalancer
+    Properties:
+      TargetType: ip
+      HealthCheckIntervalSeconds: 10
+      HealthCheckPath: /ping
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      Name: !Ref ServiceName
+      Port: 8001
+      Protocol: HTTP
+      UnhealthyThresholdCount: 5
+      VpcId: !Ref VPC
+
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Ref ServiceName
+      Cpu: 1024
+      Memory: 2048
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      ExecutionRoleArn: !Ref TaskExecutionRole
+      TaskRoleArn: !Ref TaskRole
+      ContainerDefinitions:
+        - Name: !Ref ServiceName
+          Image: !Ref ECRImage
+          PortMappings:
+            - ContainerPort: 8001
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref CloudwatchLogsGroup
+              awslogs-region: cn-northwest-1
+              awslogs-stream-prefix: ecs
+
+  TaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Path: /
+      ManagedPolicyArns:
+        - arn:aws-cn:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+
+  TaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Path: /
+      ManagedPolicyArns:
+        - arn:aws-cn:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+        - arn:aws-cn:iam::aws:policy/CloudWatchLogsFullAccess
+        - arn:aws-cn:iam::aws:policy/AWSXrayWriteOnlyAccess
+        - arn:aws-cn:iam::aws:policy/AWSXRayDaemonWriteAccess
+      Policies:
+        - PolicyName: PricingGetProductPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: pricing:GetProducts
+                Resource: '*'
+
+  CloudwatchLogsGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Ref ServiceName
+      RetentionInDays: 14
+
+Outputs:
+
+  ClusterName:
+    Description: ECS cluster name
+    Value: !Ref ECSCluster
+
+  LoadBalancerDNS:
+    Description: The DNS name of the load balancer
+    Value: !Join ['', ['http://', !GetAtt LoadBalancer.DNSName]]

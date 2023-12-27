@@ -501,7 +501,10 @@ class CustomDocRetriever(BaseRetriever):
                 verify_certs=True,
                 connection_class=RequestsHttpConnection
             )
+        elpase_time = time.time() - start
+        logger.info(f'running time of get embeddings : {elpase_time}s seconds')
         opensearch_knn_respose = search_using_aos_knn(aos_client,query_embedding[0], self.aos_index,size=CHANNEL_RET_CNT)
+        start = time.time()
         elpase_time = time.time() - start
         logger.info(f'running time of opensearch_knn : {elpase_time}s seconds')
         
@@ -510,7 +513,7 @@ class CustomDocRetriever(BaseRetriever):
         opensearch_query_response = aos_search(aos_client, self.aos_index, "doc", query_input,size=CHANNEL_RET_CNT)
         # logger.info(opensearch_query_response)
         elpase_time = time.time() - start
-        logger.info(f'running time of opensearch_query : {elpase_time}s seconds')
+        logger.info(f'running time of bm25_index_search : {elpase_time}s seconds')
 
         # 5. combine these two opensearch_knn_respose and opensearch_query_response
         def combine_recalls(opensearch_knn_respose, opensearch_query_response):
@@ -1409,7 +1412,7 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
             TRACE_LOGGER.trace(f"{item['doc']}")
             TRACE_LOGGER.add_ref(f"**[{sn+1}] [{item['doc_title']}] [{item['doc_classify']}] [{item['score']:.3f}] [{item['rank_score']:.3f}] author:[{item['doc_author']}]**")
             #doc 太长之后进行截断
-            TRACE_LOGGER.add_ref(f"{item['doc'][:200]}{'...' if len(item['doc'])>200 else ''}") 
+            TRACE_LOGGER.add_ref(f"{item['doc'][:500]}{'...' if len(item['doc'])>500 else ''}") 
         TRACE_LOGGER.trace('**Answer:**')
 
 
@@ -1455,10 +1458,13 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
             context = qa_knowledge_fewshot_build(recall_knowledge)
             chat_history = '' ##QA 场景下先不使用history
             ##最终的answer
+            start = time.time()
             try:
                 answer = llmchain.run({'question':query_input,'context':context,'chat_history':chat_history,'role_bot':B_Role })
             except Exception as e:
                 answer = str(e)
+            elpase_time = time.time() - start
+            logger.info(f'running time of get llm answer : {elpase_time}s seconds')
             ##最终的prompt日志
             final_prompt = prompt_template.format(question=query_input,role_bot=B_Role,context=context,chat_history=chat_history)
             # print(final_prompt)
@@ -1483,7 +1489,7 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
 
     answer = enforce_stop_tokens(answer, STOP)
     pattern = r'^根据[^，,]*[,|，]'
-    answer = re.sub(pattern, "", answer)
+    answer = re.sub(pattern, "", answer.strip())
     ref_text = ''
     # if not use_stream and recall_knowledge and hide_ref == False:
         # ref_text = format_reference(recall_knowledge)

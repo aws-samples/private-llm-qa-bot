@@ -297,7 +297,9 @@ export class DeployStack extends Stack {
       architecture: Architecture.X86_64,
       environment: {
         llm_model_endpoint:process.env.llm_model_endpoint,
-        region:region
+        region:region,
+        api_endpoint:process.env.api_endpoint,
+        api_key:process.env.api_key
       },
     }));
 
