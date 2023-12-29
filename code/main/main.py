@@ -61,7 +61,7 @@ Fewshot_prefix_Q="问题"
 Fewshot_prefix_A="回答"
 RESET = '/rs'
 openai_api_key = None
-STOP=[f"\n{A_Role_en}", f"\n{A_Role}", f"\n{Fewshot_prefix_Q}"]
+STOP=[f"\n{A_Role_en}", f"\n{A_Role}", f"\n{Fewshot_prefix_Q}", '</response>']
 CHANNEL_RET_CNT = 10
 
 BM25_QD_THRESHOLD_HARD_REFUSE = float(os.environ.get('bm25_qd_threshold_hard',15.0))
@@ -1073,16 +1073,66 @@ Skip the preamble, go straight into the answer.
     )
     return PROMPT
 
-def create_chat_prompt_templete(prompt_template=''):
-    if prompt_template == '':
-        prompt_template_zh = """Human:{system_role_prompt}{role_bot}\n{chat_history}\n\n{question}"""
+def create_chat_prompt_templete(prompt_template='', llm_model_name='claude'):
+    PROMPT = None
+    if llm_model_name.startswith('claude'):
+        prompt_template_zh = """Human: {system_role_prompt}{role_bot}. Your goal is to be kind and helpful to users.
+You should maintain a friendly customer service tone.
+Here are some important rules for the interaction:
+- Always stay in character, as {role_bot}
+- If you are unsure how to respond, say “Sorry, I didn’t understand that. Could you repeat the question?”
+- Be polite and patient
+Here is the conversation history (between the user and you) prior to the question. It could be empty if there is no history:
+<history> {chat_history} </history>
+Here is the user’s question: <question> {question} </question>
+How do you respond to the user’s question?
+Think about your answer first before you respond. Put your response in <response></response> tags.
+Assistant: <response>"""
+        PROMPT = PromptTemplate(
+            template=prompt_template_zh, 
+            partial_variables={'system_role_prompt':SYSTEM_ROLE_PROMPT},
+            input_variables=['question', 'chat_history','role_bot']
+        )
     else:
-        prompt_template_zh = prompt_template.replace('{context}','') ##remove{context}
-    PROMPT = PromptTemplate(
-        template=prompt_template_zh, 
-        partial_variables={'system_role_prompt':SYSTEM_ROLE_PROMPT},
-        input_variables=['question','chat_history','role_bot']
-    )
+        if prompt_template == '':
+            prompt_template_zh = """Human:{system_role_prompt}{role_bot}\n{chat_history}\n\n{question}"""
+        else:
+            prompt_template_zh = prompt_template.replace('{context}','') ##remove{context}
+        PROMPT = PromptTemplate(
+            template=prompt_template_zh, 
+            partial_variables={'system_role_prompt':SYSTEM_ROLE_PROMPT},
+            input_variables=['question','chat_history','role_bot']
+        )
+    return PROMPT
+
+def create_assist_prompt_templete(prompt_template='', llm_model_name='claude'):
+    PROMPT = None
+    if llm_model_name.startswith('claude'):
+        prompt_template_zh = """Human: You will be acting as an AI Assistant named {role_bot}. Your goal is to answer users' question and help them finish their work.
+You should maintain a friendly customer service tone.
+Here are some important rules for the interaction:
+- Always stay in character, as {role_bot}
+- If you are unsure how to respond, say “Sorry, I didn’t understand that. Could you repeat the question?”
+
+Here is the conversation history (between the user and you) prior to the question. It could be empty if there is no history:
+<history> {chat_history} </history>
+Here is the user’s question: <question> {question} </question>
+How do you respond to the user’s question?
+Think about your answer first before you respond. Put your response in <response></response> tags.
+Assistant: <response>"""
+        PROMPT = PromptTemplate(
+            template=prompt_template_zh, 
+            input_variables=['question', 'chat_history','role_bot']
+        )
+    else:
+        if prompt_template == '':
+            prompt_template_zh = """Human:{question}\n"""
+        else:
+            prompt_template_zh = prompt_template.replace('{context}','') ##remove{context}
+        PROMPT = PromptTemplate(
+            template=prompt_template_zh, 
+            input_variables=['question','chat_history','role_bot']
+        )
     return PROMPT
 
 def get_bedrock_aksk(secret_name='chatbot_bedrock', region_name = os.environ.get('bedrock_region',"us-west-2") ):
@@ -1260,9 +1310,9 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
         #add history parameter
         if isinstance(llm,SagemakerStreamEndpoint) or isinstance(llm,SagemakerEndpoint):
             chat_history=''
-            llm.model_kwargs['history'] = chat_coversions[-1:]
+            llm.model_kwargs['history'] = chat_coversions[-2:]
         else:
-            chat_history= get_chat_history(chat_coversions[-1:])
+            chat_history= get_chat_history(chat_coversions[-2:])
     else:
         chat_history=''
 
@@ -1318,17 +1368,24 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
             TRACE_LOGGER.postMessage(cache_answer)
         recall_knowledge,opensearch_knn_respose,opensearch_query_response = [],[],[]
 
-    elif intention == 'chat':##如果不使用QA
-        TRACE_LOGGER.trace('**Using Non-RAG Chat...**')
+    elif intention in ['chat', 'assist']:##如果不使用QA
+        TRACE_LOGGER.trace(f'**Using Non-RAG {intention}...**')
         TRACE_LOGGER.trace('**Answer:**')
         reply_stratgy = ReplyStratgy.LLM_ONLY
-        prompt_template = create_chat_prompt_templete()
+        prompt_template = None
+        answer = ''
+        if intention == 'chat':
+            prompt_template = create_chat_prompt_templete(llm_model_name=llm_model_name)
+            llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
+            answer = llmchain.run({'question':query_input,'chat_history':chat_history,'role_bot':B_Role})
+            final_prompt = prompt_template.format(question=query_input,role_bot=B_Role,chat_history=chat_history)
+        elif intention == 'assist':
+            prompt_template = create_assist_prompt_templete(llm_model_name=llm_model_name)
+            llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
+            answer = llmchain.run({'question':query_input,'chat_history':chat_history,'role_bot':B_Role})
+            final_prompt = prompt_template.format(question=query_input, role_bot=B_Role,chat_history=chat_history)
 
-        llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
-        ##最终的answer
-        answer = llmchain.run({'question':query_input,'chat_history':chat_history,'role_bot':B_Role})
-        ##最终的prompt日志
-        final_prompt = prompt_template.format(question=query_input,role_bot=B_Role,chat_history=chat_history)
+        answer = answer.replace('</response>','')
         recall_knowledge,opensearch_knn_respose,opensearch_query_response = [],[],[]
 
     elif intention == 'QA': ##如果使用QA

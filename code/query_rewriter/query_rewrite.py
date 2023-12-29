@@ -54,21 +54,18 @@ def create_rewrite_prompt_templete():
     # prompt_template = """Given the following conversation and a follow up question, rephrase the follow up question to be a standalone question, in its original language. don't translate the chat history and input. \n\nChat History:\n{history}\nFollow Up Input: {cur_query}\nStandalone question:"""
     prompt_template = \
 """
-Given the following conversation in <chat_history></chat_history>and a follow up user question in <question></question>..
-<chat_history>
-    {history}
-</chat_history>
-<question>
-{cur_query}
-</question>
-please use the context in the chat history to rephrase the user question to be a standalone question, respond in the original language of user's question, don't translate the chat history and user question.
-if you don't understand the follow up question, or the question is not relevant to the chat history. please keep the orginal question.
-Skip the preamble, don't explain, go straight into the answer.
-Standalone question:
+Human: Given the following conversation in <conversation></conversation>.
+<conversation>
+{history}
+</conversation>
+please rephrase the latest user question to be a standalone question, respond in the original language of user's question, don't translate the chat history and user question.
+if you don't understand the {role_a}'s question, or the question is not relevant to the conversation. please keep the orginal question.
+Skip the preamble, don't explain, go straight into the answer. Please put the standalone question in <standalone_question> tag
+Assistant: <standalone_question>
 """
     PROMPT = PromptTemplate(
         template=prompt_template, 
-        input_variables=['history','cur_query']
+        input_variables=['history','role_a']
     )
     return PROMPT
 
@@ -108,8 +105,8 @@ def lambda_handler(event, context):
     llm_model_name = event.get('llm_model_name', None)
     params = event.get('params')
     use_bedrock = event.get('use_bedrock')
-    role_a = event.get('role_a', 'H')
-    role_b = event.get('role_b', 'A')
+    role_a = event.get('role_a', 'user')
+    role_b = event.get('role_b', 'AI')
     
     logger.info("region:{}".format(region))
     logger.info("params:{}".format(params))
@@ -123,6 +120,7 @@ def lambda_handler(event, context):
 
     history_with_role = [ "{}: {}".format(role_a if idx % 2 == 0 else role_b, item) for idx, item in enumerate(history) ]
     history_str = "\n".join(history_with_role)
+    history_str += f'\n{role_a}: {query}'
 
     parameters = {
         "temperature": 0.01,
@@ -145,7 +143,7 @@ def lambda_handler(event, context):
     
         parameters = {
             "max_tokens_to_sample": 100,
-            "stop_sequences": ["\n\n"],
+            "stop_sequences": ["\n\n", '</standalone_question>'],
             "temperature":0.01,
             "top_p":1
         }
@@ -154,10 +152,10 @@ def lambda_handler(event, context):
         llm = Bedrock(model_id=model_id, client=boto3_bedrock, model_kwargs=parameters)
 
     prompt_template = create_rewrite_prompt_templete()
-    prompt = prompt_template.format(history=history_str, cur_query=query)
+    prompt = prompt_template.format(history=history_str, role_a=role_a)
     
     llmchain = LLMChain(llm=llm, verbose=False, prompt=prompt_template)
-    answer = llmchain.run({'history':history_str, "cur_query":query})
+    answer = llmchain.run({'history':history_str, "role_a":role_a})
     answer = answer.strip()
 
     log_dict = { "history" : history, "answer" : answer , "cur_query": query, "prompt":prompt }
