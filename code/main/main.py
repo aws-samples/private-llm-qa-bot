@@ -1503,8 +1503,6 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
             # print(final_prompt)
             # print(answer)
     else:
-        #todo: use detection to following stuff
-
         #call agent for other intentions
         TRACE_LOGGER.trace('**Using Agent...**')
         reply_stratgy = ReplyStratgy.AGENT

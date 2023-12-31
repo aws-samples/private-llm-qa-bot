@@ -160,8 +160,6 @@ export class DeployStack extends Stack {
       architecture: Architecture.X86_64,
       environment: {
         aos_endpoint:opensearch_endpoint,
-        Kendra_index_id:process.env.Kendra_index_id ,
-        Kendra_result_num:process.env.Kendra_result_num ,
         aos_index:process.env.aos_index ,
         aos_knn_field:process.env.aos_knn_field ,
         aos_results:process.env.aos_results ,
@@ -177,7 +175,7 @@ export class DeployStack extends Stack {
         knn_qd_threshold_hard:'0.6',
         knn_qd_threshold_soft:'0.8',
         lambda_feedback:"lambda_feedback",
-        intention_list:"ec2_price,service_role,service_availability",
+        intention_list:"ec2_price,get_contact",
         neighbors:process.env.neighbors,
         TOP_K:process.env.TOP_K
       },
