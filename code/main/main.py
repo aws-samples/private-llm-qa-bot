@@ -1288,7 +1288,6 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
 
     elpase_time = time.time() - start1
     logger.info(f'runing time of get_session : {elpase_time}s seconds')
-    logger.info(f'Rewrite: {origin_query} => {query_input}')
     answer = None
     query_type = None
     # free_chat_coversions = []
@@ -1892,10 +1891,10 @@ def lambda_handler(event, context):
     aos_endpoint = os.environ.get("aos_endpoint", "")
     aos_index = os.environ.get("aos_index", "")
     aos_knn_field = os.environ.get("aos_knn_field", "")
-    aos_result_num = int(os.environ.get("aos_results", ""))
+    aos_result_num = int(os.environ.get("aos_results", 4))
 
     Kendra_index_id = os.environ.get("Kendra_index_id", "")
-    Kendra_result_num = int(os.environ.get("Kendra_result_num", ""))
+    Kendra_result_num = int(os.environ.get("Kendra_result_num", 0))
     # Opensearch_result_num = int(os.environ.get("Opensearch_result_num", ""))
     prompt_template = ''
 
