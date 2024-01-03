@@ -102,15 +102,13 @@ Assistant: <conversation>\n{conversation}\n</conversation>\n<answer>"""
 def lambda_handler(event, context):
     region = os.environ.get('region')
     llm_model_endpoint = os.environ.get('llm_model_endpoint')
-    llm_model_name = event.get('llm_model_name', None)
     params = event.get('params')
-    use_bedrock = event.get('use_bedrock')
+    use_bedrock = True if llm_model_endpoint.startswith('anthropic') or llm_model_endpoint.startswith('claude') else False
     role_a = event.get('role_a', 'user')
     role_b = event.get('role_b', 'AI')
     
     logger.info("region:{}".format(region))
     logger.info("params:{}".format(params))
-    logger.info("llm_model_name:{}".format(llm_model_name))
     logger.info("llm_model_endpoint:{}".format(llm_model_endpoint))
     logger.info("use_bedrock:{}".format(bool(use_bedrock)))
 
@@ -147,8 +145,8 @@ def lambda_handler(event, context):
             "temperature":0.01,
             "top_p":1
         }
-        
-        model_id = BEDROCK_LLM_MODELID_LIST[llm_model_name] if llm_model_name == 'claude-instant' else BEDROCK_LLM_MODELID_LIST['claude-v2']
+
+        model_id = BEDROCK_LLM_MODELID_LIST.get(llm_model_endpoint, llm_model_endpoint)
         llm = Bedrock(model_id=model_id, client=boto3_bedrock, model_kwargs=parameters)
 
     prompt_template = create_rewrite_prompt_templete()
@@ -158,7 +156,7 @@ def lambda_handler(event, context):
     answer = llmchain.run({'history':history_str, "role_a":role_a})
     answer = answer.strip()
 
-    log_dict = { "history" : history, "answer" : answer , "cur_query": query, "prompt":prompt }
+    log_dict = { "history" : history, "answer" : answer , "cur_query": query, "prompt":prompt, "model_id" : model_id }
     log_dict_str = json.dumps(log_dict, ensure_ascii=False)
     logger.info(log_dict_str)
         
