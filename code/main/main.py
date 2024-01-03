@@ -6,7 +6,6 @@ import re
 from botocore import config
 from botocore.exceptions import ClientError,EventStreamError
 from datetime import datetime, timedelta
-import pytz
 import boto3
 import time
 import hashlib
@@ -37,6 +36,7 @@ import math
 from enum import Enum
 from boto3 import client as boto3_client
 from utils.web_search import web_search,add_webpage_content
+from utils.management import management_api,get_template
 
 lambda_client= boto3.client('lambda')
 dynamodb_client = boto3.resource('dynamodb')
@@ -71,15 +71,11 @@ KNN_QD_THRESHOLD_HARD_REFUSE = float(os.environ.get('knn_qd_threshold_hard',0.6)
 KNN_QD_THRESHOLD_SOFT_REFUSE = float(os.environ.get('knn_qd_threshold_soft',0.8))
 RERANK_THRESHOLD = float(os.environ.get('rerank_threshold_soft',-2))
 WEBSEARCH_THRESHOLD = float(os.environ.get('websearch_threshold_soft',1))
-
-
+CROSS_MODEL_ENDPOINT = os.environ.get('cross_model_endpoint',None)
 KNN_QUICK_PEFETCH_THRESHOLD = float(os.environ.get('knn_quick_prefetch_threshold',0.95))
-
 INTENTION_LIST = os.environ.get('intention_list', "")
-
 TOP_K = int(os.environ.get('TOP_K',4))
 NEIGHBORS = int(os.environ.get('neighbors',0))
-
 BEDROCK_EMBEDDING_MODELID_LIST = ["cohere.embed-multilingual-v3","cohere.embed-english-v3","amazon.titan-embed-text-v1"]
 BEDROCK_LLM_MODELID_LIST = {'claude-instant':'anthropic.claude-instant-v1',
                             'claude-v2':'anthropic.claude-v2:1'}
@@ -367,6 +363,8 @@ class CustomDocRetriever(BaseRetriever):
         global KNN_QUICK_PEFETCH_THRESHOLD
         start = time.time()
         query_embedding = get_vector_by_sm_endpoint(query_input, sm_client, self.embedding_model_endpoint)
+        elpase_time = time.time() - start
+        logger.info(f'knn_quick_prefetch, running time of get embeddings : {elpase_time:.3f}s')
         aos_client = OpenSearch(
                 hosts=[{'host': self.aos_endpoint, 'port': 443}],
                 http_auth = awsauth,
@@ -374,6 +372,7 @@ class CustomDocRetriever(BaseRetriever):
                 verify_certs=True,
                 connection_class=RequestsHttpConnection
             )
+        start = time.time()
         opensearch_knn_respose = search_using_aos_knn(aos_client,query_embedding[0], self.aos_index,size=3)
         elpase_time = time.time() - start
         logger.info(f'running time of quick_knn_fetch : {elpase_time:.3f}s')
@@ -467,7 +466,7 @@ class CustomDocRetriever(BaseRetriever):
         json_obj = json.loads(json_str)
         # scores = [item[1] for item in json_obj['scores']]
         scores = json_obj['scores']
-        return scores
+        return scores if isinstance(scores, list) else [scores]
     
     def de_duplicate(self,docs):
         unique_ids = set()
@@ -482,7 +481,7 @@ class CustomDocRetriever(BaseRetriever):
     def get_websearch_documents(self, query_input: str) -> list:
         # 使用agent方式速度比较慢，直接改成调用search api
         all_docs = web_search(query=query_input)
-        print('all_docs:',all_docs)
+        logger.info(f'all_docs:{all_docs}')
         recall_knowledge = [{'doc_title':item['title'],'doc':item['title']+'\n'+item['snippet'],
                              'doc_classify':'web_search','doc_type':'web_search','score':0.8,'doc_author':item['link']} for item in all_docs]
         return recall_knowledge
@@ -494,6 +493,8 @@ class CustomDocRetriever(BaseRetriever):
         global KNN_QD_THRESHOLD_HARD_REFUSE, KNN_QD_THRESHOLD_SOFT_REFUSE, WEBSEARCH_THRESHOLD
         start = time.time()
         query_embedding = get_vector_by_sm_endpoint(query_input, sm_client, self.embedding_model_endpoint)
+        elpase_time = time.time() - start
+        logger.info(f'running time of get embeddings : {elpase_time:.3f}s')
         aos_client = OpenSearch(
                 hosts=[{'host': self.aos_endpoint, 'port': 443}],
                 http_auth = awsauth,
@@ -501,8 +502,6 @@ class CustomDocRetriever(BaseRetriever):
                 verify_certs=True,
                 connection_class=RequestsHttpConnection
             )
-        elpase_time = time.time() - start
-        logger.info(f'running time of get embeddings : {elpase_time}s seconds')
         opensearch_knn_respose = search_using_aos_knn(aos_client,query_embedding[0], self.aos_index,size=CHANNEL_RET_CNT)
         start = time.time()
         elpase_time = time.time() - start
@@ -580,7 +579,7 @@ class CustomDocRetriever(BaseRetriever):
 
 
         ##是否使用rerank
-        cross_model_endpoint = os.environ.get('cross_model_endpoint',None)
+        cross_model_endpoint = CROSS_MODEL_ENDPOINT
         if cross_model_endpoint:
             all_docs = filter_knn_result+filter_inverted_result
 
@@ -1129,40 +1128,38 @@ def format_reference(recall_knowledge):
 
       
 def get_reply_stratgy(recall_knowledge):
+
     if not recall_knowledge:
         stratgy = ReplyStratgy.LLM_ONLY
         return stratgy
     
-    global RERANK_THRESHOLD 
-    rank_score = [item['rank_score'] for item in recall_knowledge]
-    if max(rank_score) < RERANK_THRESHOLD:  ##如果所有的知识都不超过rank score阈值，则采用LLM ONLY
-        return ReplyStratgy.LLM_ONLY
+    ## 如果使用了rerank模型
+    if CROSS_MODEL_ENDPOINT:
+        rank_score = [item['rank_score'] for item in recall_knowledge]
+        if max(rank_score) < RERANK_THRESHOLD:  ##如果所有的知识都不超过rank score阈值，则采用LLM ONLY
+            return ReplyStratgy.LLM_ONLY
+        else:
+            return ReplyStratgy.WITH_LLM
     else:
-        return ReplyStratgy.WITH_LLM
+        ##使用rerank之后，不需要这些策略
+        stratgy = ReplyStratgy.RETURN_OPTIONS
+        for item in recall_knowledge:
+            if item['score'] > 1.0:
+                if item['score'] > BM25_QD_THRESHOLD_SOFT_REFUSE:
+                    stratgy = ReplyStratgy.WITH_LLM
+                elif item['score'] > BM25_QD_THRESHOLD_HARD_REFUSE:
+                    stratgy = ReplyStratgy(min(ReplyStratgy.HINT_LLM_REFUSE.value, stratgy.value))
+                else:
+                    stratgy = ReplyStratgy(min(ReplyStratgy.RETURN_OPTIONS.value, stratgy.value))
 
-    ##使用rerank之后，不需要这些策略
-    # global BM25_QD_THRESHOLD_HARD_REFUSE, BM25_QD_THRESHOLD_SOFT_REFUSE
-    # global KNN_QQ_THRESHOLD_HARD_REFUSE, KNN_QQ_THRESHOLD_SOFT_REFUSE
-    # global KNN_QD_THRESHOLD_HARD_REFUSE, KNN_QD_THRESHOLD_SOFT_REFUSE
-
-    # stratgy = ReplyStratgy.RETURN_OPTIONS
-    # for item in recall_knowledge:
-    #     if item['score'] > 1.0:
-    #         if item['score'] > BM25_QD_THRESHOLD_SOFT_REFUSE:
-    #             stratgy = ReplyStratgy.WITH_LLM
-    #         elif item['score'] > BM25_QD_THRESHOLD_HARD_REFUSE:
-    #             stratgy = ReplyStratgy(min(ReplyStratgy.HINT_LLM_REFUSE.value, stratgy.value))
-    #         else:
-    #             stratgy = ReplyStratgy(min(ReplyStratgy.RETURN_OPTIONS.value, stratgy.value))
-
-    #     elif item['score'] <= 1.0:
-    #         if item['score'] > KNN_QD_THRESHOLD_SOFT_REFUSE:
-    #             stratgy = ReplyStratgy.WITH_LLM
-    #         elif item['score'] > KNN_QD_THRESHOLD_HARD_REFUSE:
-    #             stratgy = ReplyStratgy(min(ReplyStratgy.HINT_LLM_REFUSE.value, stratgy.value))
-    #         else:
-    #             stratgy = ReplyStratgy(min(ReplyStratgy.RETURN_OPTIONS.value, stratgy.value))
-    # return stratgy
+            elif item['score'] <= 1.0:
+                if item['score'] > KNN_QD_THRESHOLD_SOFT_REFUSE:
+                    stratgy = ReplyStratgy.WITH_LLM
+                elif item['score'] > KNN_QD_THRESHOLD_HARD_REFUSE:
+                    stratgy = ReplyStratgy(min(ReplyStratgy.HINT_LLM_REFUSE.value, stratgy.value))
+                else:
+                    stratgy = ReplyStratgy(min(ReplyStratgy.RETURN_OPTIONS.value, stratgy.value))
+        return stratgy
 
 def choose_prompt_template(stratgy:Enum, template:str, llm_model_name:str):
     if stratgy == ReplyStratgy.WITH_LLM:
@@ -1408,9 +1405,9 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
 
         ##添加召回文档到refdoc和tracelog, 按score倒序展示
         for sn,item in enumerate(recall_knowledge[::-1]):
-            TRACE_LOGGER.trace(f"**[{sn+1}] [{item['doc_title']}] [{item['doc_classify']}] [{item['score']:.3f}] [{item['rank_score']:.3f}] author:[{item['doc_author']}]**")
+            TRACE_LOGGER.trace(f"**[{sn+1}] [{item['doc_title']}] [{item['doc_classify']}] [{item['score']:.3f}] [{item['rank_score']:.3f}] author:[ {item['doc_author']} ]**")
             TRACE_LOGGER.trace(f"{item['doc']}")
-            TRACE_LOGGER.add_ref(f"**[{sn+1}] [{item['doc_title']}] [{item['doc_classify']}] [{item['score']:.3f}] [{item['rank_score']:.3f}] author:[{item['doc_author']}]**")
+            TRACE_LOGGER.add_ref(f"**[{sn+1}] [{item['doc_title']}] [{item['doc_classify']}] [{item['score']:.3f}] [{item['rank_score']:.3f}] author:[ {item['doc_author']} ]**")
             #doc 太长之后进行截断
             TRACE_LOGGER.add_ref(f"{item['doc'][:500]}{'...' if len(item['doc'])>500 else ''}") 
         TRACE_LOGGER.trace('**Answer:**')
@@ -1527,122 +1524,6 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
     logger.info(f'running time of all  : {elpase_time1}s seconds')
     return answer,ref_text,use_stream,query_input,opensearch_query_response,opensearch_knn_respose,recall_knowledge
 
-def delete_doc_index(obj_key,embedding_model,index_name):
-    def delete_aos_index(obj_key,index_name,size=50):
-        aos_endpoint = os.environ.get("aos_endpoint", "")
-        client = OpenSearch(
-                    hosts=[{'host':aos_endpoint, 'port': 443}],
-                    http_auth = awsauth,
-                    use_ssl=True,
-                    verify_certs=True,
-                    connection_class=RequestsHttpConnection
-                )
-        query =  {
-                "size":size,
-                "query" : {
-                    "match_phrase":{
-                        "doc_title": obj_key
-                    }
-                }
-            }
-        response = client.search(
-            body=query,
-            index=index_name
-        )
-        doc_ids = [hit["_id"] for hit in response["hits"]["hits"]]
-        should_continue = False
-        for doc_id in doc_ids:
-            should_continue = True
-            try:
-                client.delete(index=index_name, id=doc_id)
-                logger.info(f"delete:{doc_id}")
-            except Exception as e:
-                logger.info(f"delete:{doc_id}")
-                continue
-
-        return should_continue
-    
-    ##删除ddb里的索引
-    dynamodb = boto3.client('dynamodb')
-    try:
-        dynamodb.delete_item(
-            TableName=DOC_INDEX_TABLE,
-            Key={
-                'filename': {'S': obj_key},
-                'embedding_model': {'S': embedding_model}
-            }
-        )
-    except Exception as e:
-        logger.info(str(e))
-
-    ##删除aos里的索引
-    should_continue = True
-    while should_continue:
-        should_continue = delete_aos_index(obj_key,index_name)
-    
-def list_doc_index ():
-    dynamodb = boto3.client('dynamodb')
-    scan_params = {
-        'TableName': DOC_INDEX_TABLE,
-        'Select': 'ALL_ATTRIBUTES',  # Return all attributes
-    }
-    try:
-        response = dynamodb.scan(**scan_params)
-        return response['Items']
-    except Exception as e:
-        logger.info(str(e))
-        return []
-
-def get_template(id):
-    dynamodb = boto3.client('dynamodb')
-    if id:
-        params = {
-            'TableName': os.environ.get('prompt_template_table'),
-            'Key': {'id': {'S': id}},  # Return all attributes
-        }
-        try:
-            response = dynamodb.get_item(**params)
-            return response['Item']
-        except Exception as e:
-            logger.info(str(e))
-            return None   
-    else:
-        params = {
-            'TableName': os.environ.get('prompt_template_table'),
-            'Select': 'ALL_ATTRIBUTES',  # Return all attributes
-        }
-        try:
-            response = dynamodb.scan(**params)
-            return response['Items']
-        except Exception as e:
-            logger.info(str(e))
-            return []
-    
-def add_template(item):
-    dynamodb = boto3.client('dynamodb')
-    params = {
-        'TableName': os.environ.get('prompt_template_table'),
-        'Item': item,  
-    }
-    try:
-        dynamodb.put_item(**params)
-        return True
-    except Exception as e:
-        logger.info(str(e))
-        return False
-
-def delete_template(key):
-    dynamodb = boto3.client('dynamodb')
-    params = {
-        'TableName': os.environ.get('prompt_template_table'),
-        'Key': key,  
-    }
-    try:
-        dynamodb.delete_item(**params)
-        return True
-    except Exception as e:
-        logger.info(str(e))
-        return False
 
 def generate_s3_image_url(bucket_name, key, expiration=3600):
     s3_client = boto3.client('s3')
@@ -1654,86 +1535,11 @@ def generate_s3_image_url(bucket_name, key, expiration=3600):
     return url
 
 
-## 1. write the feedback in logs and loaded to kinesis
-## 2. if lambda_feedback is setup, then call lambda_feedback for other managment operations
-def handle_feedback(event):
-    method = event.get('method')
-    
-    ##invoke feedback lambda to store in ddb
-    fn = os.environ.get('lambda_feedback')
-    if method == 'post':
-        results = True
-        body = event.get('body')
-        ## actions types: thumbs-up,thumbs-down,cancel-thumbs-up,cancel-thumbs-down
-        timestamp = time.time()
-        utc_datetime = datetime.utcfromtimestamp(timestamp)
-        # Set the timezone to UTC+8
-        utc8_timezone = pytz.timezone('Asia/Shanghai')
-        datetime_utc8 = utc_datetime.replace(tzinfo=pytz.utc).astimezone(utc8_timezone)
-        json_obj = {
-                "opensearch_doc":  [], #for kiness firehose log subscription filter name
-                "log_type":'feedback',
-                "msgid":body.get('msgid'),
-                "timestamp":str(datetime_utc8),
-                "username":body.get('username'),
-                "session_id":body.get('session_id'),
-                "action":body.get('action'),
-                "feedback":body.get('feedback')
-            }
-        json_obj_str = json.dumps(json_obj, ensure_ascii=False)
-        logger.info(json_obj_str)
 
-        json_obj = {**json_obj,**body,'method':method}
-        if fn:
-            response = lambda_client.invoke(
-                    FunctionName = fn,
-                    InvocationType='RequestResponse',
-                    Payload=json.dumps(json_obj)
-                )
-            payload_json = json.loads(response.get('Payload').read())
-            logger.info(payload_json)
-            results = payload_json['body']
-            if response['StatusCode'] != 200 or not results:
-                logger.info(f"invoke lambda feedback StatusCode:{response['StatusCode']} and result {results}")
-                results = False
-        return results
-    elif method == 'get':
-        results = []
-        body = event.get('body')
-        json_obj = {**body,'method':method}
-        if fn:
-            response = lambda_client.invoke(
-                    FunctionName = fn,
-                    InvocationType='RequestResponse',
-                    Payload=json.dumps(json_obj)
-                )
-            if response['StatusCode'] == 200:
-                payload_json = json.loads(response.get('Payload').read())
-                results = payload_json['body']
-        return results   
-    elif method == 'delete':  
-        results = True
-        body = event.get('body')
-        json_obj = {**body,'method':method}
-        if fn:
-            response = lambda_client.invoke(
-                    FunctionName = fn,
-                    InvocationType='RequestResponse',
-                    Payload=json.dumps(json_obj)
-                )
-            if response['StatusCode'] == 200:
-                payload_json = json.loads(response.get('Payload').read())
-                results = payload_json['body']
-        return results  
 
 
 @handle_error
 def lambda_handler(event, context):
-    # "model": 模型的名称
-    # "chat_name": 对话标识，后端用来存储查找实现多轮对话 session
-    # "prompt": 用户输入的问题
-    # "max_tokens": 2048
-    # "temperature": 0.9
     logger.info(f"event:{event}")
     method = event.get('method')
     resource = event.get('resource')
@@ -1742,50 +1548,10 @@ def lambda_handler(event, context):
     logger.info(f'channel_cnt:{CHANNEL_RET_CNT}')
 
     ###其他管理操作 start
-    ##如果是删除doc index的操作
-    if method == 'delete' and resource == 'docs':
-        logger.info(f"delete doc index of:{event.get('filename')}/{event.get('embedding_model')}/{event.get('index_name')}")
-        delete_doc_index(event.get('filename'),event.get('embedding_model'),event.get('index_name'))
-        return {'statusCode': 200}
-    ## 如果是get doc index操作
-    if method == 'get' and resource == 'docs':
-        results = list_doc_index()
-        return {'statusCode': 200,'body':results }
-    ## 如果是get template 操作
-    if method == 'get' and resource == 'template':
-        id = event.get('id')
-        results = get_template(id)
-        return {'statusCode': 200,'body': {} if results is None else results }
-    ## 如果是add a template 操作
-    if method == 'post' and resource == 'template':
-        body = event.get('body')
-        item = {
-            'id': {'S': body.get('id')},
-            'template_name':{'S':body.get('template_name','')},
-            'template':{'S':body.get('template','')},
-            'comment':{'S':body.get('comment','')},
-            'username':{'S':body.get('username','')}
-        }
-        result = add_template(item)
-        return {'statusCode': 200 if result else 500,'body':result }
-     ## 如果是delete a template 操作
-    if method == 'delete' and resource == 'template':
-        body = event.get('body')
-        key = {
-            'id': {'S': body.get('id')}
-        }
-        result = delete_template(key)
-        return {'statusCode': 200 if result else 500,'body':result }
-
-    ## 处理feedback action
-    if method in ['post','get','delete'] and resource == 'feedback':
-        results = handle_feedback(event)
-        return {'statusCode': 200 if results else 500,'body':results}
-
-
+    if resource:
+        ret_json = management_api(method,resource,event)
+        return ret_json
     ####其他管理操作 end
-
-    # input_json = json.loads(event['body'])
     ws_endpoint = event.get('ws_endpoint')
     if ws_endpoint:
         wsclient = boto3.client('apigatewaymanagementapi', endpoint_url=ws_endpoint)
@@ -1918,15 +1684,7 @@ def lambda_handler(event, context):
                              "useTime": time.time() - request_timestamp,
                              "model": "main_brain",
                              "choices": [{"text": answer}],
-                            #  [{"text": "{}[{}]".format(answer, model_name)}],
                              "extra_info" : extra_info,
-                             "usage": {"prompt_tokens": 58, "completion_tokens": 15, "total_tokens": 73}},
-                            # {"id": uuid.uuid4(),
-                            #  "created": request_timestamp,
-                            #  "useTime": int(time.time()) - request_timestamp,
-                            #  "model": "模型名称",
-                            #  "choices":
-                            #  [{"text": "2 模型回答的内容"}],
-                            #  "usage": {"prompt_tokens": 58, "completion_tokens": 15, "total_tokens": 73}}
+                             "usage": {"prompt_tokens": 58, "completion_tokens": 15, "total_tokens": 73}}
                             ]
     }

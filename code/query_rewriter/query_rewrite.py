@@ -8,6 +8,7 @@ from langchain.chains import LLMChain
 from langchain.llms.bedrock import Bedrock
 from botocore.exceptions import ClientError
 import boto3
+import re
 BEDROCK_LLM_MODELID_LIST = {'claude-instant':'anthropic.claude-instant-v1',
                             'claude-v2':'anthropic.claude-v2:1'}
 logger = logging.getLogger()
@@ -49,6 +50,17 @@ class llmContentHandler(LLMContentHandler):
         response_json = json.loads(output.read().decode("utf-8"))
         return response_json["outputs"]
 
+
+def extract_content(content: str):
+    pattern = r"<standalone_question>(.*?)</standalone_question>"
+    match = re.search(pattern, content, re.DOTALL)
+    if match:
+        extract_content = match.group(1)
+        return extract_content.strip('"')
+    else:
+        return content.strip('"')
+        
+        
 def create_rewrite_prompt_templete():
     # prompt_template = """Given the following conversation and a follow up question, rephrase the follow up question to be a standalone question, in its original language. don't translate the chat history and input. \n\nChat History:\n{history}\nFollow Up Input: {cur_query}\nStandalone question:"""
     prompt_template =  """
@@ -63,8 +75,7 @@ def create_rewrite_prompt_templete():
 
     please use the context in the chat history to rephrase the user question to be a standalone question, respond in the original language of user's question, don't translate the chat history and user question.
     if you don't understand the follow up question, or the question is not relevant to the chat history. please keep the orginal question.
-    Skip the preamble, don't explain, go straight into the answer.
-    Standalone question:
+    Skip the preamble, don't explain, go straight into the answer. response your answer in tag <standalone_question></<standalone_question>
     """
     PROMPT = PromptTemplate(
         template=prompt_template, 
@@ -162,4 +173,4 @@ def lambda_handler(event, context):
     log_dict_str = json.dumps(log_dict, ensure_ascii=False)
     logger.info(log_dict_str)
         
-    return answer.strip('"')
+    return extract_content(answer)

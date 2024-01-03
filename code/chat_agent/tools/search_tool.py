@@ -13,6 +13,7 @@ from langchain.agents.format_scratchpad import format_log_to_str
 from langchain.agents.output_parsers import SelfAskOutputParser
 from langchain.prompts import PromptTemplate
 from langchain.chains import LLMChain
+import argparse
 
 import dotenv
 dotenv.load_dotenv() 
@@ -61,9 +62,15 @@ class GoogleSearchTool():
 def web_search(**args):
     tool = GoogleSearchTool(top_k=args.get('top_k',10))
     result = tool.run(args['query'])
-    return result
+    return [item for item in result if 'title' in item and 'link' in item and 'snippet' in item]
+
     
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="search tool"
+    )
+    parser.add_argument("--query", type=str,default='你对阿里云2023年的云栖大会有什么看法')
+    args = parser.parse_args()
     parameters = {
             "max_tokens_to_sample": 2048,
             "temperature":0.1,
@@ -93,13 +100,15 @@ if __name__ == "__main__":
     
     def get_websearch_documents( query_input: str) -> list:
         all_docs = web_search(query=query_input)
+        print(all_docs)
         recall_knowledge = [{'doc_title':item['title'],'doc':item['title']+'\n'+item['snippet'],
                              'doc_classify':'web_search','doc_type':'web_search','score':0.0,'doc_author':item['link']} for item in all_docs]
         return recall_knowledge
 
     t1 = time.time()
-    query = '你对阿里云2023年的云栖大会有什么看法'
+    query = args.query
     web_knowledge = get_websearch_documents(query)
+    print(web_knowledge)
     search_scores = rerank(query, web_knowledge,sm_client,cross_model_endpoint)
     sorted_indices = sorted(range(len(search_scores)), key=lambda i: search_scores[i], reverse=False)
     recall_knowledge = [{**web_knowledge[idx],'rank_score':search_scores[idx] } for idx in sorted_indices if search_scores[idx]>1  ] 
@@ -121,8 +130,3 @@ if __name__ == "__main__":
     # print(llm(query))
     # print(f'cost time: {time.time()-t1}')
 
-
-    
-
-
-#pip install google-api-python-client>=2.100.0

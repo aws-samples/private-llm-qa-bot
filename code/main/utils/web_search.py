@@ -7,8 +7,16 @@ import time
 # import html2text
 import re
 from bs4 import BeautifulSoup
+import os
+import logging
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 # import dotenv
 # dotenv.load_dotenv() 
+
+GOOGLE_API_KEY=os.environ.get('GOOGLE_API_KEY',None)
+GOOGLE_CSE_ID=os.environ.get('GOOGLE_CSE_ID',None)
+
 
 class GoogleSearchTool():
     tool:Tool
@@ -32,6 +40,7 @@ def remove_html_tags(text):
     soup = BeautifulSoup(text, 'html.parser')
     text = soup.get_text()
     text = re.sub(r'\r{1,}',"\n\n",text)
+    text = re.sub(r'\t{1,}',"\t",text)
     text = re.sub(r'\n{2,}',"\n\n",text)
     return text
 
@@ -58,15 +67,13 @@ async def fetch_all(urls, timeout):
         return results
     
 def web_search(**args):
+    if not GOOGLE_API_KEY or not GOOGLE_CSE_ID:
+        logger.info('Missing google API key')
+        return []
     tool = GoogleSearchTool(top_k=args.get('top_k',10))
     result = tool.run(args['query'])
-    print('web_search:',result)
     # 异常情况返回这个结果[{'Result': 'No good Google Search Result was found'}]
-    if result:
-        has_result = True if 'title' in result[0] else False
-        return result if has_result else []
-    else:
-        return []
+    return [item for item in result if 'title' in item and 'link' in item and 'snippet' in item]
 
     
 def add_webpage_content(snippet_results):
@@ -75,7 +82,7 @@ def add_webpage_content(snippet_results):
     loop = asyncio.get_event_loop()
     fetch_results = loop.run_until_complete(fetch_all(urls,5))
     t2= time.time()
-    print(f'deep web search time:{t2-t1:1f}s')
+    logger.info(f'deep web search time:{t2-t1:1f}s')
     final_results = []
     for i, result in enumerate(fetch_results):
         if not result:
@@ -86,7 +93,5 @@ def add_webpage_content(snippet_results):
                               })
     return final_results
 
-if __name__ == "__main__":
-    rets = [{**item,'doc_author':item['link'],
-             'doc':item['title']+'\n'+item['snippet']} for item in rets]
-    print(add_webpage_content(rets))
+# if __name__ == "__main__":
+    # print(add_webpage_content(rets))
