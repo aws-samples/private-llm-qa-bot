@@ -6,7 +6,6 @@ import re
 from botocore import config
 from botocore.exceptions import ClientError,EventStreamError
 from datetime import datetime, timedelta
-import pytz
 import boto3
 import time
 import hashlib
@@ -38,6 +37,8 @@ import io
 import math
 from enum import Enum
 from boto3 import client as boto3_client
+from utils.web_search import web_search,add_webpage_content
+from utils.management import management_api,get_template
 
 lambda_client= boto3.client('lambda')
 dynamodb_client = boto3.resource('dynamodb')
@@ -70,7 +71,9 @@ KNN_QQ_THRESHOLD_HARD_REFUSE = float(os.environ.get('knn_qq_threshold_hard',0.6)
 KNN_QQ_THRESHOLD_SOFT_REFUSE = float(os.environ.get('knn_qq_threshold_soft',0.8))
 KNN_QD_THRESHOLD_HARD_REFUSE = float(os.environ.get('knn_qd_threshold_hard',0.6))
 KNN_QD_THRESHOLD_SOFT_REFUSE = float(os.environ.get('knn_qd_threshold_soft',0.8))
-
+RERANK_THRESHOLD = float(os.environ.get('rerank_threshold_soft',-2))
+WEBSEARCH_THRESHOLD = float(os.environ.get('websearch_threshold_soft',1))
+CROSS_MODEL_ENDPOINT = os.environ.get('cross_model_endpoint',None)
 KNN_QUICK_PEFETCH_THRESHOLD = float(os.environ.get('knn_quick_prefetch_threshold',0.95))
 
 INTENTION_LIST = os.environ.get('intention_list', "")
@@ -373,6 +376,8 @@ class CustomDocRetriever(BaseRetriever):
         global KNN_QUICK_PEFETCH_THRESHOLD
         start = time.time()
         query_embedding = get_vector_by_sm_endpoint(query_input, sm_client, self.embedding_model_endpoint)
+        elpase_time = time.time() - start
+        logger.info(f'knn_quick_prefetch, running time of get embeddings : {elpase_time:.3f}s')
         aos_client = OpenSearch(
                 hosts=[{'host': self.aos_endpoint, 'port': 443}],
                 http_auth = awsauth,
@@ -380,6 +385,7 @@ class CustomDocRetriever(BaseRetriever):
                 verify_certs=True,
                 connection_class=RequestsHttpConnection
             )
+        start = time.time()
         opensearch_knn_respose = search_using_aos_knn(aos_client,query_embedding[0], self.aos_index,size=3)
         elpase_time = time.time() - start
         logger.info(f'runing time of quick_knn_fetch : {elpase_time:.3f}s')
@@ -472,7 +478,7 @@ class CustomDocRetriever(BaseRetriever):
         json_str = response_model['Body'].read().decode('utf8')
         json_obj = json.loads(json_str)
         scores = json_obj['scores']
-        return scores
+        return scores if isinstance(scores, list) else [scores]
     
     def de_duplicate(self,docs):
         unique_ids = set()
@@ -504,12 +510,22 @@ class CustomDocRetriever(BaseRetriever):
 
         return ret
     
+    def get_websearch_documents(self, query_input: str) -> list:
+        # 使用agent方式速度比较慢，直接改成调用search api
+        all_docs = web_search(query=query_input)
+        logger.info(f'all_docs:{all_docs}')
+        recall_knowledge = [{'doc_title':item['title'],'doc':item['title']+'\n'+item['snippet'],
+                             'doc_classify':'web_search','doc_type':'web_search','score':0.8,'doc_author':item['link']} for item in all_docs]
+        return recall_knowledge
+    
     def get_relevant_documents_custom(self, query_input: str):
         global BM25_QD_THRESHOLD_HARD_REFUSE, BM25_QD_THRESHOLD_SOFT_REFUSE
-        global KNN_QQ_THRESHOLD_HARD_REFUSE, KNN_QQ_THRESHOLD_SOFT_REFUSE
+        global KNN_QQ_THRESHOLD_HARD_REFUSE, KNN_QQ_THRESHOLD_SOFT_REFUSE,WEBSEARCH_THRESHOLD
         global KNN_QD_THRESHOLD_HARD_REFUSE, KNN_QD_THRESHOLD_SOFT_REFUSE
         start = time.time()
         query_embedding = get_vector_by_sm_endpoint(query_input, sm_client, self.embedding_model_endpoint)
+        elpase_time = time.time() - start
+        logger.info(f'running time of get embeddings : {elpase_time:.3f}s')
         aos_client = OpenSearch(
                 hosts=[{'host': self.aos_endpoint, 'port': 443}],
                 http_auth = awsauth,
@@ -517,6 +533,7 @@ class CustomDocRetriever(BaseRetriever):
                 verify_certs=True,
                 connection_class=RequestsHttpConnection
             )
+        start = time.time()
         opensearch_knn_respose = search_using_aos_knn(aos_client,query_embedding[0], self.aos_index,size=CHANNEL_RET_CNT)
         elpase_time = time.time() - start
         logger.info(f'runing time of opensearch_knn : {elpase_time}s seconds')
@@ -593,7 +610,7 @@ class CustomDocRetriever(BaseRetriever):
 
 
         ##是否使用rerank
-        cross_model_endpoint = os.environ.get('cross_model_endpoint',None)
+        cross_model_endpoint = CROSS_MODEL_ENDPOINT
         if cross_model_endpoint:
             all_docs = filter_knn_result+filter_inverted_result
 
@@ -603,9 +620,32 @@ class CustomDocRetriever(BaseRetriever):
                 scores = self.rerank(query_input, all_docs,sm_client,cross_model_endpoint)
                 ##sort by scores
                 sorted_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=False)
-                recall_knowledge = [{**all_docs[idx],'rank_score':scores[idx] } for idx in sorted_indices[-TOP_K:]]
+                recall_knowledge = [{**all_docs[idx],'rank_score':scores[idx] } for idx in sorted_indices[-TOP_K:] ] 
+                
+                ## 引入web search结果重新排序
+                if max(scores) < WEBSEARCH_THRESHOLD:
+                    web_knowledge = self.get_websearch_documents(query_input)
+                    if web_knowledge:
+                        search_scores = self.rerank(query_input, web_knowledge,sm_client,cross_model_endpoint)
+                        sorted_indices = sorted(range(len(search_scores)), key=lambda i: search_scores[i], reverse=False)
+                        
+                        ## 过滤websearch结果
+                        sorted_web_knowledge = [{**web_knowledge[idx],'rank_score':search_scores[idx] } for idx in sorted_indices if search_scores[idx]>=WEBSEARCH_THRESHOLD] 
+                        ## 前面返回的是snippet内容，可以对结果继续用爬虫抓取完整内容
+                        sorted_web_knowledge = add_webpage_content(sorted_web_knowledge)
+                        
+                        #添加到原有的知识里,并过滤到原来知识中的低分item
+                        recall_knowledge += sorted_web_knowledge
+                        recall_knowledge = [item for item in  recall_knowledge if item['rank_score'] >= RERANK_THRESHOLD]
             else:
-                recall_knowledge = []
+                ##如果没有找到知识，则直接搜索
+                web_knowledge = self.get_websearch_documents(query_input)
+                if web_knowledge:
+                    search_scores = self.rerank(query_input, web_knowledge,sm_client,cross_model_endpoint)
+                    sorted_indices = sorted(range(len(search_scores)), key=lambda i: search_scores[i], reverse=False)
+                    sorted_web_knowledge = [{**web_knowledge[idx],'rank_score':search_scores[idx] } for idx in sorted_indices if search_scores[idx]>=WEBSEARCH_THRESHOLD]
+                    ## 前面返回的是snippet内容，可以对结果继续用爬虫抓取完整内容
+                    recall_knowledge = add_webpage_content(sorted_web_knowledge)
 
         else:
             recall_knowledge = combine_recalls(filter_knn_result, filter_inverted_result)
@@ -901,7 +941,7 @@ def delete_session(session_id,user_id):
         logger.info(f"delete session failed {str(e)}")
 
         
-def get_session(session_id):
+def get_session(session_id,user_id):
 
     table_name = chat_session_table
     # dynamodb = boto3.resource('dynamodb')
@@ -910,7 +950,7 @@ def get_session(session_id):
     table = dynamodb_client.Table(table_name)
     operation_result = ""
     try:
-        response = table.get_item(Key={'session-id': session_id})
+        response = table.get_item(Key={'session-id': session_id,'user_id':user_id})
         if "Item" in response.keys():
         # print("****** " + response["Item"]["content"])
             operation_result = json.loads(response["Item"]["content"])
@@ -930,7 +970,7 @@ def get_session(session_id):
 #           answer
 # return:   success
 #           failed
-def update_session(session_id,msgid, question, answer, intention):
+def update_session(session_id,user_id,msgid, question, answer, intention):
 
     table_name = chat_session_table
     # dynamodb = boto3.resource('dynamodb')
@@ -939,7 +979,7 @@ def update_session(session_id,msgid, question, answer, intention):
     table = dynamodb_client.Table(table_name)
     operation_result = ""
 
-    response = table.get_item(Key={'session-id': session_id})
+    response = table.get_item(Key={'session-id': session_id,'user_id':user_id})
 
     if "Item" in response.keys():
         # print("****** " + response["Item"]["content"])
@@ -948,14 +988,17 @@ def update_session(session_id,msgid, question, answer, intention):
         # print("****** No result")
         chat_history = []
 
-    chat_history.append([question, answer, intention,msgid])
+    timestamp_str = str(datetime.now())
+    chat_history.append([question, answer, intention,msgid,timestamp_str])
     content = json.dumps(chat_history,ensure_ascii=False)
 
     # inserting values into table
     response = table.put_item(
         Item={
             'session-id': session_id,
-            'content': content
+            'user_id':user_id,
+            'content': content,
+            'last_updatetime':timestamp_str
         }
     )
 
@@ -978,16 +1021,12 @@ def enforce_stop_tokens(text: str, stop: List[str]) -> str:
 
 def qa_knowledge_fewshot_build(recalls):
     ret_context = []
-    # for recall in recalls:
-    #     if recall['doc_type'] == 'Question':
-    #         q, a = recall['doc'].split(QA_SEP)
-    #         qa_example = "{}: {}\n{}: {}".format(Fewshot_prefix_Q, q, Fewshot_prefix_A, a)
-    #         ret_context.append(qa_example)
-    #     elif recall['doc_type'] == 'Paragraph':
-    #         ret_context.append(recall['doc'])
+    for i, recall in enumerate(recalls):
+        ref = f"[{i+1}] {recall['doc']}"
+        ret_context.append(ref)
 
-    # context_str = "\n\n".join(ret_context)
-    context_str = "\n\n".join([ recall['doc'] for recall in recalls])
+    context_str = "\n\n".join(ret_context)
+    # context_str = "\n\n".join([ recall['doc'] for  recall in recalls])
     return context_str
 
 
@@ -1282,12 +1321,12 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
     
     # 1. get_session
     start1 = time.time()
-    session_history = get_session(session_id=session_id)
+    session_history = get_session(session_id=session_id,user_id=user_id)
 
     chat_coversions = [ (item[0],item[1]) for item in session_history]
 
     elpase_time = time.time() - start1
-    logger.info(f'runing time of get_session : {elpase_time}s seconds')
+    logger.info(f'running time of get_session : {elpase_time}s seconds')
     answer = None
     query_type = None
     # free_chat_coversions = []
@@ -1306,6 +1345,7 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
 
         chat_history=''
         TRACE_LOGGER.trace(f'**Rewrite: {origin_query} => {query_input}**')
+        logger.info(f'Rewrite: {origin_query} => {query_input}')
         #add history parameter
         if isinstance(llm,SagemakerStreamEndpoint) or isinstance(llm,SagemakerEndpoint):
             chat_history=''
@@ -1421,39 +1461,45 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
 
         ##添加召回文档到refdoc和tracelog, 按score倒序展示
         for sn,item in enumerate(recall_knowledge[::-1]):
-            TRACE_LOGGER.trace(f"**[{sn+1}] [{item['doc_title']}] [{item['doc_classify']}] [{item['score']:.3f}] [{item['rank_score']:.3f}] author:[{item['doc_author']}]**")
+            TRACE_LOGGER.trace(f"**[{sn+1}] [{item['doc_title']}] [{item['doc_classify']}] [{item['score']:.3f}] [{item['rank_score']:.3f}] author:[ {item['doc_author']} ]**")
             TRACE_LOGGER.trace(f"{item['doc']}")
-            TRACE_LOGGER.add_ref(f"**[{sn+1}] [{item['doc_title']}] [{item['doc_classify']}] [{item['score']:.3f}] [{item['rank_score']:.3f}] author:[{item['doc_author']}]**")
-            TRACE_LOGGER.add_ref(f"{item['doc']}")
+            TRACE_LOGGER.add_ref(f"**[{sn+1}] [{item['doc_title']}] [{item['doc_classify']}] [{item['score']:.3f}] [{item['rank_score']:.3f}] author:[ {item['doc_author']} ]**")
+            #doc 太长之后进行截断
+            TRACE_LOGGER.add_ref(f"{item['doc'][:500]}{'...' if len(item['doc'])>500 else ''}") 
         TRACE_LOGGER.trace('**Answer:**')
 
         def get_reply_stratgy(recall_knowledge):
             if not recall_knowledge:
-                stratgy = ReplyStratgy.SAY_DONT_KNOW
+                stratgy = ReplyStratgy.SAY_DONT_KNOW ##如果希望LLM利用自有知识回答，则改成LLM_ONLY
                 return stratgy
 
-            global BM25_QD_THRESHOLD_HARD_REFUSE, BM25_QD_THRESHOLD_SOFT_REFUSE
-            global KNN_QQ_THRESHOLD_HARD_REFUSE, KNN_QQ_THRESHOLD_SOFT_REFUSE
-            global KNN_QD_THRESHOLD_HARD_REFUSE, KNN_QD_THRESHOLD_SOFT_REFUSE
+            ## 如果使用了rerank模型
+            if CROSS_MODEL_ENDPOINT:
+                rank_score = [item['rank_score'] for item in recall_knowledge]
+                if max(rank_score) < RERANK_THRESHOLD:  ##如果所有的知识都不超过rank score阈值
+                    return ReplyStratgy.SAY_DONT_KNOW ##如果希望LLM利用自有知识回答，则改成LLM_ONLY
+                else:
+                    return ReplyStratgy.WITH_LLM
+            else:
+                ##使用rerank之后，不需要这些策略
+                stratgy = ReplyStratgy.RETURN_OPTIONS
+                for item in recall_knowledge:
+                    if item['score'] > 1.0:
+                        if item['score'] > BM25_QD_THRESHOLD_SOFT_REFUSE:
+                            stratgy = ReplyStratgy.WITH_LLM
+                        elif item['score'] > BM25_QD_THRESHOLD_HARD_REFUSE:
+                            stratgy = ReplyStratgy(min(ReplyStratgy.HINT_LLM_REFUSE.value, stratgy.value))
+                        else:
+                            stratgy = ReplyStratgy(min(ReplyStratgy.RETURN_OPTIONS.value, stratgy.value))
 
-            stratgy = ReplyStratgy.RETURN_OPTIONS
-            for item in recall_knowledge:
-                if item['score'] > 1.0:
-                    if item['score'] > BM25_QD_THRESHOLD_SOFT_REFUSE:
-                        stratgy = ReplyStratgy.WITH_LLM
-                    elif item['score'] > BM25_QD_THRESHOLD_HARD_REFUSE:
-                        stratgy = ReplyStratgy(min(ReplyStratgy.HINT_LLM_REFUSE.value, stratgy.value))
-                    else:
-                        stratgy = ReplyStratgy(min(ReplyStratgy.RETURN_OPTIONS.value, stratgy.value))
-
-                elif item['score'] <= 1.0:
-                    if item['score'] > KNN_QD_THRESHOLD_SOFT_REFUSE:
-                        stratgy = ReplyStratgy.WITH_LLM
-                    elif item['score'] > KNN_QD_THRESHOLD_HARD_REFUSE:
-                        stratgy = ReplyStratgy(min(ReplyStratgy.HINT_LLM_REFUSE.value, stratgy.value))
-                    else:
-                        stratgy = ReplyStratgy(min(ReplyStratgy.RETURN_OPTIONS.value, stratgy.value))
-            return stratgy
+                    elif item['score'] <= 1.0:
+                        if item['score'] > KNN_QD_THRESHOLD_SOFT_REFUSE:
+                            stratgy = ReplyStratgy.WITH_LLM
+                        elif item['score'] > KNN_QD_THRESHOLD_HARD_REFUSE:
+                            stratgy = ReplyStratgy(min(ReplyStratgy.HINT_LLM_REFUSE.value, stratgy.value))
+                        else:
+                            stratgy = ReplyStratgy(min(ReplyStratgy.RETURN_OPTIONS.value, stratgy.value))
+                return stratgy
 
         def choose_prompt_template(stratgy:Enum, template:str, llm_model_name:str):
             if stratgy == ReplyStratgy.WITH_LLM:
@@ -1474,17 +1520,32 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
             hide_ref= True ## 隐藏ref doc
             if use_stream:
                 TRACE_LOGGER.postMessage(answer)
+                
         elif reply_stratgy == ReplyStratgy.RETURN_OPTIONS:
             some_reference = qa_knowledge_fewshot_build(recall_knowledge[::2])
             answer = f"我不太确定，这有两条可能相关的信息，供参考：\n=====\n{some_reference}\n====="
             hide_ref= True ## 隐藏ref doc
             if use_stream:
                 TRACE_LOGGER.postMessage(answer)
+                
         elif reply_stratgy == ReplyStratgy.SAY_DONT_KNOW:
             answer = "我不太清楚，问问人工吧。"
             hide_ref= True ## 隐藏ref doc
             if use_stream:
                 TRACE_LOGGER.postMessage(answer)
+                
+        elif reply_stratgy == ReplyStratgy.LLM_ONLY: ##走LLM默认知识
+            TRACE_LOGGER.trace('**Using Non-RAG Chat...**')
+            TRACE_LOGGER.trace('**Answer:**')
+            prompt_template = create_chat_prompt_templete()
+            hide_ref= True ## 隐藏ref doc
+            llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
+            ##最终的answer
+            answer = llmchain.run({'question':query_input,'chat_history':chat_history,'role_bot':B_Role})
+            ##最终的prompt日志
+            final_prompt = prompt_template.format(question=query_input,role_bot=B_Role,chat_history=chat_history)    
+            recall_knowledge = []
+            
         else:      
             prompt_template = choose_prompt_template(reply_stratgy, template, llm_model_name)
             llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
@@ -1519,7 +1580,7 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
 
     answer = enforce_stop_tokens(answer, STOP)
     pattern = r'^根据[^，,]*[,|，]'
-    answer = re.sub(pattern, "", answer)
+    answer = re.sub(pattern, "", answer.strip())
     ref_text = ''
     # if not use_stream and recall_knowledge and hide_ref == False:
         # ref_text = format_reference(recall_knowledge)
@@ -1550,129 +1611,14 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
 
     start = time.time()
     if session_id != 'OnlyForDEBUG':
-        update_session(session_id=session_id, question=query_input, answer=answer, intention=intention,msgid=msgid)
+        update_session(session_id=session_id,user_id=user_id, question=query_input, answer=answer, intention=intention,msgid=msgid)
     elpase_time = time.time() - start
     elpase_time1 = time.time() - start1
-    logger.info(f'runing time of update_session : {elpase_time}s seconds')
-    logger.info(f'runing time of all  : {elpase_time1}s seconds')
+    logger.info(f'running time of update_session : {elpase_time}s seconds')
+    logger.info(f'running time of all  : {elpase_time1}s seconds')
     return answer,ref_text,use_stream,query_input,opensearch_query_response,opensearch_knn_respose,recall_knowledge
 
-def delete_doc_index(obj_key,embedding_model,index_name):
-    def delete_aos_index(obj_key,index_name,size=50):
-        aos_endpoint = os.environ.get("aos_endpoint", "")
-        client = OpenSearch(
-                    hosts=[{'host':aos_endpoint, 'port': 443}],
-                    http_auth = awsauth,
-                    use_ssl=True,
-                    verify_certs=True,
-                    connection_class=RequestsHttpConnection
-                )
-        query =  {
-                "size":size,
-                "query" : {
-                    "match_phrase":{
-                        "doc_title": obj_key
-                    }
-                }
-            }
-        response = client.search(
-            body=query,
-            index=index_name
-        )
-        doc_ids = [hit["_id"] for hit in response["hits"]["hits"]]
-        should_continue = False
-        for doc_id in doc_ids:
-            should_continue = True
-            try:
-                client.delete(index=index_name, id=doc_id)
-                logger.info(f"delete:{doc_id}")
-            except Exception as e:
-                logger.info(f"delete:{doc_id}")
-                continue
 
-        return should_continue
-    
-    ##删除ddb里的索引
-    dynamodb = boto3.client('dynamodb')
-    try:
-        dynamodb.delete_item(
-            TableName=DOC_INDEX_TABLE,
-            Key={
-                'filename': {'S': obj_key},
-                'embedding_model': {'S': embedding_model}
-            }
-        )
-    except Exception as e:
-        logger.info(str(e))
-
-    ##删除aos里的索引
-    should_continue = True
-    while should_continue:
-        should_continue = delete_aos_index(obj_key,index_name)
-    
-def list_doc_index ():
-    dynamodb = boto3.client('dynamodb')
-    scan_params = {
-        'TableName': DOC_INDEX_TABLE,
-        'Select': 'ALL_ATTRIBUTES',  # Return all attributes
-    }
-    try:
-        response = dynamodb.scan(**scan_params)
-        return response['Items']
-    except Exception as e:
-        logger.info(str(e))
-        return []
-
-def get_template(id):
-    dynamodb = boto3.client('dynamodb')
-    if id:
-        params = {
-            'TableName': os.environ.get('prompt_template_table'),
-            'Key': {'id': {'S': id}},  # Return all attributes
-        }
-        try:
-            response = dynamodb.get_item(**params)
-            return response['Item']
-        except Exception as e:
-            logger.info(str(e))
-            return None   
-    else:
-        params = {
-            'TableName': os.environ.get('prompt_template_table'),
-            'Select': 'ALL_ATTRIBUTES',  # Return all attributes
-        }
-        try:
-            response = dynamodb.scan(**params)
-            return response['Items']
-        except Exception as e:
-            logger.info(str(e))
-            return []
-    
-def add_template(item):
-    dynamodb = boto3.client('dynamodb')
-    params = {
-        'TableName': os.environ.get('prompt_template_table'),
-        'Item': item,  
-    }
-    try:
-        dynamodb.put_item(**params)
-        return True
-    except Exception as e:
-        logger.info(str(e))
-        return False
-
-def delete_template(key):
-    dynamodb = boto3.client('dynamodb')
-    params = {
-        'TableName': os.environ.get('prompt_template_table'),
-        'Key': key,  
-    }
-    try:
-        dynamodb.delete_item(**params)
-        return True
-    except Exception as e:
-        logger.info(str(e))
-        return False
 
 def generate_s3_image_url(bucket_name, key, expiration=3600):
     s3_client = boto3.client('s3')
@@ -1683,78 +1629,6 @@ def generate_s3_image_url(bucket_name, key, expiration=3600):
     )
     return url
 
-
-## 1. write the feedback in logs and loaded to kinesis
-## 2. if lambda_feedback is setup, then call lambda_feedback for other managment operations
-def handle_feedback(event):
-    method = event.get('method')
-    
-    ##invoke feedback lambda to store in ddb
-    fn = os.environ.get('lambda_feedback')
-    if method == 'post':
-        results = True
-        body = event.get('body')
-        ## actions types: thumbs-up,thumbs-down,cancel-thumbs-up,cancel-thumbs-down
-        timestamp = time.time()
-        utc_datetime = datetime.utcfromtimestamp(timestamp)
-        # Set the timezone to UTC+8
-        utc8_timezone = pytz.timezone('Asia/Shanghai')
-        datetime_utc8 = utc_datetime.replace(tzinfo=pytz.utc).astimezone(utc8_timezone)
-        json_obj = {
-                "opensearch_doc":  [], #for kiness firehose log subscription filter name
-                "log_type":'feedback',
-                "msgid":body.get('msgid'),
-                "timestamp":str(datetime_utc8),
-                "username":body.get('username'),
-                "session_id":body.get('session_id'),
-                "action":body.get('action'),
-                "feedback":body.get('feedback')
-            }
-        json_obj_str = json.dumps(json_obj, ensure_ascii=False)
-        logger.info(json_obj_str)
-
-        json_obj = {**json_obj,**body,'method':method}
-        if fn:
-            response = lambda_client.invoke(
-                    FunctionName = fn,
-                    InvocationType='RequestResponse',
-                    Payload=json.dumps(json_obj)
-                )
-            payload_json = json.loads(response.get('Payload').read())
-            logger.info(payload_json)
-            results = payload_json['body']
-            if response['StatusCode'] != 200 or not results:
-                logger.info(f"invoke lambda feedback StatusCode:{response['StatusCode']} and result {results}")
-                results = False
-        return results
-    elif method == 'get':
-        results = []
-        body = event.get('body')
-        json_obj = {**body,'method':method}
-        if fn:
-            response = lambda_client.invoke(
-                    FunctionName = fn,
-                    InvocationType='RequestResponse',
-                    Payload=json.dumps(json_obj)
-                )
-            if response['StatusCode'] == 200:
-                payload_json = json.loads(response.get('Payload').read())
-                results = payload_json['body']
-        return results   
-    elif method == 'delete':  
-        results = True
-        body = event.get('body')
-        json_obj = {**body,'method':method}
-        if fn:
-            response = lambda_client.invoke(
-                    FunctionName = fn,
-                    InvocationType='RequestResponse',
-                    Payload=json.dumps(json_obj)
-                )
-            if response['StatusCode'] == 200:
-                payload_json = json.loads(response.get('Payload').read())
-                results = payload_json['body']
-        return results  
 
 
 @handle_error
@@ -1772,46 +1646,10 @@ def lambda_handler(event, context):
     logger.info(f'channel_cnt:{CHANNEL_RET_CNT}')
 
     ###其他管理操作 start
-    ##如果是删除doc index的操作
-    if method == 'delete' and resource == 'docs':
-        logger.info(f"delete doc index of:{event.get('filename')}/{event.get('embedding_model')}/{event.get('index_name')}")
-        delete_doc_index(event.get('filename'),event.get('embedding_model'),event.get('index_name'))
-        return {'statusCode': 200}
-    ## 如果是get doc index操作
-    if method == 'get' and resource == 'docs':
-        results = list_doc_index()
-        return {'statusCode': 200,'body':results }
-    ## 如果是get template 操作
-    if method == 'get' and resource == 'template':
-        id = event.get('id')
-        results = get_template(id)
-        return {'statusCode': 200,'body': {} if results is None else results }
-    ## 如果是add a template 操作
-    if method == 'post' and resource == 'template':
-        body = event.get('body')
-        item = {
-            'id': {'S': body.get('id')},
-            'template_name':{'S':body.get('template_name','')},
-            'template':{'S':body.get('template','')},
-            'comment':{'S':body.get('comment','')},
-            'username':{'S':body.get('username','')}
-        }
-        result = add_template(item)
-        return {'statusCode': 200 if result else 500,'body':result }
-     ## 如果是delete a template 操作
-    if method == 'delete' and resource == 'template':
-        body = event.get('body')
-        key = {
-            'id': {'S': body.get('id')}
-        }
-        result = delete_template(key)
-        return {'statusCode': 200 if result else 500,'body':result }
-
-    ## 处理feedback action
-    if method in ['post','get','delete'] and resource == 'feedback':
-        results = handle_feedback(event)
-        return {'statusCode': 200 if results else 500,'body':results}
-
+    ###其他管理操作 start
+    if resource:
+        ret_json = management_api(method,resource,event)
+        return ret_json
 
     ####其他管理操作 end
 
@@ -1878,10 +1716,6 @@ def lambda_handler(event, context):
     logger.info(f"event:{event}")
     # logger.info(f"context:{context}")
 
-    # 创建日志组和日志流
-    log_group_name = '/aws/lambda/{}'.format(context.function_name)
-    log_stream_name = context.aws_request_id
-    client = boto3.client('logs')
     # 接收触发AWS Lambda函数的事件
     logger.info('The main brain has been activated, aws🚀!')
 
@@ -1923,7 +1757,7 @@ def lambda_handler(event, context):
     answer,ref_text,use_stream,query_input,opensearch_query_response,opensearch_knn_respose,recall_knowledge = main_entry_new(user_id,wsconnection_id,session_id, question, embedding_endpoint, llm_endpoint, model_name, aos_endpoint, aos_index, aos_knn_field, aos_result_num,
                        Kendra_index_id, Kendra_result_num,use_qa,wsclient,msgid,max_tokens,temperature,prompt_template,image_path,multi_rounds,hide_ref,use_stream)
     main_entry_elpase = time.time() - main_entry_start  # 或者使用 time.time_ns() 获取纳秒级别的时间戳
-    logger.info(f'runing time of main_entry : {main_entry_elpase}s seconds')
+    logger.info(f'running time of main_entry : {main_entry_elpase}s seconds')
     if use_stream: ##只有当stream输出时，把这条trace放到最后一个chunk
         TRACE_LOGGER.trace(f'\n\n**Total running time : {main_entry_elpase:.3f}s**')
     if TRACE_LOGGER.use_trace:
@@ -1944,7 +1778,7 @@ def lambda_handler(event, context):
     # "usage": {"prompt_tokens": 58, "completion_tokens": 15, "total_tokens": 73}}]
     extra_info = {}
     if session_id == 'OnlyForDEBUG':
-        extra_info = {"query_input": query_input, "opensearch_query_response" : opensearch_query_response, "opensearch_knn_respose": opensearch_knn_respose, "recall_knowledge":recall_knowledge }
+        extra_info = {"query_input": query_input, "opensearch_query_response" : opensearch_query_response, "opensearch_knn_respose": opensearch_knn_respose,"recall_knowledge":recall_knowledge }
     return {
         'statusCode': 200,
         'headers': {'Content-Type': 'application/json'},

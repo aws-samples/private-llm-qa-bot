@@ -9,6 +9,7 @@ from langchain.chains import LLMChain
 from langchain.llms.bedrock import Bedrock
 from botocore.exceptions import ClientError
 import boto3
+import re
 BEDROCK_LLM_MODELID_LIST = {'claude-instant':'anthropic.claude-instant-v1',
                             'claude-v2':'anthropic.claude-v2:1'}
 logger = logging.getLogger()
@@ -97,6 +98,16 @@ Assistant: <conversation>\n{conversation}\n</conversation>\n<answer>"""
         input_variables=['conversation']
     )
     return PROMPT
+
+def extract_content(content: str):
+    pattern = r"<standalone_question>(.*?)</standalone_question>"
+    match = re.search(pattern, content, re.DOTALL)
+    if match:
+        extract_content = match.group(1)
+        return extract_content.strip('"')
+    else:
+        return content.strip('"')
+    
     
 @handle_error
 def lambda_handler(event, context):
@@ -162,4 +173,4 @@ def lambda_handler(event, context):
     log_dict_str = json.dumps(log_dict, ensure_ascii=False)
     logger.info(log_dict_str)
         
-    return answer.strip('"')
+    return extract_content(answer)
