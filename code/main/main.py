@@ -799,7 +799,7 @@ def search_using_aos_knn(client, q_embedding, index, size=10):
         body=query,
         index=index
     )
-    opensearch_knn_respose = [{'idx':item['_source'].get('idx',1),'doc_category':item['_source']['doc_category'],'doc_classify':item['_source']['doc_classify'],'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc':item['_source']['content'],"doc_type":item["_source"]["doc_type"],"score":item["_score"],'doc_author': item['_source']['doc_author']}  for item in query_response["hits"]["hits"]]
+    opensearch_knn_respose = [{'idx':item['_source'].get('idx',1),'doc_category':item['_source']['doc_category'],'doc_classify':item['_source']['doc_classify'],'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc':item['_source']['content'],"doc_type":item["_source"]["doc_type"],"score":item["_score"],'doc_author': item['_source']['doc_author'], 'doc_meta': item['_source']['doc_meta']}  for item in query_response["hits"]["hits"]]
     return opensearch_knn_respose
     
 
@@ -883,9 +883,9 @@ def aos_search(client, index_name, field, query_term, exactly_match=False, size=
     )
 
     if exactly_match:
-        result_arr = [ {'idx':item['_source'].get('idx',0),'doc_category':item['_source']['doc_category'],'doc_classify':item['_source']['doc_classify'],'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc': item['_source']['content'], 'doc_type': item['_source']['doc_type'], 'score': item['_score'],'doc_author': item['_source']['doc_author']} for item in query_response["hits"]["hits"]]
+        result_arr = [ {'idx':item['_source'].get('idx',0),'doc_category':item['_source']['doc_category'],'doc_classify':item['_source']['doc_classify'],'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc': item['_source']['content'], 'doc_type': item['_source']['doc_type'], 'score': item['_score'],'doc_author': item['_source']['doc_author'], 'doc_meta': item['_source']['doc_meta']} for item in query_response["hits"]["hits"]]
     else:
-        result_arr = [ {'idx':item['_source'].get('idx',0),'doc_category':item['_source']['doc_category'],'doc_classify':item['_source']['doc_classify'],'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc':item['_source']['content'], 'doc_type': item['_source']['doc_type'], 'score': item['_score'],'doc_author': item['_source']['doc_author']} for item in query_response["hits"]["hits"]]
+        result_arr = [ {'idx':item['_source'].get('idx',0),'doc_category':item['_source']['doc_category'],'doc_classify':item['_source']['doc_classify'],'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc':item['_source']['content'], 'doc_type': item['_source']['doc_type'], 'score': item['_score'],'doc_author': item['_source']['doc_author'], 'doc_meta': item['_source']['doc_meta']} for item in query_response["hits"]["hits"]]
     return result_arr
 
 def delete_session(session_id,user_id):
@@ -976,19 +976,29 @@ def enforce_stop_tokens(text: str, stop: List[str]) -> str:
     
     return re.split("|".join(stop), text)[0]
 
-def qa_knowledge_fewshot_build(recalls):
-    ret_context = []
-    # for recall in recalls:
-    #     if recall['doc_type'] == 'Question':
-    #         q, a = recall['doc'].split(QA_SEP)
-    #         qa_example = "{}: {}\n{}: {}".format(Fewshot_prefix_Q, q, Fewshot_prefix_A, a)
-    #         ret_context.append(qa_example)
-    #     elif recall['doc_type'] == 'Paragraph':
-    #         ret_context.append(recall['doc'])
+def format_knowledges(recalls):
+    knowledges = []
+    multi_choice_field = []
+    meta_dict = {}
+    for idx, item in enumerate(recalls):
+        if len(item['doc_meta']) > 0:
+            meta_obj = json.loads(item['doc_meta'])
+            for k, v in meta_obj.items():
+                if k in meta_dict.keys() and meta_dict[k] != v:
+                    multi_choice_field.append(k)
+                else:
+                    meta_dict[k] = v
+            item_obj = { "meta" : meta_obj, 'text': item['doc']}
+            content = json.dumps(item_obj, ensure_ascii=False)
+            item_str = f"""<item index="{idx+1}">{content}</item>"""
+        else:
+            item_obj = {'text': item['doc']}
+            content = json.dumps(item_obj, ensure_ascii=False)
+            item_str = f"""<item index="{idx+1}">{content}</item>"""
+        knowledges.append(item_str)
 
-    # context_str = "\n\n".join(ret_context)
-    context_str = "\n\n".join([ recall['doc'] for recall in recalls])
-    return context_str
+    context_str = "\n".join(knowledges)
+    return context_str, set(multi_choice_field)
 
 
 def get_question_history(inputs) -> str:
@@ -1047,31 +1057,66 @@ Skip the preamble, go straight into the answer.
     )
     return PROMPT
 
-
 def create_qa_prompt_templete(prompt_template):
     if prompt_template == '':
-        #prompt_template_zh = """{system_role_prompt} {role_bot}\n请根据反引号中的内容提取相关信息回答问题:\n```\n{chat_history}{context}\n```\n如果反引号中的内容为空,则回答不知道.\n用户:{question}"""
         prompt_template_zh = \
-"""{system_role_prompt}{role_bot}请根据以下的知识，回答用户的问题。
-<context>
+"""Human: {system_role_prompt}{role_bot}, here is a query:
+{chat_history}
+<query>
+{question}
+</query>
+
+Below may contains some relevant information to the query:
+
+<information>
 {context}
-</context> 
-如果知识中的内容的包含markdown格式的内容，如参考图片，示意图，链接等，请尽可能利用并按markdown格式输出参考图片，示意图，链接。请严格基于跟问题相关的知识来回答问题，不要随意发挥和编造答案。请简洁有条理的回答，如果知识内容为空或者跟问题不相关，则回答不知道。
-前几轮的聊天记录如下，如果有需要请参考以下的记录。
-<chat_history>
-{chat_history} 
-</chat_history>
-Skip the preamble, go straight into the answer.
-用户问:{question} 
-"""
+</information>
+
+Once again, the user's query is:
+
+<query>
+{question}
+</query>
+
+Please put your answer between <response> tags and follow below requirements:
+- Respond in the original language of the question.
+- Maintain a friendly and conversational tone. 
+- Skip the preamble, go straight into the answer. Don't say anything else.
+{ask_user_prompt}
+Assistant: <response>"""
     else:
         prompt_template_zh = prompt_template
     PROMPT = PromptTemplate(
         template=prompt_template_zh,
         partial_variables={'system_role_prompt':SYSTEM_ROLE_PROMPT},
-        input_variables=["context",'question','chat_history','role_bot']
+        input_variables=["context",'question','chat_history', 'role_bot', 'ask_user_prompt']
     )
     return PROMPT
+
+# def create_qa_prompt_templete(prompt_template):
+#     if prompt_template == '':
+#         #prompt_template_zh = """{system_role_prompt} {role_bot}\n请根据反引号中的内容提取相关信息回答问题:\n```\n{chat_history}{context}\n```\n如果反引号中的内容为空,则回答不知道.\n用户:{question}"""
+#         prompt_template_zh = \
+# """{system_role_prompt}{role_bot}请根据以下的知识，回答用户的问题。
+# <context>
+# {context}
+# </context> 
+# 如果知识中的内容的包含markdown格式的内容，如参考图片，示意图，链接等，请尽可能利用并按markdown格式输出参考图片，示意图，链接。请严格基于跟问题相关的知识来回答问题，不要随意发挥和编造答案。请简洁有条理的回答，如果知识内容为空或者跟问题不相关，则回答不知道。
+# 前几轮的聊天记录如下，如果有需要请参考以下的记录。
+# <chat_history>
+# {chat_history} 
+# </chat_history>
+# Skip the preamble, go straight into the answer.
+# 用户问:{question} 
+# """
+#     else:
+#         prompt_template_zh = prompt_template
+#     PROMPT = PromptTemplate(
+#         template=prompt_template_zh,
+#         partial_variables={'system_role_prompt':SYSTEM_ROLE_PROMPT},
+#         input_variables=["context",'question','chat_history','role_bot']
+#     )
+#     return PROMPT
 
 def create_chat_prompt_templete(prompt_template='', llm_model_name='claude'):
     PROMPT = None
@@ -1467,15 +1512,13 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
 
         reply_stratgy = get_reply_stratgy(recall_knowledge)
 
-        context = qa_knowledge_fewshot_build(recall_knowledge)
-
         if exactly_match_result and recall_knowledge:
             answer = exactly_match_result[0]["doc"]
             hide_ref= True ## 隐藏ref doc
             if use_stream:
                 TRACE_LOGGER.postMessage(answer)
         elif reply_stratgy == ReplyStratgy.RETURN_OPTIONS:
-            some_reference = qa_knowledge_fewshot_build(recall_knowledge[::2])
+            some_reference, multi_choice_field = format_knowledges(recall_knowledge[::2])
             answer = f"我不太确定，这有两条可能相关的信息，供参考：\n=====\n{some_reference}\n====="
             hide_ref= True ## 隐藏ref doc
             if use_stream:
@@ -1490,15 +1533,18 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
             llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
 
             # context = "\n".join([doc['doc'] for doc in recall_knowledge])
-            context = qa_knowledge_fewshot_build(recall_knowledge)
+            context, multi_choice_field = format_knowledges(recall_knowledge)
+            ask_user_prompts = [ f"- If you are not sure about which {field} user ask for, please ask user to clarify it, don't say anything else." for field in multi_choice_field ]
+            ask_user_prompts_str = "\n".join(ask_user_prompts)
+
             chat_history = '' ##QA 场景下先不使用history
             ##最终的answer
             try:
-                answer = llmchain.run({'question':query_input,'context':context,'chat_history':chat_history,'role_bot':B_Role })
+                answer = llmchain.run({'question':query_input,'context':context,'chat_history':chat_history,'role_bot':B_Role, 'ask_user_prompt':ask_user_prompts_str })
             except Exception as e:
                 answer = str(e)
             ##最终的prompt日志
-            final_prompt = prompt_template.format(question=query_input,role_bot=B_Role,context=context,chat_history=chat_history)
+            final_prompt = prompt_template.format(question=query_input,role_bot=B_Role,context=context,chat_history=chat_history,ask_user_prompt=ask_user_prompts_str)
             # print(final_prompt)
             # print(answer)
     else:
