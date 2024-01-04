@@ -1410,14 +1410,16 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
         recall_knowledge,opensearch_knn_respose,opensearch_query_response = [],[],[]
     elif intention in ['comfort', 'transfer']:
         reply_stratgy = ReplyStratgy.OTHER
+        TRACE_LOGGER.trace('**Answer:**')
+        answer = ''
         if intention == 'comfort':
             answer = "不好意思没能帮到您，是否帮你转人工客服？"
         elif intention == 'transfer':
             answer = '立即为您转人工客服，请稍后'
-        TRACE_LOGGER.trace('**Answer:**')
-        answer = answer.replace('</response>','')
+        
         if use_stream:
             TRACE_LOGGER.postMessage(answer)
+
         recall_knowledge,opensearch_knn_respose,opensearch_query_response = [],[],[]
     elif intention in ['chat', 'assist']:##如果不使用QA
         TRACE_LOGGER.trace(f'**Using Non-RAG {intention}...**')
@@ -1436,10 +1438,6 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
             answer = llmchain.run({'question':query_input,'chat_history':chat_history,'role_bot':B_Role})
             final_prompt = prompt_template.format(question=query_input, role_bot=B_Role,chat_history=chat_history)
 
-        answer = answer.replace('</response>','')
-        TRACE_LOGGER.trace('**Answer:**')
-        if use_stream:
-            TRACE_LOGGER.postMessage(answer)
         recall_knowledge,opensearch_knn_respose,opensearch_query_response = [],[],[]
 
     elif intention == 'QA': ##如果使用QA
@@ -1606,7 +1604,7 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
 
     start = time.time()
     if session_id != 'OnlyForDEBUG':
-        update_session(session_id=session_id, question=query_input, answer=answer, intention=intention,msgid=msgid)
+        update_session(session_id=session_id, question=origin_query, answer=answer, intention=intention, msgid=msgid)
     elpase_time = time.time() - start
     elpase_time1 = time.time() - start1
     logger.info(f'runing time of update_session : {elpase_time}s seconds')
