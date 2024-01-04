@@ -1083,7 +1083,7 @@ Please put your answer between <response> tags and follow below requirements:
 {ask_user_prompt}
 Assistant: <response>"""
     else:
-        prompt_template_zh = prompt_template
+        prompt_template_zh = prompt_template + '{ask_user_prompt}'
     PROMPT = PromptTemplate(
         template=prompt_template_zh,
         partial_variables={'system_role_prompt':SYSTEM_ROLE_PROMPT},
