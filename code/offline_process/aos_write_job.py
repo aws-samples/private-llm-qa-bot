@@ -247,17 +247,18 @@ def iterate_QA(file_content, object_key,doc_classify,smr_client, index_name, end
         doc_template = "Question: {}\nAnswer: {}"
         questions = [ item['Question'] for item in batch ]
         answers = [ item['Answer'] for item in batch ]
+        meta = [ { k:item[k] for k in item.keys() if k not in ['Question', 'Answer', 'Author'] } for item in batch ]
         docs = [ doc_template.format(item['Question'], item['Answer']) for item in batch ]
         authors = [item.get('Author')  for item in batch ]
         embeddings_q = get_embedding(smr_client, questions, endpoint_name)
 
         for i in range(len(embeddings_q)):
-            document = { "publish_date": publish_date, "doc" : questions[i], "idx": idx,"doc_type" : "Question", "content" : docs[i], "doc_title": doc_title,"doc_author":authors[i] if authors[i] else doc_author, "doc_category": doc_category, "doc_classify":doc_classify,"embedding" : embeddings_q[i]}
+            document = { "publish_date": publish_date, "doc" : questions[i], "idx": idx, "doc_type" : "Question", "content" : docs[i], "doc_title": doc_title,"doc_author":authors[i] if authors[i] else doc_author, "doc_category": doc_category, "doc_meta": json.dumps(meta[i], ensure_ascii=False), "doc_classify":doc_classify,"embedding" : embeddings_q[i]}
             yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document).encode('utf-8')).hexdigest()}
 
         embeddings_a = get_embedding(smr_client, answers, endpoint_name)
         for i in range(len(embeddings_a)):
-            document = { "publish_date": publish_date, "doc" : answers[i], "idx": idx,"doc_type" : "Paragraph", "content" : docs[i], "doc_title": doc_title,"doc_author":authors[i] if authors[i] else doc_author, "doc_category": doc_category, "doc_classify":doc_classify,"embedding" : embeddings_a[i]}
+            document = { "publish_date": publish_date, "doc" : answers[i], "idx": idx,"doc_type" : "Paragraph", "content" : docs[i], "doc_title": doc_title,"doc_author":authors[i] if authors[i] else doc_author, "doc_category": doc_category, "doc_meta": json.dumps(meta[i], ensure_ascii=False), "doc_classify":doc_classify,"embedding" : embeddings_a[i]}
             yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document).encode('utf-8')).hexdigest()}
 
 def iterate_examples(file_content, object_key, smr_client, index_name, endpoint_name):
@@ -452,6 +453,22 @@ def parse_html_to_json(html_docs):
     json_content = json.dumps(results, ensure_ascii=False)
     return json_content
 
+
+def parse_xlsx_to_json(file_content):
+    import pandas as pd
+    import io
+
+    df = pd.read_excel(io.BytesIO(file_content))
+    json_arr = df.to_dict(orient='records')
+    qa_content = {
+        "doc_title" : "",
+        "doc_category" : "FAQ",
+        "qa_list" : json_arr
+    }
+
+    json_content = json.dumps(qa_content, ensure_ascii=False)
+    return json_content
+
 ## parse faq in csv format. Question    Answer
 def parse_csv_to_json(file_content):
     import csv
@@ -531,6 +548,12 @@ def load_content_json_from_s3(bucket, object_key, content_type, credentials):
         obj = s3.Object(bucket,object_key)
         file_content = obj.get()['Body'].read().decode('utf-8', errors='ignore').strip()
         try:
+            if content_type != 'xlsx':
+                file_content = obj.get()['Body'].read().decode('utf-8', errors='ignore').strip()
+            else:
+                # binrary mode
+                file_content = obj.get()['Body'].read()
+
             if content_type == 'faq':
                 json_content = parse_faq_to_json(file_content)
             elif content_type =='txt':
@@ -545,6 +568,8 @@ def load_content_json_from_s3(bucket, object_key, content_type, credentials):
                 json_content = json.loads(file_content)
             elif content_type == 'csv':
                 json_content = parse_csv_to_json(file_content)
+            elif content_type == 'xlsx':
+                json_content = parse_xlsx_to_json(file_content)
             else:
                 print(f"unsupport content type...{content_type}")
                 raise RuntimeError(f"unsupport content type...{content_type}")
@@ -736,7 +761,7 @@ def WriteVecIndexToAOS(bucket, object_key, content_type, doc_classify,smr_client
 
         print("---------flag------")
         gen_aos_record_func = None
-        if content_type in ["faq","csv"]:
+        if content_type in ["faq","csv","xlsx"]:
             gen_aos_record_func = iterate_QA(file_content, object_key,doc_classify,smr_client, index_name, EMB_MODEL_ENDPOINT)
         elif content_type in ['txt', 'pdf', 'json','docx']:
             gen_aos_record_func = iterate_paragraph(file_content,object_key, doc_classify,smr_client, index_name, EMB_MODEL_ENDPOINT)
@@ -797,8 +822,11 @@ def process_s3_uploaded_file(bucket, object_key):
     elif object_key.endswith(".docx"):
         print("********** pre-processing docx file")
         content_type = 'docx'
+    elif object_key.endswith(".xlsx"):
+        print("********** pre-processing xlsx file")
+        content_type = 'xlsx'
     else:
-        raise RuntimeError("unsupport content type...(pdf, faq, txt, pdf.json are supported.)")
+        raise RuntimeError("unsupport content type...(pdf, faq, txt, csv, xlsx, pdf.json are supported.)")
     
     username = get_filename_from_obj_key(object_key)
     
