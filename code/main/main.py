@@ -1408,7 +1408,17 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
         if use_stream:
             TRACE_LOGGER.postMessage(cache_answer)
         recall_knowledge,opensearch_knn_respose,opensearch_query_response = [],[],[]
-
+    elif intention in ['comfort', 'transfer']:
+        reply_stratgy = ReplyStratgy.OTHER
+        if intention == 'comfort':
+            answer = "不好意思没能帮到您，是否帮你转人工客服？"
+        elif intention == 'transfer':
+            answer = '立即为您转人工客服，请稍后'
+        TRACE_LOGGER.trace('**Answer:**')
+        answer = answer.replace('</response>','')
+        if use_stream:
+            TRACE_LOGGER.postMessage(answer)
+        recall_knowledge,opensearch_knn_respose,opensearch_query_response = [],[],[]
     elif intention in ['chat', 'assist']:##如果不使用QA
         TRACE_LOGGER.trace(f'**Using Non-RAG {intention}...**')
         TRACE_LOGGER.trace('**Answer:**')
@@ -1427,6 +1437,9 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
             final_prompt = prompt_template.format(question=query_input, role_bot=B_Role,chat_history=chat_history)
 
         answer = answer.replace('</response>','')
+        TRACE_LOGGER.trace('**Answer:**')
+        if use_stream:
+            TRACE_LOGGER.postMessage(answer)
         recall_knowledge,opensearch_knn_respose,opensearch_query_response = [],[],[]
 
     elif intention == 'QA': ##如果使用QA
