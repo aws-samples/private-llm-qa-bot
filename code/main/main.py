@@ -704,7 +704,7 @@ def detect_intention(query, fewshot_cnt=5):
 
     return json.loads(response_str)
 
-def rewrite_query(query, session_history, round_cnt=2, use_bedrock="True"):
+def rewrite_query(query, session_history, round_cnt=2):
     logger.info(f"session_history {str(session_history)}")
     if len(session_history) == 0:
         return query
@@ -718,9 +718,7 @@ def rewrite_query(query, session_history, round_cnt=2, use_bedrock="True"):
       "params": {
         "history": history,
         "query": query
-      },
-      "use_bedrock" : use_bedrock,
-      "llm_model_name" : "claude-instant"
+      }
     }
     response = lambda_client.invoke(FunctionName="Query_Rewrite",
                                            InvocationType='RequestResponse',
@@ -839,7 +837,7 @@ def search_using_aos_knn(client, q_embedding, index, size=10):
         body=query,
         index=index
     )
-    opensearch_knn_respose = [{'idx':item['_source'].get('idx',1),'doc_category':item['_source']['doc_category'],'doc_classify':item['_source']['doc_classify'],'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc':item['_source']['content'],"doc_type":item["_source"]["doc_type"],"score":item["_score"],'doc_author': item['_source']['doc_author']}  for item in query_response["hits"]["hits"]]
+    opensearch_knn_respose = [{'idx':item['_source'].get('idx',1),'doc_category':item['_source']['doc_category'],'doc_classify':item['_source']['doc_classify'],'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc':item['_source']['content'],"doc_type":item["_source"]["doc_type"],"score":item["_score"],'doc_author': item['_source']['doc_author'], 'doc_meta': item['_source']['doc_meta']}  for item in query_response["hits"]["hits"]]
     return opensearch_knn_respose
     
 
@@ -923,9 +921,9 @@ def aos_search(client, index_name, field, query_term, exactly_match=False, size=
     )
 
     if exactly_match:
-        result_arr = [ {'idx':item['_source'].get('idx',0),'doc_category':item['_source']['doc_category'],'doc_classify':item['_source']['doc_classify'],'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc': item['_source']['content'], 'doc_type': item['_source']['doc_type'], 'score': item['_score'],'doc_author': item['_source']['doc_author']} for item in query_response["hits"]["hits"]]
+        result_arr = [ {'idx':item['_source'].get('idx',0),'doc_category':item['_source']['doc_category'],'doc_classify':item['_source']['doc_classify'],'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc': item['_source']['content'], 'doc_type': item['_source']['doc_type'], 'score': item['_score'],'doc_author': item['_source']['doc_author'], 'doc_meta': item['_source']['doc_meta']} for item in query_response["hits"]["hits"]]
     else:
-        result_arr = [ {'idx':item['_source'].get('idx',0),'doc_category':item['_source']['doc_category'],'doc_classify':item['_source']['doc_classify'],'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc':item['_source']['content'], 'doc_type': item['_source']['doc_type'], 'score': item['_score'],'doc_author': item['_source']['doc_author']} for item in query_response["hits"]["hits"]]
+        result_arr = [ {'idx':item['_source'].get('idx',0),'doc_category':item['_source']['doc_category'],'doc_classify':item['_source']['doc_classify'],'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc':item['_source']['content'], 'doc_type': item['_source']['doc_type'], 'score': item['_score'],'doc_author': item['_source']['doc_author'], 'doc_meta': item['_source']['doc_meta']} for item in query_response["hits"]["hits"]]
     return result_arr
 
 def delete_session(session_id,user_id):
@@ -1019,15 +1017,29 @@ def enforce_stop_tokens(text: str, stop: List[str]) -> str:
     
     return re.split("|".join(stop), text)[0]
 
-def qa_knowledge_fewshot_build(recalls):
-    ret_context = []
-    for i, recall in enumerate(recalls):
-        ref = f"[{i+1}] {recall['doc']}"
-        ret_context.append(ref)
+def format_knowledges(recalls):
+    knowledges = []
+    multi_choice_field = []
+    meta_dict = {}
+    for idx, item in enumerate(recalls):
+        if len(item['doc_meta']) > 0:
+            meta_obj = json.loads(item['doc_meta'])
+            for k, v in meta_obj.items():
+                if k in meta_dict.keys() and meta_dict[k] != v:
+                    multi_choice_field.append(k)
+                else:
+                    meta_dict[k] = v
+            item_obj = { "meta" : meta_obj, 'text': item['doc']}
+            content = json.dumps(item_obj, ensure_ascii=False)
+            item_str = f"""<item index="{idx+1}">{content}</item>"""
+        else:
+            item_obj = {'text': item['doc']}
+            content = json.dumps(item_obj, ensure_ascii=False)
+            item_str = f"""<item index="{idx+1}">{content}</item>"""
+        knowledges.append(item_str)
 
-    context_str = "\n\n".join(ret_context)
-    # context_str = "\n\n".join([ recall['doc'] for  recall in recalls])
-    return context_str
+    context_str = "\n".join(knowledges)
+    return context_str, set(multi_choice_field)
 
 
 def get_question_history(inputs) -> str:
@@ -1086,31 +1098,66 @@ Skip the preamble, go straight into the answer.
     )
     return PROMPT
 
-
 def create_qa_prompt_templete(prompt_template):
     if prompt_template == '':
-        #prompt_template_zh = """{system_role_prompt} {role_bot}\n请根据反引号中的内容提取相关信息回答问题:\n```\n{chat_history}{context}\n```\n如果反引号中的内容为空,则回答不知道.\n用户:{question}"""
         prompt_template_zh = \
-"""{system_role_prompt}{role_bot}请根据以下的知识，回答用户的问题。
-<context>
+"""Human: {system_role_prompt}{role_bot}, here is a query:
+{chat_history}
+<query>
+{question}
+</query>
+
+Below may contains some relevant information to the query:
+
+<information>
 {context}
-</context> 
-如果知识中的内容的包含markdown格式的内容，如参考图片，示意图，链接等，请尽可能利用并按markdown格式输出参考图片，示意图，链接。请严格基于跟问题相关的知识来回答问题，不要随意发挥和编造答案。请简洁有条理的回答，如果知识内容为空或者跟问题不相关，则回答不知道。
-前几轮的聊天记录如下，如果有需要请参考以下的记录。
-<chat_history>
-{chat_history} 
-</chat_history>
-Skip the preamble, go straight into the answer.
-用户问:{question} 
-"""
+</information>
+
+Once again, the user's query is:
+
+<query>
+{question}
+</query>
+
+Please put your answer between <response> tags and follow below requirements:
+- Respond in the original language of the question.
+- Maintain a friendly and conversational tone. 
+- Skip the preamble, go straight into the answer. Don't say anything else.
+{ask_user_prompt}
+Assistant: <response>"""
     else:
-        prompt_template_zh = prompt_template
+        prompt_template_zh = prompt_template + '{ask_user_prompt}'
     PROMPT = PromptTemplate(
         template=prompt_template_zh,
         partial_variables={'system_role_prompt':SYSTEM_ROLE_PROMPT},
-        input_variables=["context",'question','chat_history','role_bot']
+        input_variables=["context",'question','chat_history', 'role_bot', 'ask_user_prompt']
     )
     return PROMPT
+
+# def create_qa_prompt_templete(prompt_template):
+#     if prompt_template == '':
+#         #prompt_template_zh = """{system_role_prompt} {role_bot}\n请根据反引号中的内容提取相关信息回答问题:\n```\n{chat_history}{context}\n```\n如果反引号中的内容为空,则回答不知道.\n用户:{question}"""
+#         prompt_template_zh = \
+# """{system_role_prompt}{role_bot}请根据以下的知识，回答用户的问题。
+# <context>
+# {context}
+# </context> 
+# 如果知识中的内容的包含markdown格式的内容，如参考图片，示意图，链接等，请尽可能利用并按markdown格式输出参考图片，示意图，链接。请严格基于跟问题相关的知识来回答问题，不要随意发挥和编造答案。请简洁有条理的回答，如果知识内容为空或者跟问题不相关，则回答不知道。
+# 前几轮的聊天记录如下，如果有需要请参考以下的记录。
+# <chat_history>
+# {chat_history} 
+# </chat_history>
+# Skip the preamble, go straight into the answer.
+# 用户问:{question} 
+# """
+#     else:
+#         prompt_template_zh = prompt_template
+#     PROMPT = PromptTemplate(
+#         template=prompt_template_zh,
+#         partial_variables={'system_role_prompt':SYSTEM_ROLE_PROMPT},
+#         input_variables=["context",'question','chat_history','role_bot']
+#     )
+#     return PROMPT
 
 def create_chat_prompt_templete(prompt_template='', llm_model_name='claude'):
     PROMPT = None
@@ -1338,13 +1385,12 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
 
     TRACE_LOGGER.trace(f'**Starting trace mode...**')
     if multi_rounds:
-        if llm_model_name.startswith('claude'):
-            query_input = rewrite_query(origin_query, session_history, round_cnt=3, use_bedrock="True")
-        else:
-            query_input = rewrite_query(origin_query, session_history, round_cnt=3, use_bedrock="")
+        before_rewrite = time.time()
+        query_input = rewrite_query(origin_query, session_history, round_cnt=3)
+        elpase_time_rewrite = time.time() - before_rewrite
 
         chat_history=''
-        TRACE_LOGGER.trace(f'**Rewrite: {origin_query} => {query_input}**')
+        TRACE_LOGGER.trace(f'**Rewrite: {origin_query} => {query_input}, elpase_time:{elpase_time_rewrite}**')
         logger.info(f'Rewrite: {origin_query} => {query_input}')
         #add history parameter
         if isinstance(llm,SagemakerStreamEndpoint) or isinstance(llm,SagemakerEndpoint):
@@ -1406,7 +1452,19 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
         if use_stream:
             TRACE_LOGGER.postMessage(cache_answer)
         recall_knowledge,opensearch_knn_respose,opensearch_query_response = [],[],[]
+    elif intention in ['comfort', 'transfer']:
+        reply_stratgy = ReplyStratgy.OTHER
+        TRACE_LOGGER.trace('**Answer:**')
+        answer = ''
+        if intention == 'comfort':
+            answer = "不好意思没能帮到您，是否帮你转人工客服？"
+        elif intention == 'transfer':
+            answer = '立即为您转人工客服，请稍后'
+        
+        if use_stream:
+            TRACE_LOGGER.postMessage(answer)
 
+        recall_knowledge,opensearch_knn_respose,opensearch_query_response = [],[],[]
     elif intention in ['chat', 'assist']:##如果不使用QA
         TRACE_LOGGER.trace(f'**Using Non-RAG {intention}...**')
         TRACE_LOGGER.trace('**Answer:**')
@@ -1424,7 +1482,6 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
             answer = llmchain.run({'question':query_input,'chat_history':chat_history,'role_bot':B_Role})
             final_prompt = prompt_template.format(question=query_input, role_bot=B_Role,chat_history=chat_history)
 
-        answer = answer.replace('</response>','')
         recall_knowledge,opensearch_knn_respose,opensearch_query_response = [],[],[]
 
     elif intention == 'QA': ##如果使用QA
@@ -1513,8 +1570,6 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
 
         reply_stratgy = get_reply_stratgy(recall_knowledge)
 
-        context = qa_knowledge_fewshot_build(recall_knowledge)
-
         if exactly_match_result and recall_knowledge:
             answer = exactly_match_result[0]["doc"]
             hide_ref= True ## 隐藏ref doc
@@ -1522,7 +1577,7 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
                 TRACE_LOGGER.postMessage(answer)
                 
         elif reply_stratgy == ReplyStratgy.RETURN_OPTIONS:
-            some_reference = qa_knowledge_fewshot_build(recall_knowledge[::2])
+            some_reference, multi_choice_field = format_knowledges(recall_knowledge[::2])
             answer = f"我不太确定，这有两条可能相关的信息，供参考：\n=====\n{some_reference}\n====="
             hide_ref= True ## 隐藏ref doc
             if use_stream:
@@ -1551,15 +1606,18 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
             llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
 
             # context = "\n".join([doc['doc'] for doc in recall_knowledge])
-            context = qa_knowledge_fewshot_build(recall_knowledge)
+            context, multi_choice_field = format_knowledges(recall_knowledge)
+            ask_user_prompts = [ f"- If you are not sure about which {field} user ask for, please ask user to clarify it, don't say anything else." for field in multi_choice_field ]
+            ask_user_prompts_str = "\n".join(ask_user_prompts)
+
             chat_history = '' ##QA 场景下先不使用history
             ##最终的answer
             try:
-                answer = llmchain.run({'question':query_input,'context':context,'chat_history':chat_history,'role_bot':B_Role })
+                answer = llmchain.run({'question':query_input,'context':context,'chat_history':chat_history,'role_bot':B_Role, 'ask_user_prompt':ask_user_prompts_str })
             except Exception as e:
                 answer = str(e)
             ##最终的prompt日志
-            final_prompt = prompt_template.format(question=query_input,role_bot=B_Role,context=context,chat_history=chat_history)
+            final_prompt = prompt_template.format(question=query_input,role_bot=B_Role,context=context,chat_history=chat_history,ask_user_prompt=ask_user_prompts_str)
             # print(final_prompt)
             # print(answer)
     else:

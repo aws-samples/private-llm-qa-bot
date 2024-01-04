@@ -43,6 +43,9 @@ payload1="{
             \"doc_category\": {
                 \"type\": \"keyword\"
             },
+            \"doc_meta\": {
+                \"type\": \"keyword\"
+            },
             \"embedding\": {
                 \"type\": \"knn_vector\",
                 \"dimension\": ${DIMENSION},
