@@ -634,7 +634,7 @@ def detect_intention(query, fewshot_cnt=5):
 
     return json.loads(response_str)
 
-def rewrite_query(query, session_history, round_cnt=2, use_bedrock="True"):
+def rewrite_query(query, session_history, round_cnt=2):
     logger.info(f"session_history {str(session_history)}")
     if len(session_history) == 0:
         return query
@@ -648,9 +648,7 @@ def rewrite_query(query, session_history, round_cnt=2, use_bedrock="True"):
       "params": {
         "history": history,
         "query": query
-      },
-      "use_bedrock" : use_bedrock,
-      "llm_model_name" : "claude-instant"
+      }
     }
     response = lambda_client.invoke(FunctionName="Query_Rewrite",
                                            InvocationType='RequestResponse',
@@ -658,7 +656,7 @@ def rewrite_query(query, session_history, round_cnt=2, use_bedrock="True"):
     response_body = response['Payload']
     response_str = response_body.read().decode("unicode_escape")
 
-    return response_str.strip()
+    return response_str.strip('"')
 
 def chat_agent(query, detection):
 
@@ -1205,19 +1203,19 @@ def main_entry_new(session_id:str, query_input:str, embedding_model_endpoint:str
 
     TRACE_LOGGER.trace(f'**Starting trace mode...**')
     if multi_rounds:
-        if llm_model_name.startswith('claude'):
-            query_input = rewrite_query(origin_query, session_history, round_cnt=3, use_bedrock="True")
-        else:
-            query_input = rewrite_query(origin_query, session_history, round_cnt=3, use_bedrock="")
+        before_rewrite = time.time()
+        query_input = rewrite_query(origin_query, session_history, round_cnt=3)
+        elpase_time_rewrite = time.time() - before_rewrite
 
         chat_history=''
-        TRACE_LOGGER.trace(f'**Rewrite: {origin_query} => {query_input}**')
-            ##add history parameter
-            # if isinstance(llm,SagemakerStreamEndpoint) or isinstance(llm,SagemakerEndpoint):
-            #     chat_history=''
-            #     llm.model_kwargs['history'] = chat_coversions[-1:]
-            # else:
-            #     chat_history= get_chat_history(chat_coversions[-1:])
+        TRACE_LOGGER.trace(f'**Rewrite: {origin_query} => {query_input}, elpase_time:{elpase_time_rewrite}**')
+        logger.info(f'Rewrite: {origin_query} => {query_input}')
+        #add history parameter
+        if isinstance(llm,SagemakerStreamEndpoint) or isinstance(llm,SagemakerEndpoint):
+            chat_history=''
+            llm.model_kwargs['history'] = chat_coversions[-2:]
+        else:
+            chat_history= get_chat_history(chat_coversions[-2:])
     else:
         chat_history=''
 

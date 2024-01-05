@@ -9,7 +9,9 @@ from langchain.chains import LLMChain
 from langchain.llms.bedrock import Bedrock
 from botocore.exceptions import ClientError
 import boto3
-
+import re
+BEDROCK_LLM_MODELID_LIST = {'claude-instant':'anthropic.claude-instant-v1',
+                            'claude-v2':'anthropic.claude-v2:1'}
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
@@ -50,11 +52,21 @@ class llmContentHandler(LLMContentHandler):
         return response_json["outputs"]
 
 def create_rewrite_prompt_templete():
-    prompt_template = """Given the following conversation and a follow up question, rephrase the follow up question to be a standalone question, in its original language. don't translate the chat history and input. \n\nChat History:\n{history}\nFollow Up Input: {cur_query}\nStandalone question:"""
-
+    # prompt_template = """Given the following conversation and a follow up question, rephrase the follow up question to be a standalone question, in its original language. don't translate the chat history and input. \n\nChat History:\n{history}\nFollow Up Input: {cur_query}\nStandalone question:"""
+    prompt_template = \
+"""
+Human: Given the following conversation in <conversation></conversation>.
+<conversation>
+{history}
+</conversation>
+please rephrase the latest user question to be a standalone question, respond in the original language of user's question, don't translate the chat history and user question.
+if you don't understand the {role_a}'s question, or the question is not relevant to the conversation. please keep the orginal question.
+Skip the preamble, don't explain, go straight into the answer. Please put the standalone question in <standalone_question> tag
+Assistant: <standalone_question>
+"""
     PROMPT = PromptTemplate(
         template=prompt_template, 
-        input_variables=['history','cur_query']
+        input_variables=['history','role_a']
     )
     return PROMPT
 
@@ -86,20 +98,28 @@ Assistant: <conversation>\n{conversation}\n</conversation>\n<answer>"""
         input_variables=['conversation']
     )
     return PROMPT
+
+def extract_content(content: str):
+    pattern = r"<standalone_question>(.*?)</standalone_question>"
+    match = re.search(pattern, content, re.DOTALL)
+    if match:
+        extract_content = match.group(1)
+        return extract_content.strip('"')
+    else:
+        return content.strip('"')
+    
     
 @handle_error
 def lambda_handler(event, context):
     region = os.environ.get('region')
     llm_model_endpoint = os.environ.get('llm_model_endpoint')
-    llm_model_name = event.get('llm_model_name', None)
     params = event.get('params')
-    use_bedrock = event.get('use_bedrock')
+    use_bedrock = True if llm_model_endpoint.startswith('anthropic') or llm_model_endpoint.startswith('claude') else False
     role_a = event.get('role_a', 'user')
-    role_b = event.get('role_a', 'bot')
+    role_b = event.get('role_b', 'AI')
     
     logger.info("region:{}".format(region))
     logger.info("params:{}".format(params))
-    logger.info("llm_model_name:{}".format(llm_model_name))
     logger.info("llm_model_endpoint:{}".format(llm_model_endpoint))
     logger.info("use_bedrock:{}".format(bool(use_bedrock)))
 
@@ -109,6 +129,7 @@ def lambda_handler(event, context):
 
     history_with_role = [ "{}: {}".format(role_a if idx % 2 == 0 else role_b, item) for idx, item in enumerate(history) ]
     history_str = "\n".join(history_with_role)
+    history_str += f'\n{role_a}: {query}'
 
     parameters = {
         "temperature": 0.01,
@@ -131,23 +152,23 @@ def lambda_handler(event, context):
     
         parameters = {
             "max_tokens_to_sample": 100,
-            "stop_sequences": ["\n\n"],
+            "stop_sequences": ["\n\n", '</standalone_question>'],
             "temperature":0.01,
             "top_p":1
         }
-        
-        model_id ="anthropic.claude-instant-v1" if llm_model_name == 'claude-instant' else "anthropic.claude-v2"
+
+        model_id = BEDROCK_LLM_MODELID_LIST.get(llm_model_endpoint, llm_model_endpoint)
         llm = Bedrock(model_id=model_id, client=boto3_bedrock, model_kwargs=parameters)
 
     prompt_template = create_rewrite_prompt_templete()
-    prompt = prompt_template.format(history=history_str, cur_query=query)
+    prompt = prompt_template.format(history=history_str, role_a=role_a)
     
     llmchain = LLMChain(llm=llm, verbose=False, prompt=prompt_template)
-    answer = llmchain.run({'history':history_str, "cur_query":query})
+    answer = llmchain.run({'history':history_str, "role_a":role_a})
     answer = answer.strip()
 
-    log_dict = { "history" : history, "answer" : answer , "cur_query": query }
+    log_dict = { "history" : history, "answer" : answer , "cur_query": query, "prompt":prompt, "model_id" : model_id }
     log_dict_str = json.dumps(log_dict, ensure_ascii=False)
     logger.info(log_dict_str)
         
-    return answer.strip('"')
+    return extract_content(answer)
