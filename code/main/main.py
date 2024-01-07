@@ -728,15 +728,13 @@ def rewrite_query(query, session_history, round_cnt=2):
 
     return response_str.strip('"')
 
-def chat_agent(query, detection, use_bedrock="True"):
+def chat_agent(query, detection):
 
     msg = {
       "params": {
         "query": query,
         "detection": detection 
-      },
-      "use_bedrock" : use_bedrock,
-      "llm_model_name" : "claude-v2"
+      }
     }
     response = lambda_client.invoke(FunctionName="Chat_Agent",
                                            InvocationType='RequestResponse',
@@ -1149,13 +1147,7 @@ Assistant: <response>"""
 def create_chat_prompt_templete(prompt_template='', llm_model_name='claude'):
     PROMPT = None
     if llm_model_name.startswith('claude'):
-        prompt_template_zh = """Human: {system_role_prompt}{role_bot}. Your goal is to be kind and helpful to users.
-You should maintain a friendly customer service tone.
-Here are some important rules for the interaction:
-- Always stay in character, as {role_bot}
-- If you are unsure how to respond, say “Sorry, I didn’t understand that. Could you repeat the question?”
-- Be polite and patient
-Here is the conversation history (between the user and you) prior to the question. It could be empty if there is no history:
+        prompt_template_zh = """Human: {system_role_prompt}{role_bot}Here is the conversation history (between the user and you) prior to the question. It could be empty if there is no history:
 <history> {chat_history} </history>
 Here is the user’s question: <question> {question} </question>
 How do you respond to the user’s question?
@@ -1609,10 +1601,8 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
         #call agent for other intentions
         TRACE_LOGGER.trace('**Using Agent...**')
         reply_stratgy = ReplyStratgy.AGENT
-        use_bedrock = "False"
-        if llm_model_name.startswith('claude'):
-            use_bedrock = "True"
-        answer,ref_doc = chat_agent(query_input, detection, use_bedrock=use_bedrock)
+
+        answer,ref_doc = chat_agent(query_input, detection)
         recall_knowledge,opensearch_knn_respose,opensearch_query_response = [ref_doc],[],[]
         TRACE_LOGGER.add_ref(f'\n\n**Refer to {len(recall_knowledge)} knowledge:**')
         TRACE_LOGGER.add_ref(f"**[1]** {ref_doc}")
