@@ -1453,13 +1453,13 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
         if intention == 'chat':
             prompt_template = create_chat_prompt_templete(llm_model_name=llm_model_name)
             llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
-            answer = llmchain.run({'question':query_input,'chat_history':chat_history,'role_bot':B_Role})
-            final_prompt = prompt_template.format(question=query_input,role_bot=B_Role,chat_history=chat_history)
+            answer = llmchain.run({'question':origin_query,'chat_history':chat_history,'role_bot':B_Role})
+            final_prompt = prompt_template.format(question=origin_query,role_bot=B_Role,chat_history=chat_history)
         elif intention == 'assist':
             prompt_template = create_assist_prompt_templete(llm_model_name=llm_model_name)
             llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
-            answer = llmchain.run({'question':query_input,'chat_history':chat_history,'role_bot':B_Role})
-            final_prompt = prompt_template.format(question=query_input, role_bot=B_Role,chat_history=chat_history)
+            answer = llmchain.run({'question':origin_query,'chat_history':chat_history,'role_bot':B_Role})
+            final_prompt = prompt_template.format(question=origin_query, role_bot=B_Role,chat_history=chat_history)
 
         recall_knowledge,opensearch_knn_respose,opensearch_query_response = [],[],[]
 

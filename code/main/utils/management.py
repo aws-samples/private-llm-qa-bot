@@ -26,49 +26,50 @@ def delete_doc_index(obj_key,embedding_model,index_name):
                     verify_certs=True,
                     connection_class=RequestsHttpConnection
                 )
-        query =  {
-                "size":size,
-                "query" : {
-                    "match_phrase":{
-                        "doc_title": obj_key
-                    }
+
+        headers = {
+            "Content-Type": "application/json",
+        }
+        
+        data = {
+            "size": size,
+            "query" : {
+                "match_phrase":{
+                    "doc_title": obj_key
                 }
             }
-        response = client.search(
-            body=query,
-            index=index_name
-        )
-        doc_ids = [hit["_id"] for hit in response["hits"]["hits"]]
-        should_continue = False
-        for doc_id in doc_ids:
-            should_continue = True
-            try:
-                client.delete(index=index_name, id=doc_id)
-                logger.info(f"delete:{doc_id}")
-            except Exception as e:
-                logger.info(f"delete:{doc_id}")
-                continue
+        }
 
-        return should_continue
-    
-    ##删除ddb里的索引
-    dynamodb = boto3.client('dynamodb')
-    try:
-        dynamodb.delete_item(
-            TableName=DOC_INDEX_TABLE,
-            Key={
-                'filename': {'S': obj_key},
-                'embedding_model': {'S': embedding_model}
-            }
-        )
-    except Exception as e:
-        logger.info(str(e))
+        response = client.delete_by_query(index=index_name, body=data)
+        
+        try:
+            if 'deleted' in response.keys():
+                logger.info(f"delete:{obj_key}, {response['deleted']} records was deleted")
+                return True
+            else:
+                logger.info(f"delete:{obj_key} failed.")
+        except Exception as e:
+            logger.info(f"delete:{obj_key} failed, caused by {str(e)}")
 
-    ##删除aos里的索引
-    should_continue = True
-    while should_continue:
-        should_continue = delete_aos_index(obj_key,index_name)
-       
+
+        return False
+
+    success = delete_aos_index(obj_key,index_name)
+
+    if success:
+        ##删除ddb里的索引
+        dynamodb = boto3.client('dynamodb')
+        try:
+            dynamodb.delete_item(
+                TableName=DOC_INDEX_TABLE,
+                Key={
+                    'filename': {'S': obj_key},
+                    'embedding_model': {'S': embedding_model}
+                }
+            )
+        except Exception as e:
+            logger.info(str(e))
+
 def list_doc_index ():
     dynamodb = boto3.client('dynamodb')
     scan_params = {
