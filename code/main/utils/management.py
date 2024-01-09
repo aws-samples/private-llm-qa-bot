@@ -26,10 +26,6 @@ def delete_doc_index(obj_key,embedding_model,index_name):
                     verify_certs=True,
                     connection_class=RequestsHttpConnection
                 )
-
-        headers = {
-            "Content-Type": "application/json",
-        }
         
         data = {
             "size": size,
