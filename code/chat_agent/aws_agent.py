@@ -298,18 +298,16 @@ def lambda_handler(event, context):
     query = param_dict["query"]
     intention = param_dict.get("intention")      
     detection = param_dict.get("detection")
-    use_bedrock = event.get('use_bedrock')
     
     region = os.environ.get('region')
-    agent_lambdas = os.environ.get('agent_tools')
+    agent_lambdas = os.environ.get('agent_tools', None)
 
     global BEDROCK_REGION
     BEDROCK_REGION = region
     llm_model_endpoint = os.environ.get('llm_model_endpoint')
-    llm_model_name = event.get('llm_model_name', None)
+    use_bedrock = True if llm_model_endpoint.startswith('anthropic') or llm_model_endpoint.startswith('claude') else False
     logger.info("region:{}".format(region))
     logger.info("params:{}".format(params))
-    logger.info("llm_model_name:{}, use_bedrock: {}".format(llm_model_name, use_bedrock))
     logger.info("llm_model_endpoint:{}".format(llm_model_endpoint))
 
     parameters = {
@@ -339,7 +337,7 @@ def lambda_handler(event, context):
             "top_p":0.85
         }
         
-        model_id = BEDROCK_LLM_MODELID_LIST[llm_model_name] if llm_model_name == 'claude-instant' else BEDROCK_LLM_MODELID_LIST['claude-v2']
+        model_id = "anthropic.claude-v2"
         llm = Bedrock(model_id=model_id, client=boto3_bedrock, model_kwargs=parameters)
 
     agent_tools = AgentTools(api_schema=API_SCHEMA,llm=llm)

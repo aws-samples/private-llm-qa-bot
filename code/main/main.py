@@ -84,7 +84,7 @@ KNOWLEDGE_BASE_ID = os.environ.get('knowledge_base_id',None)
 
 BEDROCK_EMBEDDING_MODELID_LIST = ["cohere.embed-multilingual-v3","cohere.embed-english-v3","amazon.titan-embed-text-v1"]
 BEDROCK_LLM_MODELID_LIST = {'claude-instant':'anthropic.claude-instant-v1',
-                            'claude-v2':'anthropic.claude-v2:1'}
+                            'claude-v2':'anthropic.claude-v2'}
 
 boto3_bedrock = boto3.client(
     service_name="bedrock-runtime",
@@ -728,15 +728,13 @@ def rewrite_query(query, session_history, round_cnt=2):
 
     return response_str.strip('"')
 
-def chat_agent(query, detection, use_bedrock="True"):
+def chat_agent(query, detection):
 
     msg = {
       "params": {
         "query": query,
         "detection": detection 
-      },
-      "use_bedrock" : use_bedrock,
-      "llm_model_name" : "claude-v2"
+      }
     }
     response = lambda_client.invoke(FunctionName="Chat_Agent",
                                            InvocationType='RequestResponse',
@@ -1060,30 +1058,6 @@ def get_chat_history(inputs) -> str:
         res.append(f"{A_Role}:{human}\n{B_Role}:{ai}")
     return "\n".join(res)
 
-# def create_soft_refuse_template(prompt_template):
-#     if prompt_template == '':
-#         # prompt_template_zh = """{system_role_prompt} {role_bot}\n请根据反引号中的内容提取相关信息回答问题:\n```\n{chat_history}{context}\n```\n如果反引号中信息不相关,则回答不知道.\n用户:{question}"""
-#         prompt_template_zh = \
-# """{system_role_prompt}{role_bot}请根据以下的知识，回答用户的问题。
-# <context>
-# {context}
-# </context> 
-# 如果知识中的内容的包含markdown格式的内容，如参考图片，示意图，链接等，请尽可能利用并按markdown格式输出参考图片，示意图，链接。请严格基于跟问题相关的知识来回答问题，不要随意发挥和编造答案。请简洁有条理的回答，如果知识内容为空或者跟问题不相关，则回答不知道。
-# 前几轮的聊天记录如下，如果有需要请参考以下的记录。
-# <chat_history>
-# {chat_history} 
-# </chat_history>
-# Skip the preamble, go straight into the answer.
-# 用户问:{question} """
-#     else:
-#         prompt_template_zh = prompt_template
-#     PROMPT = PromptTemplate(
-#         template=prompt_template_zh,
-#         partial_variables={'system_role_prompt':SYSTEM_ROLE_PROMPT},
-#         input_variables=["context",'question','chat_history','role_bot']
-#     )
-#     return PROMPT
-
 def create_qa_prompt_templete(prompt_template):
     if prompt_template == '':
         prompt_template_zh = \
@@ -1107,8 +1081,8 @@ Once again, the user's query is:
 
 Please put your answer between <response> tags and follow below requirements:
 - Respond in the original language of the question.
-- Maintain a friendly and conversational tone. 
-- Skip the preamble, go straight into the answer. Don't say anything else.
+- Please try you best to leverage the image and hyperlink provided in <information>, you need to keep them in Markdown format.
+- Skip the preamble, go straight into the answer. The answers will strictly be based on relevant knowledge in <information>.
 - if the information is empty or not relevant to user's query, then reponse don't know.
 {ask_user_prompt}
 Assistant: <response>"""
@@ -1149,13 +1123,7 @@ Assistant: <response>"""
 def create_chat_prompt_templete(prompt_template='', llm_model_name='claude'):
     PROMPT = None
     if llm_model_name.startswith('claude'):
-        prompt_template_zh = """Human: {system_role_prompt}{role_bot}. Your goal is to be kind and helpful to users.
-You should maintain a friendly customer service tone.
-Here are some important rules for the interaction:
-- Always stay in character, as {role_bot}
-- If you are unsure how to respond, say “Sorry, I didn’t understand that. Could you repeat the question?”
-- Be polite and patient
-Here is the conversation history (between the user and you) prior to the question. It could be empty if there is no history:
+        prompt_template_zh = """Human: {system_role_prompt}{role_bot}Here is the conversation history (between the user and you) prior to the question. It could be empty if there is no history:
 <history> {chat_history} </history>
 Here is the user’s question: <question> {question} </question>
 How do you respond to the user’s question?
@@ -1177,58 +1145,6 @@ Assistant: <response>"""
             input_variables=['question','chat_history','role_bot']
         )
     return PROMPT
-
-def create_assist_prompt_templete(prompt_template='', llm_model_name='claude'):
-    PROMPT = None
-    if llm_model_name.startswith('claude'):
-        prompt_template_zh = """Human: You will be acting as an AI Assistant named {role_bot}. Your goal is to answer users' question and help them finish their work.
-You should maintain a friendly customer service tone.
-Here are some important rules for the interaction:
-- Always stay in character, as {role_bot}
-- If you are unsure how to respond, say “Sorry, I didn’t understand that. Could you repeat the question?”
-
-Here is the conversation history (between the user and you) prior to the question. It could be empty if there is no history:
-<history> {chat_history} </history>
-Here is the user’s question: <question> {question} </question>
-How do you respond to the user’s question?
-Think about your answer first before you respond. Put your response in <response></response> tags.
-Assistant: <response>"""
-        PROMPT = PromptTemplate(
-            template=prompt_template_zh, 
-            input_variables=['question', 'chat_history','role_bot']
-        )
-    else:
-        if prompt_template == '':
-            prompt_template_zh = """Human:{question}\n"""
-        else:
-            prompt_template_zh = prompt_template.replace('{context}','') ##remove{context}
-        PROMPT = PromptTemplate(
-            template=prompt_template_zh, 
-            input_variables=['question','chat_history','role_bot']
-        )
-    return PROMPT
-
-# def get_bedrock_aksk(secret_name='chatbot_bedrock', region_name = os.environ.get('bedrock_region',"us-west-2") ):
-#     # Create a Secrets Manager client
-#     session = boto3.session.Session()
-#     client = session.client(
-#         service_name='secretsmanager',
-#         region_name=region_name
-#     )
-
-#     try:
-#         get_secret_value_response = client.get_secret_value(
-#             SecretId=secret_name
-#         )
-#     except ClientError as e:
-#         # For a list of exceptions thrown, see
-#         # https://docs.aws.amazon.com/secretsmanager/latest/apireference/API_GetSecretValue.html
-#         raise e
-
-#     # Decrypts secret using the associated KMS key.
-#     secret = json.loads(get_secret_value_response['SecretString'])
-#     return secret['BEDROCK_ACCESS_KEY'],secret['BEDROCK_SECRET_KEY']
-
 
 def format_reference(recall_knowledge):
     if not recall_knowledge:
@@ -1458,17 +1374,12 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
         reply_stratgy = ReplyStratgy.LLM_ONLY
         prompt_template = None
         answer = ''
-        if intention == 'chat':
-            prompt_template = create_chat_prompt_templete(llm_model_name=llm_model_name)
-            llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
-            answer = llmchain.run({'question':query_input,'chat_history':chat_history,'role_bot':B_Role})
-            final_prompt = prompt_template.format(question=query_input,role_bot=B_Role,chat_history=chat_history)
-        elif intention == 'assist':
-            prompt_template = create_assist_prompt_templete(llm_model_name=llm_model_name)
-            llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
-            answer = llmchain.run({'question':query_input,'chat_history':chat_history,'role_bot':B_Role})
-            final_prompt = prompt_template.format(question=query_input, role_bot=B_Role,chat_history=chat_history)
 
+        prompt_template = create_chat_prompt_templete(llm_model_name=llm_model_name)
+        llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
+        answer = llmchain.run({'question':origin_query,'chat_history':chat_history,'role_bot':B_Role})
+        final_prompt = prompt_template.format(question=origin_query,role_bot=B_Role,chat_history=chat_history)
+        
         recall_knowledge,opensearch_knn_respose,opensearch_query_response = [],[],[]
 
     elif intention == 'QA': ##如果使用QA
@@ -1609,10 +1520,8 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
         #call agent for other intentions
         TRACE_LOGGER.trace('**Using Agent...**')
         reply_stratgy = ReplyStratgy.AGENT
-        use_bedrock = "False"
-        if llm_model_name.startswith('claude'):
-            use_bedrock = "True"
-        answer,ref_doc = chat_agent(query_input, detection, use_bedrock=use_bedrock)
+
+        answer,ref_doc = chat_agent(query_input, detection)
         recall_knowledge,opensearch_knn_respose,opensearch_query_response = [ref_doc],[],[]
         TRACE_LOGGER.add_ref(f'\n\n**Refer to {len(recall_knowledge)} knowledge:**')
         TRACE_LOGGER.add_ref(f"**[1]** {ref_doc}")
