@@ -62,20 +62,19 @@ def extract_content(content: str):
         
         
 def create_rewrite_prompt_templete():
-    # prompt_template = """Given the following conversation and a follow up question, rephrase the follow up question to be a standalone question, in its original language. don't translate the chat history and input. \n\nChat History:\n{history}\nFollow Up Input: {cur_query}\nStandalone question:"""
-    prompt_template =  """
-    Given the following conversation in <chat_history></chat_history>and a follow up user question in <question></question>..
-    <chat_history>
-     {history}
-    </chat_history>
+    prompt_template =  """Given the following conversation in <chat_history></chat_history>and a follow up user question in <question></question>..
+<chat_history>
+{history}
+</chat_history>
 
-    <question>
-    {cur_query}
-    </question>
+<question>
+{cur_query}
+</question>
 
-    please use the context in the chat history to rephrase the user question to be a standalone question, respond in the original language of user's question, don't translate the chat history and user question.
-    if you don't understand the follow up question, or the question is not relevant to the chat history. please keep the orginal question.
-    Skip the preamble, don't explain, go straight into the answer. response your answer in tag <standalone_question></<standalone_question>
+please use the context in the chat history to rephrase the user question to be a standalone question, respond in the original language of user's question, don't translate the chat history and user question.
+if you don't understand the follow up question, or the question is not relevant to the chat history. please keep the orginal question.
+Skip the preamble, don't explain, go straight into the answer. response your answer in tag <standalone_question></<standalone_question>
+Assistant:<standalone_question>
     """
     PROMPT = PromptTemplate(
         template=prompt_template, 
@@ -118,9 +117,9 @@ def lambda_handler(event, context):
     llm_model_endpoint = os.environ.get('llm_model_endpoint')
     llm_model_name = event.get('llm_model_name', None)
     params = event.get('params')
-    use_bedrock = event.get('use_bedrock')
-    role_a = event.get('role_a', 'H')
-    role_b = event.get('role_b', 'A')
+    use_bedrock = True if llm_model_endpoint.startswith('anthropic') or llm_model_endpoint.startswith('claude') else False
+    role_a = event.get('role_a', 'user')
+    role_b = event.get('role_b', 'AI')
     
     logger.info("region:{}".format(region))
     logger.info("params:{}".format(params))
@@ -134,6 +133,7 @@ def lambda_handler(event, context):
 
     history_with_role = [ "{}: {}".format(role_a if idx % 2 == 0 else role_b, item) for idx, item in enumerate(history) ]
     history_str = "\n".join(history_with_role)
+    history_str += f'\n{role_a}: {query}'
 
     parameters = {
         "temperature": 0.01,
@@ -155,22 +155,21 @@ def lambda_handler(event, context):
         )
     
         parameters = {
-            "max_tokens_to_sample": 100,
-            "stop_sequences": ["\n\n"],
+            "max_tokens_to_sample": 1000,
+            "stop_sequences": ["\n\n",'</standalone_question>'],
             "temperature":0.01,
             "top_p":1
         }
         
-        model_id = BEDROCK_LLM_MODELID_LIST[llm_model_name] if llm_model_name == 'claude-instant' else BEDROCK_LLM_MODELID_LIST['claude-v2']
+        model_id = BEDROCK_LLM_MODELID_LIST.get(llm_model_endpoint, llm_model_endpoint)
         llm = Bedrock(model_id=model_id, client=boto3_bedrock, model_kwargs=parameters)
 
     prompt_template = create_rewrite_prompt_templete()
     prompt = prompt_template.format(history=history_str, cur_query=query)
-    
     llmchain = LLMChain(llm=llm, verbose=False, prompt=prompt_template)
     answer = llmchain.run({'history':history_str, "cur_query":query})
-    log_dict = { "history" : history, "answer" : answer , "cur_query": query, "prompt":prompt }
+    log_dict = { "history" : history, "answer" : answer , "cur_query": query, "prompt":prompt, "model_id" : llm_model_endpoint }
     log_dict_str = json.dumps(log_dict, ensure_ascii=False)
     logger.info(log_dict_str)
         
-    return extract_content(answer)
+    return answer

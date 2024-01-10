@@ -2,3 +2,6 @@
 	path = chatbotFE
 	url = https://github.com/xiehust/chatbotFE.git
 	branch = main
+[submodule "Agent_Pydantic_Lambda"]
+	path = Agent_Pydantic_Lambda
+	url = https://github.com/ybalbert001/Agent_Pydantic_Lambda.git

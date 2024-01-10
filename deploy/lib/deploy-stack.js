@@ -167,8 +167,6 @@ export class DeployStack extends Stack {
       architecture: Architecture.X86_64,
       environment: {
         aos_endpoint:opensearch_endpoint,
-        Kendra_index_id:process.env.Kendra_index_id ,
-        Kendra_result_num:process.env.Kendra_result_num ,
         aos_index:process.env.aos_index ,
         aos_knn_field:process.env.aos_knn_field ,
         aos_results:process.env.aos_results ,
@@ -186,7 +184,7 @@ export class DeployStack extends Stack {
         rerank_threshold_soft:'-2',
         websearch_threshold_soft:'1',
         lambda_feedback:"lambda_feedback",
-        intention_list:"ec2_price,service_role,service_availability",
+        intention_list:"ec2_price,service_role,get_contact",
         neighbors:process.env.neighbors,
         TOP_K:process.env.TOP_K,
         GOOGLE_API_KEY:process.env.GOOGLE_API_KEY,
@@ -228,7 +226,7 @@ export class DeployStack extends Stack {
         index_name:"chatbot-example-index" ,
         aos_knn_field:process.env.aos_knn_field,
         embedding_endpoint:process.env.embedding_endpoint,
-        llm_model_endpoint:"anthropic.claude-v2:1",
+        llm_model_endpoint:"anthropic.claude-instant-v1",
         region:region
       },
     }));
@@ -244,7 +242,9 @@ export class DeployStack extends Stack {
           "es:*",
           "dynamodb:*",
           "secretsmanager:GetSecretValue",
-          "bedrock:*"
+          "bedrock:*",
+          "pricing:GetProducts",
+          "lambda:InvokeFunction"
           ],
         effect: iam.Effect.ALLOW,
         resources: ['*'],
