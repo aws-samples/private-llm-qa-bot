@@ -16,7 +16,7 @@ def get_session_by_msgid(session_id,msg_id,user_id):
 
     # table name
     table = dynamodb_client.Table(chat_session_table)
-    operation_result = []
+    operation_result = None
     try:
         response = table.get_item(Key={'session-id': session_id,'user_id':user_id})
         if "Item" in response.keys():
@@ -31,7 +31,7 @@ def get_qa_by_msgid(session_id,msg_id):
 
     # table name
     table = dynamodb_client.Table(user_feedback_table)
-    operation_result = []
+    operation_result = None
     try:
         response = table.get_item(Key={'session-id': session_id,'msgid':msg_id})
         if "Item" in response.keys():
@@ -42,20 +42,23 @@ def get_qa_by_msgid(session_id,msg_id):
 
 
 ## update feedback table 
-def update_qa_status(session_id,msg_id,status):
+def update_qa_status(session_id,msg_id,status,username):
     table = dynamodb_client.Table(user_feedback_table)
     operation_result = False
     try:
         response = table.get_item(Key={'session-id': session_id,'msgid':msg_id})
         if "Item" in response.keys():
-            result = json.loads(response["Item"]["content"])
-            content = json.dumps([{**result[0],"action":status}],ensure_ascii=False)
+            payload = json.loads(response["Item"]["content"])
+            if payload.get(username):
+                payload[username] = {**payload[username],"action":status}
+
+            # content = json.dumps([{**result[0],"action":status}],ensure_ascii=False)
 
             response2 = table.put_item(
                 Item={
                     'session-id': session_id,
                     'msgid':msg_id,
-                    'content': content
+                    'content': json.dumps(payload,ensure_ascii=False)
                 }
             )
             if "ResponseMetadata" in response2.keys():
@@ -75,11 +78,17 @@ def update_qa_status(session_id,msg_id,status):
 
 def update_feedback(session_id,msgid,action,username,timestamp,feedback=''):
 
-    chat_data = get_session_by_msgid(session_id,msgid,username)
+    ## 如果是lark 群聊，则从sessionid中取出user name
+    if session_id.startswith('lark_chat_group'):
+        chat_data = get_session_by_msgid(session_id,msgid,session_id.split('_')[-1])
+    else:
+        chat_data = get_session_by_msgid(session_id,msgid,username)
 
     if not chat_data:
         print('No chat data found')
         return False 
+    
+    print(chat_data)
     
     question, answer = chat_data[0][0],chat_data[0][1]
 
@@ -88,13 +97,11 @@ def update_feedback(session_id,msgid,action,username,timestamp,feedback=''):
 
     response = table.get_item(Key={'session-id': session_id,"msgid":msgid})
 
-    # if "Item" in response.keys():
-    #     chat_history = json.loads(response["Item"]["content"])
-    # else:
-    #     # print("****** No result")
-        # chat_history = []
-    chat_history = []
-    feedback = {
+    payload = {}
+    if "Item" in response.keys():
+        payload = json.loads(response["Item"]["content"])
+    
+    payload[username] = {
         "question":question,
         "answer":answer,
         "username":username,
@@ -102,8 +109,7 @@ def update_feedback(session_id,msgid,action,username,timestamp,feedback=''):
         "timestamp":timestamp,
         "feedback":feedback
     }
-    chat_history.append(feedback)
-    content = json.dumps(chat_history,ensure_ascii=False)
+    content = json.dumps(payload,ensure_ascii=False)
 
     # inserting values into table
     response = table.put_item(
@@ -146,16 +152,24 @@ def get_feedback(pageindex,textfilter,pagesize,filteringTokens,filteringOperatio
     return items,exclusive_start_key,total_cnt
 
 def filteringActionResults(items,filteringTokens,filteringOperation):
-    print('filteringTokens:',filteringTokens)
-
+    # print('items:',items)
     tokens  = json.loads(filteringTokens)
-    if not tokens:
-        return items
-    propertyKey = tokens[0].get('propertyKey')
-    if propertyKey != 'action':
-        return items
-    value =  tokens[0].get('value')
-    new_items = [it for it in items if json.loads(it['content'])[-1]['action'] == value]
+    new_items = []
+    if not tokens or tokens[0].get('propertyKey') != 'action':
+        for item in items:
+            new_items += [{**payload,'msgid':item['msgid'],'session-id':item['session-id']} for payload in json.loads(item['content']).values()]
+        # return [payload_value for payload in items for payload_value in payload.values()]
+    else:
+        value =  tokens[0].get('value')
+        for item in items:
+            new_items += [{**payload,'msgid':item['msgid'],'session-id':item['session-id']} for payload in json.loads(item['content']).values() if payload['action'] == value]
+        # return [payload_value for payload in items for payload_value in payload.values() if payload_value['action'] == value]
+    # new_items = []
+    # for payload in items: 
+    #     value =  tokens[0].get('value')
+    #     new_items = [item for item in payload.values() ]
+    
+    # # new_items = [it for it in items if json.loads(it['content'])[-1]['action'] == value]
     print(new_items)
     return new_items
     
@@ -163,8 +177,8 @@ def filteringActionResults(items,filteringTokens,filteringOperation):
 ##add new qa pair     
 def add_new_qa(session_id,msgid,action,username,timestamp,question,answer):
     table = dynamodb_client.Table(user_feedback_table)
-    chat_history = []
-    feedback = {
+    payload = {}
+    payload[username] = {
         "question":question,
         "answer":answer,
         "username":username,
@@ -172,8 +186,7 @@ def add_new_qa(session_id,msgid,action,username,timestamp,question,answer):
         "timestamp":timestamp,
         "feedback":answer
     }
-    chat_history.append(feedback)
-    content = json.dumps(chat_history,ensure_ascii=False)
+    content = json.dumps(payload,ensure_ascii=False)
 
     # inserting values into table
     response = table.put_item(
@@ -232,13 +245,13 @@ def delete_qa(session_id,msgid):
 
 
  ##把faq知识入库，从ddb中取出faq，写入到知识库中
-def inject_new_qa(session_id,msgid,bucket_name,s3_prefix,action):
+def inject_new_qa(session_id,msgid,bucket_name,s3_prefix,action,username):
     chat_data = get_qa_by_msgid(session_id,msgid)
     if not chat_data:
         logger.error('No chat data found')
         return False
 
-    question, answer,username = chat_data[0]['question'],chat_data[0]['feedback'],chat_data[0]['username']
+    question, answer = chat_data[username]['question'],chat_data[username]['feedback']
     formatted_qa = 'Question: {}\nAnswer: {}\n'.format(question,answer)
     logger.info(f"formatted_qa:{formatted_qa}")
     bucket_name = os.environ.get('UPLOAD_BUCKET') if bucket_name == '' or bucket_name == None else bucket_name
@@ -252,7 +265,7 @@ def inject_new_qa(session_id,msgid,bucket_name,s3_prefix,action):
         s3_prefix = f'{s3_prefix}{username}/'
     )
     if operation_result:
-        operation_result = update_qa_status(session_id,msgid,status=action)
+        operation_result = update_qa_status(session_id,msgid,action,username)
 
     return operation_result
 
@@ -281,7 +294,7 @@ def lambda_handler(event, context):
         elif action == 'injected':
             bucket_name = event.get('s3_bucket')
             s3_prefix = event.get('obj_prefix')
-            ret = inject_new_qa(session_id,msgid,bucket_name,s3_prefix,action)
+            ret = inject_new_qa(session_id,msgid,bucket_name,s3_prefix,action,username)
 
         else:
             ret = update_feedback(session_id,msgid,action,username,timestamp,feedback)
