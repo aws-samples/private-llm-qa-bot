@@ -1061,7 +1061,7 @@ def get_chat_history(inputs) -> str:
 def create_qa_prompt_templete(prompt_template):
     if prompt_template == '':
         prompt_template_zh = \
-"""Human: {system_role_prompt}{role_bot}, here is a query:
+"""Human: {system_role_prompt}{role_bot}Here is a query:
 {chat_history}
 <query>
 {question}
@@ -1079,12 +1079,13 @@ Once again, the user's query is:
 {question}
 </query>
 
-Please put your answer between <response> tags and follow below requirements:
+Please put your answer between <response> tags and follow below requirements:{ask_user_prompt}
 - Respond in the original language of the question.
 - Please try you best to leverage the image and hyperlink provided in <information>, you need to keep them in Markdown format.
+- Do not directly reference the content of <information> in your answer.
 - Skip the preamble, go straight into the answer. The answers will strictly be based on relevant knowledge in <information>.
 - if the information is empty or not relevant to user's query, then reponse don't know.
-{ask_user_prompt}
+
 Assistant: <response>"""
     else:
         prompt_template_zh = prompt_template + '{ask_user_prompt}'
@@ -1503,8 +1504,10 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
 
             # context = "\n".join([doc['doc'] for doc in recall_knowledge])
             context, multi_choice_field = format_knowledges(recall_knowledge)
-            ask_user_prompts = [ f"- If you are not sure about which {field} user ask for, please ask user to clarify it, don't say anything else." for field in multi_choice_field ]
+            ask_user_prompts = [ f"- If you are not sure about which {field} user ask for, please ask user to clarify it before giving any answer, don't say anything else." for field in multi_choice_field ]
             ask_user_prompts_str = "\n".join(ask_user_prompts)
+            if len(ask_user_prompts_str) > 0:
+                ask_user_prompts_str = f"\n{ask_user_prompts_str}\n"
 
             chat_history = '' ##QA 场景下先不使用history
             ##最终的answer
