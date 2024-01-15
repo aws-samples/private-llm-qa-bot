@@ -24,3 +24,4 @@ aws s3 cp ../docs/intentions $kd_path --recursive
 aws s3 cp ../docs/aws_cleanroom.faq $kd_path
 aws s3 cp ../docs/aws_emr.faq $kd_path
 aws s3 cp ../docs/aws_msk.faq $kd_path
+aws s3 cp ../docs/ask_user_faq.xlsx $kd_path
