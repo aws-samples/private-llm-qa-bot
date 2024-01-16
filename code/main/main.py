@@ -1523,6 +1523,10 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
             recall_knowledge_docs = [ item.get('doc') for item in recall_knowledge]
             answer_with_ref = add_reference(answer, recall_knowledge_docs)
             answer = render_answer_with_ref(answer_with_ref)
+            logger.info("recall_knowledge_docs:")
+            logger.info(recall_knowledge_docs)
+            logger.info("answer:")
+            logger.info(answer)
             # print(answer)
     else:
         #call agent for other intentions
