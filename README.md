@@ -101,7 +101,7 @@
 
 **Q4:** 基础设施的费用如何？
 
-**A4:** 由于生产环境的数据和并发，仅仅基于测试环境给出一些数据供参考。整个方案大部份属于serverless架构，大部份服务组件(Bedrock, Glue, Lambda等)按照用量进行付费，在我们之前的经验中，大部份服务费用占比很低。其中SageMaker, OpenSearch的费用占比较高, 
+**A4:** 由于生产环境的数据和并发，仅仅基于测试环境给出一些数据供参考。整个方案大部份属于serverless架构，大部份服务组件(Bedrock, Glue, Lambda等)按照用量进行付费，在我们之前的经验中，大部份服务费用占比很低。其中SageMaker, OpenSearch的费用占比较高(90%+),  SageMaker在海外是optional的，如果不需要部署独立的rerank模型，则不需要。OpenSearch的费用跟机型相关，具体参考 https://aws.amazon.com/cn/opensearch-service/pricing/，方案中默认的机型2 * r6g.large.search的费用是USD 0.167/hour，可以相应的调整机型降低费用。
 
 <br>
 
@@ -119,7 +119,7 @@
 
 ## 交流&获取帮助
 
-- 加入微信群
+- 加入微信群<br>
   ![wechat](./wechat.png)
 
 <br>
