@@ -23,7 +23,7 @@ credentials = boto3.Session().get_credentials()
 lambda_client= boto3.client('lambda')
 BEDROCK_REGION = None
 BEDROCK_LLM_MODELID_LIST = {'claude-instant':'anthropic.claude-instant-v1',
-                            'claude-v2':'anthropic.claude-v2:1'}
+                            'claude-v2':'anthropic.claude-v2'}
 REFUSE_ANSWER = '对不起, 根据{func_name}({args}),没有查询到您想要的信息，请您更具体的描述下您的要求.'
 
 ERROR_ANSWER = """
@@ -115,17 +115,25 @@ CONTEXT_TEMPLATE = """
         Question: {question}
         """
         
-Enhanced_TEMPLATE = """Human: You are acting as an AWS assistant, according to user question in <question>, you call API to get the response in <api_response>.
-<question>{question}</question>
+Enhanced_TEMPLATE = \
+"""Human:You are acting as an AWS assistant, to response user's question in <query> tag, you call the corresponding API to get the response in <api_response>.
+the user's query is:
+<query>
+{question}
+</query>
 <api_response>
 {context}
 </api_response>
-Please answer user's question in <answer>, and follow below requirements:
+Once again, the user's query is:
+<query>
+{question}
+</query>
+Please put your answer between <response> tags and follow below requirements:
 1. Respond in the original language of the question.
 2. If there is no relevant information in message, you should reply user that you can't find any information by his original question, don't say anything else.
-3. if suggestion is provided and is not empty,  you should suggest user to ask by referring suggestion. If no suggestion is empty, don't say anything else.
-3. Do not begin with phrases like "API", skip the preamble, go straight into the answer. 
-Assistant: <answer>"""
+3. if suggestion is provided and is not empty, you should suggest user to ask by referring suggestion. If no suggestion is empty, don't say anything else.
+4. Do not begin with phrases like "API", skip the preamble, go straight into the answer. 
+Assistant: <response>"""
 
 class AgentTools(BaseModel):
     function_map: dict = {}
@@ -333,7 +341,7 @@ def lambda_handler(event, context):
     
         parameters = {
             "max_tokens_to_sample": 8096,
-            "stop_sequences": ["\nObservation"],
+            "stop_sequences": ["</response>"],
             "temperature":0.01,
             "top_p":0.85
         }

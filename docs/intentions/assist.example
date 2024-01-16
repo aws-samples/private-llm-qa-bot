@@ -1,0 +1,134 @@
+{
+    "api_schema":{
+        "name": "assist",
+        "description": "assist user to do some office work"
+    },
+    "examples":[
+        {
+            "query":"翻译：在中国背景下，创业意向影响因素可划分为两层次(个体特质水平和个体资源水平)六维度(成就动机，风险承担，自主性，创业回馈，资源获得和未来就业)",
+            "detection":{
+                "func":"assist"
+            }
+        },
+        {
+            "query":"你是一个英语学术论文写作专家，以下是一篇论文中的一段内容，请先对齐进行翻译，并将此部分润色以满足学术标准，提高语法,清晰度和整体可读性",
+            "detection":{
+                "func":"assist"
+            }
+        },
+        {
+            "query":"帮我写一段工作小结，以下是我的一些工作内容:...",
+            "detection":{
+                "func":"assist"
+            }
+        },
+        {
+            "query":"帮我写一个PPT大纲，用于年中汇报",
+            "detection":{
+                "func":"assist"
+            }
+        },
+        {
+            "query":"翻译成中文：Bought In Team",
+            "detection":{
+                "func":"assist"
+            }
+        },
+        {
+            "query":"改写得更简练，但是要适合口述演讲，不能机械化",
+            "detection":{
+                "func":"assist"
+            }
+        },
+        {
+            "query":"翻译：场景化解决方案的最佳实践大力促进了genai在类似客户里的推广",
+            "detection":{
+                "func":"assist"
+            }
+        },
+        {
+            "query":"revise to be more readable",
+            "detection":{
+                "func":"assist"
+            }
+        },
+        {
+            "query":"把下面的readme翻译成英文：本项目为一个基于Amazon Bedrock，Amazon SageMaker，Amazon RDS和Amazon Opensearch实现的轻量级的Text2SQL Agent的Workshop：包括Plan-and-Execute Agent和ReAct两种不同的实现。",
+            "detection":{
+                "func":"assist"
+            }
+        },
+        {
+            "query":"translate into english: lxq_voc_gen.csv是option1需要用到的数据，lxq_cm_gen_raw.csv是option2需要用到的数据",
+            "detection":{
+                "func":"assist"
+            }
+        },
+        {
+            "query":"pydantic 中文意思",
+            "detection":{
+                "func":"assist"
+            }
+        },
+        {
+            "query":"给我一段脚本，实现连接mysql数据库",
+            "detection":{
+                "func":"assist"
+            }
+        },
+        {
+            "query":"英文怎么说：中文大语言模型",
+            "detection":{
+                "func":"assist"
+            }
+        },
+        {
+            "query":"summarize into one",
+            "detection":{
+                "func":"assist"
+            }
+        },
+        {
+            "query":"refine below documentation to be more formal",
+            "detection":{
+                "func":"assist"
+            }
+        },
+        {
+            "query":"帮我写一段适用于sdxl生成图片的prompt，要求效果好",
+            "detection":{
+                "func":"assist"
+            }
+        },
+        {
+            "query":"帮我写一段适用于sdxl生成“运动会”图片的prompt，要求效果好，用英文",
+            "detection":{
+                "func":"assist"
+            }
+        },
+        {
+            "query":"帮我把下面的文本整理成markdown格式",
+            "detection":{
+                "func":"assist"
+            }
+        },
+        {
+            "query":"竞品 英文",
+            "detection":{
+                "func":"assist"
+            }
+        },
+        {
+            "query":"代码生成 英文",
+            "detection":{
+                "func":"assist"
+            }
+        },
+        {
+            "query":"错误归因 英文",
+            "detection":{
+                "func":"assist"
+            }
+        }
+    ]
+}
