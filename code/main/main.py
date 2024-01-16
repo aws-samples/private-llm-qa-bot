@@ -1519,15 +1519,6 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
             ##最终的prompt日志
             final_prompt = prompt_template.format(question=query_input,role_bot=B_Role,context=context,chat_history=chat_history,ask_user_prompt=ask_user_prompts_str)
             # print(final_prompt)
-
-            recall_knowledge_docs = [ item.get('doc') for item in recall_knowledge]
-            answer_with_ref = add_reference(answer, recall_knowledge_docs)
-            answer = render_answer_with_ref(answer_with_ref)
-            logger.info("recall_knowledge_docs:")
-            logger.info(recall_knowledge_docs)
-            logger.info("answer:")
-            logger.info(answer)
-            # print(answer)
     else:
         #call agent for other intentions
         TRACE_LOGGER.trace('**Using Agent...**')
