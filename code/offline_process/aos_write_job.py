@@ -59,7 +59,7 @@ def get_embedding_bedrock(texts,model_id):
     provider = model_id.split(".")[0]
     if provider == "cohere":
         body = json.dumps({
-            "texts": [texts] if isinstance(texts, str) else texts,
+            "texts": [texts] if isinstance(texts, str) else [text[:2048] for text in texts],
             "input_type": "search_document"
         })
     else:
