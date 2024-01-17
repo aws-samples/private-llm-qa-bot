@@ -80,7 +80,7 @@ def get_embedding_bedrock(texts,model_id):
         body = json.dumps({
             "texts": [texts[:2048]] if isinstance(texts, str) else [text[:2048] for text in texts],
             "input_type": "search_document",
-            "truncate":"RIGHT" ## 该参数目前不起作用，只能通过text[:2048]来截断
+            # "truncate":"RIGHT" ## 该参数目前不起作用，只能通过text[:2048]来截断
         })
     else:
         # includes common provider == "amazon"
