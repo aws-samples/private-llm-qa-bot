@@ -2,7 +2,7 @@
 
 OPENSEARCH_ENDPOINT="$1"
 DIMENSION="$2"
-COMPANY="$3"
+COMPANY="${3:-default}"
 
 payload1="{
     \"settings\" : {

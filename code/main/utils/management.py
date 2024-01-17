@@ -147,7 +147,7 @@ def delete_template(key):
 ## 2. if lambda_feedback is setup, then call lambda_feedback for other managment operations
 def handle_feedback(event):
     method = event.get('method')
-    company = event.get('company')
+    company = event.get('company','default')
     logger.info(f'handle_feedback:{method} {company}')
     ##invoke feedback lambda to store in ddb
     fn = os.environ.get('lambda_feedback')
