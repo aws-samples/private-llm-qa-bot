@@ -60,9 +60,9 @@ class BedrockCohereEmbeddings(Embeddings):
         self, texts: List[str], chunk_size: int = 1
     ) -> List[List[float]]:
         input_body = {}
-        input_body["texts"] = texts
+        input_body["texts"] = [text[:2048] for text in texts],
         input_body["input_type"] = 'search_document'
-        input_body["truncate"] = 'RIGHT'
+        # input_body["truncate"] = 'RIGHT'
         body = json.dumps(input_body)
         content_type = "application/json"
         accepts = "application/json"
@@ -84,9 +84,9 @@ class BedrockCohereEmbeddings(Embeddings):
 
     def embed_query(self, text: str) -> List[float]:
         input_body = {}
-        input_body["texts"] = [ text ]
+        input_body["texts"] = [ text[:2048] ]
         input_body["input_type"] = 'search_query'
-        input_body["truncate"] = 'RIGHT'
+        # input_body["truncate"] = 'RIGHT'
         body = json.dumps(input_body)
         content_type = "application/json"
         accepts = "application/json"
