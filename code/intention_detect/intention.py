@@ -178,8 +178,9 @@ def lambda_handler(event, context):
     embedding_endpoint = os.environ.get('embedding_endpoint')
     region = os.environ.get('region')
     aos_endpoint = os.environ.get('aos_endpoint')
-    index_name = os.environ.get('index_name')
+    # index_name = os.environ.get('index_name')
     query = event.get('query')
+    index_name = event.get('example_index')
     fewshot_cnt = event.get('fewshot_cnt')
     llm_model_endpoint = os.environ.get('llm_model_endpoint', BEDROCK_LLM_MODELID_LIST["claude-v2"])
     

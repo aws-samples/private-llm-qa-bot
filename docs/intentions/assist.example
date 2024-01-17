@@ -129,6 +129,24 @@
             "detection":{
                 "func":"assist"
             }
+        },
+        {
+            "query":"请翻译成中文",
+            "detection":{
+                "func":"assist"
+            }
+        },
+        {
+            "query":"please translate to chinese",
+            "detection":{
+                "func":"assist"
+            }
+        },
+        {
+            "query":"请翻译",
+            "detection":{
+                "func":"assist"
+            }
         }
     ]
 }

@@ -2,6 +2,7 @@
 
 OPENSEARCH_ENDPOINT="$1"
 DIMENSION="$2"
+COMPANY="$3"
 
 payload1="{
     \"settings\" : {
@@ -46,6 +47,9 @@ payload1="{
             \"doc_meta\": {
                 \"type\": \"keyword\"
             },
+            \"doc_classify\": {
+                \"type\": \"keyword\"
+            },
             \"embedding\": {
                 \"type\": \"knn_vector\",
                 \"dimension\": ${DIMENSION},
@@ -64,9 +68,9 @@ payload1="{
 }"
 
 # 创建chatbot-index索引
-echo $payload1
-curl -XDELETE "$OPENSEARCH_ENDPOINT/chatbot-index" -H "Content-Type: application/json"
-curl -XPUT "$OPENSEARCH_ENDPOINT/chatbot-index" -H "Content-Type: application/json" -d "$payload1"
+echo $payload1 
+curl -XDELETE "$OPENSEARCH_ENDPOINT/chatbot-index-$COMPANY" -H "Content-Type: application/json"
+curl -XPUT "$OPENSEARCH_ENDPOINT/chatbot-index-$COMPANY" -H "Content-Type: application/json" -d "$payload1"
 
 payload2="{
    \"settings\" : {
@@ -116,5 +120,5 @@ payload2="{
 
 # 创建chatbot-index索引
 echo $payload2
-curl -XDELETE "$OPENSEARCH_ENDPOINT/chatbot-example-index" -H "Content-Type: application/json"
-curl -XPUT "$OPENSEARCH_ENDPOINT/chatbot-example-index" -H "Content-Type: application/json" -d "$payload2"
+curl -XDELETE "$OPENSEARCH_ENDPOINT/chatbot-example-index-$COMPANY" -H "Content-Type: application/json"
+curl -XPUT "$OPENSEARCH_ENDPOINT/chatbot-example-index-$COMPANY" -H "Content-Type: application/json" -d "$payload2"

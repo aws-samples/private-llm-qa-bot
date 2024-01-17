@@ -692,8 +692,8 @@ def handle_error(func):
 
     return wrapper
 
-def detect_intention(query, fewshot_cnt=5):
-    msg = {"fewshot_cnt":fewshot_cnt, "query": query}
+def detect_intention(query, example_index='chatbot-example-index',fewshot_cnt=5):
+    msg = {"fewshot_cnt":fewshot_cnt, "query": query,"example_index":example_index}
     invoke_response = lambda_client.invoke(FunctionName="Detect_Intention",
                                            InvocationType='RequestResponse',
                                            Payload=json.dumps(msg))
@@ -1160,7 +1160,7 @@ def format_reference(recall_knowledge):
     return text
 
 def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:str, embedding_model_endpoint:str, llm_model_endpoint:str, llm_model_name:str, aos_endpoint:str, aos_index:str, aos_knn_field:str, aos_result_num:int, kendra_index_id:str, 
-                   kendra_result_num:int,use_qa:bool,wsclient=None,msgid:str='',max_tokens:int = 2048,temperature:float = 0.1,template:str = '',imgurl:str = None,multi_rounds:bool = False, hide_ref:bool = False,use_stream:bool=False):
+                   kendra_result_num:int,use_qa:bool,wsclient=None,msgid:str='',max_tokens:int = 2048,temperature:float = 0.1,template:str = '',imgurl:str = None,multi_rounds:bool = False, hide_ref:bool = False,use_stream:bool=False,example_index:str='chatbot-example-index'):
     """
     Entry point for the Lambda function.
 
@@ -1338,7 +1338,7 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
     if use_qa and not cache_answer and len(other_intentions) > 0 and len(other_intentions[0]) > 1:
         before_detect = time.time()
         TRACE_LOGGER.trace(f'**Detecting intention...**')
-        detection = detect_intention(query_input, fewshot_cnt=5)
+        detection = detect_intention(query_input,example_index, fewshot_cnt=5)
         intention = detection['func']
         elpase_time_detect = time.time() - before_detect
         logger.info(f'detection: {detection}')
@@ -1632,6 +1632,14 @@ def lambda_handler(event, context):
     msgid = event.get('msgid')
     max_tokens = event.get('max_tokens',2048)
     temperature =  event.get('temperature',0.1)
+    aos_index = os.environ.get("aos_index", "")
+    company = event.get("company",'default')
+    example_index = "chatbot-example-index"
+    if company != 'default':
+        aos_index = f'chatbot-index-{company}'
+        example_index = f'chatbot-example-index-{company}'
+        
+    
     imgurl = event.get('imgurl')
     image_path = ''
     if imgurl:
@@ -1646,7 +1654,7 @@ def lambda_handler(event, context):
     if retrieve_only:
         doc_retriever = CustomDocRetriever.from_endpoints(embedding_model_endpoint=embedding_endpoint,
                                     aos_endpoint= os.environ.get("aos_endpoint", ""),
-                                    aos_index=os.environ.get("aos_index", ""))
+                                    aos_index=aos_index)
         recall_knowledge,opensearch_knn_respose,opensearch_query_response = doc_retriever.get_relevant_documents_custom(question) 
         extra_info = {"query_input": question, "opensearch_query_response" : opensearch_query_response, "opensearch_knn_respose": opensearch_knn_respose,"recall_knowledge":recall_knowledge }
         return {
@@ -1678,7 +1686,6 @@ def lambda_handler(event, context):
 
     # embedding_endpoint = os.environ.get("embedding_endpoint", "")
     aos_endpoint = os.environ.get("aos_endpoint", "")
-    aos_index = os.environ.get("aos_index", "")
     aos_knn_field = os.environ.get("aos_knn_field", "")
     aos_result_num = int(os.environ.get("aos_results", 4))
 
@@ -1689,7 +1696,7 @@ def lambda_handler(event, context):
 
     ##如果指定了prompt 模板
     if template_id and template_id != 'default':
-        prompt_template = get_template(template_id)
+        prompt_template = get_template(template_id,company)
         prompt_template = '' if prompt_template is None else prompt_template['template']['S']
     logger.info(f'user_id : {user_id}')
     logger.info(f'prompt_template_id : {template_id}')
@@ -1710,7 +1717,7 @@ def lambda_handler(event, context):
 
     main_entry_start = time.time()  # 或者使用 time.time_ns() 获取纳秒级别的时间戳
     answer,ref_text,use_stream,query_input,opensearch_query_response,opensearch_knn_respose,recall_knowledge = main_entry_new(user_id,wsconnection_id,session_id, question, embedding_endpoint, llm_endpoint, model_name, aos_endpoint, aos_index, aos_knn_field, aos_result_num,
-                       Kendra_index_id, Kendra_result_num,use_qa,wsclient,msgid,max_tokens,temperature,prompt_template,image_path,multi_rounds,hide_ref,use_stream)
+                       Kendra_index_id, Kendra_result_num,use_qa,wsclient,msgid,max_tokens,temperature,prompt_template,image_path,multi_rounds,hide_ref,use_stream,example_index)
     main_entry_elpase = time.time() - main_entry_start  # 或者使用 time.time_ns() 获取纳秒级别的时间戳
     logger.info(f'running time of main_entry : {main_entry_elpase}s seconds')
     if use_stream: ##只有当stream输出时，把这条trace放到最后一个chunk
