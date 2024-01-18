@@ -23,6 +23,8 @@ credentials = boto3.Session().get_credentials()
 BEDROCK_EMBEDDING_MODELID_LIST = ["cohere.embed-multilingual-v3","cohere.embed-english-v3","amazon.titan-embed-text-v1"]
 BEDROCK_LLM_MODELID_LIST = {'claude-instant':'anthropic.claude-instant-v1',
                             'claude-v2':'anthropic.claude-v2:1'}
+SIMS_THRESHOLD= float(os.environ.get('intent_detection_threshold',0.7))
+
 
 from typing import Any, Dict, List, Optional
 from langchain.embeddings.base import Embeddings
@@ -222,8 +224,14 @@ def lambda_handler(event, context):
         metadata_field='*'
     )
 
-    docs_simple = [ {"query" : doc[0].page_content, "detection" : doc[0].metadata['detection'], "api_schema" : doc[0].metadata['api_schema'], "score":doc[1]} for doc in docs]
+    docs_simple = [ {"query" : doc[0].page_content, "detection" : doc[0].metadata['detection'], "api_schema" : doc[0].metadata['api_schema'], "score":doc[1]} for doc in docs if doc[1]>=SIMS_THRESHOLD]
 
+    #如果没有召回到example，则默认走QA，通过QA阶段的策略去判断，召回内容的是否跟问题相关，如果不相关则走chat
+    if not docs_simple:
+        answer = {"func":"QA"}
+        logger.info(f"Notice: No Intention detected, return default:{json.dumps(answer,ensure_ascii=False)}")
+        return answer
+    
     example_list = [ "<query>{}</query>\n<output>{}</output>".format(doc['query'], json.dumps(doc['detection'], ensure_ascii=False)) for doc in docs_simple ]
 
     api_schema_list = [ doc['api_schema'] for doc in docs_simple]
@@ -289,7 +297,7 @@ def lambda_handler(event, context):
     #         if opt in answer:
     #             answer = opt
     #             break
-    ret = {"func":"chat"}
+    ret = {"func":"QA"}
     try:
         ret = json.loads(answer)
     except Exception as e:

@@ -181,6 +181,7 @@ export class DeployStack extends Stack {
         knn_qq_threshold_soft:'0.8',
         knn_qd_threshold_hard:'0.7',
         knn_qd_threshold_soft:'0.8',
+        intent_detection_threshold:'0.7',
         rerank_threshold_soft:'-2',
         websearch_threshold_soft:'1',
         lambda_feedback:"lambda_feedback",
