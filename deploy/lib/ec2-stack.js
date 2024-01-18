@@ -58,6 +58,7 @@ export class Ec2Stack extends NestedStack {
     role: role
   });
 
+  ec2Instance.applyRemovalPolicy(cdk.RemovalPolicy.RETAIN);
   // Create an asset that will be used as part of User Data to run on first load
   const asset = new Asset(this, 'UserdataAsset', { path: path.join(__dirname, '../ec2config.sh') });
   const localPath = ec2Instance.userData.addS3DownloadCommand({
