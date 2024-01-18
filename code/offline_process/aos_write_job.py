@@ -315,12 +315,12 @@ def iterate_QA(file_content, object_key,doc_classify,smr_client, index_name, end
         embeddings_q = get_embedding(smr_client, questions, endpoint_name)
 
         for i in range(len(embeddings_q)):
-            document = { "publish_date": publish_date, "doc" : questions[i], "idx": idx,"doc_type" : "Question", "content" : docs[i], "doc_title": doc_title,"doc_author":authors[i] if authors[i] else doc_author, "doc_category": doc_category, "doc_classify":doc_classify, "embedding" : embeddings_q[i]}
+            document = { "publish_date": publish_date, "doc" : questions[i], "idx": idx,"doc_type" : "Question", "content" : docs[i], "doc_title": doc_title,"doc_author":authors[i] if authors[i] else doc_author, "doc_category": doc_category, "doc_classify":doc_classify, "doc_meta": json.dumps(meta[i], ensure_ascii=False),"embedding" : embeddings_q[i]}
             yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document).encode('utf-8')).hexdigest()}
 
         embeddings_a = get_embedding(smr_client, answers, endpoint_name)
         for i in range(len(embeddings_a)):
-            document = { "publish_date": publish_date, "doc" : answers[i], "idx": idx,"doc_type" : "Paragraph", "content" : docs[i], "doc_title": doc_title,"doc_author":authors[i] if authors[i] else doc_author, "doc_category": doc_category,"doc_classify":doc_classify,"embedding" : embeddings_a[i]}
+            document = { "publish_date": publish_date, "doc" : answers[i], "idx": idx,"doc_type" : "Paragraph", "content" : docs[i], "doc_title": doc_title,"doc_author":authors[i] if authors[i] else doc_author, "doc_category": doc_category,"doc_classify":doc_classify,"doc_meta": json.dumps(meta[i], ensure_ascii=False),"embedding" : embeddings_a[i]}
             yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document).encode('utf-8')).hexdigest()}
 
 def iterate_examples(file_content, object_key, smr_client, index_name, endpoint_name):
