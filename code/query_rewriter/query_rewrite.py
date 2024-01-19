@@ -133,7 +133,7 @@ def lambda_handler(event, context):
 
     history_with_role = [ "{}: {}".format(role_a if idx % 2 == 0 else role_b, item) for idx, item in enumerate(history) ]
     history_str = "\n".join(history_with_role)
-    history_str += f'\n{role_a}: {query}'
+    # history_str += f'\n{role_a}: {query}'
 
     parameters = {
         "temperature": 0.01,
