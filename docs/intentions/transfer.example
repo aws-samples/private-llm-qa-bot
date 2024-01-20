@@ -1,0 +1,44 @@
+{
+    "api_schema":{
+        "name": "transfer",
+        "description": "transfer the conversation to manual customer service"
+    },
+    "examples":[
+        {
+            "query":"转人工",
+            "detection":{
+                "func":"transfer"
+            }
+        },
+        {
+            "query":"转真人来服务",
+            "detection":{
+                "func":"transfer"
+            }
+        },
+        {
+            "query":"给我转人工服务",
+            "detection":{
+                "func":"transfer"
+            }
+        },
+        {
+            "query":"人工客服",
+            "detection":{
+                "func":"transfer"
+            }
+        },
+        {
+            "query":"怎么转人工",
+            "detection":{
+                "func":"transfer"
+            }
+        },
+        {
+            "query":"转人工坐席",
+            "detection":{
+                "func":"transfer"
+            }
+        }
+    ]
+}

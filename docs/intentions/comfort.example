@@ -1,0 +1,44 @@
+{
+    "api_schema":{
+        "name": "comfort",
+        "description": "comfort user to mitigate their bad emotion"
+    },
+    "examples":[
+        {
+            "query":"你们的服务烂透了",
+            "detection":{
+                "func":"comfort"
+            }
+        },
+        {
+            "query":"你这个系统弱智啊",
+            "detection":{
+                "func":"comfort"
+            }
+        },
+        {
+            "query":"到底行不行，不行别浪费时间",
+            "detection":{
+                "func":"comfort"
+            }
+        },
+        {
+            "query":"无语了，没见过这么垃圾的玩意",
+            "detection":{
+                "func":"comfort"
+            }
+        },
+        {
+            "query":"回复的什么乱七八糟的",
+            "detection":{
+                "func":"comfort"
+            }
+        },
+        {
+            "query":"傻逼",
+            "detection":{
+                "func":"comfort"
+            }
+        }
+    ]
+}
