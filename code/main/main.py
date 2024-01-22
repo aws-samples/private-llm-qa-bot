@@ -577,7 +577,7 @@ class CustomDocRetriever(BaseRetriever):
                               (item['score'] > KNN_QQ_THRESHOLD_HARD_REFUSE and item['doc_type'] == 'Sentence')]
         filter_inverted_result = [ item for item in opensearch_query_response if item['score'] > BM25_QD_THRESHOLD_HARD_REFUSE ]
 
-
+        recall_knowledge = []
         ##是否使用rerank
         cross_model_endpoint = CROSS_MODEL_ENDPOINT
         if cross_model_endpoint:
