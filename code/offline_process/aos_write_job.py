@@ -608,7 +608,11 @@ def load_content_json_from_s3(bucket, object_key, content_type, credentials):
     else:
         s3 = boto3.resource('s3')
         obj = s3.Object(bucket,object_key)
-        file_content = obj.get()['Body'].read().decode('utf-8', errors='ignore').strip()
+        if content_type != 'xlsx':
+            file_content = obj.get()['Body'].read().decode('utf-8', errors='ignore').strip()
+        else:
+            # binrary mode
+            file_content = obj.get()['Body'].read()
         try:
             if content_type == 'faq':
                 json_content = parse_faq_to_json(file_content)
