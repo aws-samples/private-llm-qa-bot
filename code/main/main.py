@@ -518,7 +518,7 @@ class CustomDocRetriever(BaseRetriever):
                              'doc_classify':'web_search','doc_type':'web_search','score':0.8,'doc_author':item['link']} for item in all_docs]
         return recall_knowledge
     
-    def get_relevant_documents_custom(self, query_input: str):
+    def get_relevant_documents_custom(self, query_input: str,use_search:bool = True):
         global BM25_QD_THRESHOLD_HARD_REFUSE, BM25_QD_THRESHOLD_SOFT_REFUSE
         global KNN_QQ_THRESHOLD_HARD_REFUSE, KNN_QQ_THRESHOLD_SOFT_REFUSE,WEBSEARCH_THRESHOLD
         global KNN_QD_THRESHOLD_HARD_REFUSE, KNN_QD_THRESHOLD_SOFT_REFUSE
@@ -623,7 +623,7 @@ class CustomDocRetriever(BaseRetriever):
                 recall_knowledge = [{**all_docs[idx],'rank_score':scores[idx] } for idx in sorted_indices[-TOP_K:] ] 
                 
                 ## 引入web search结果重新排序
-                if max(scores) < WEBSEARCH_THRESHOLD:
+                if max(scores) < WEBSEARCH_THRESHOLD and use_search:
                     web_knowledge = self.get_websearch_documents(query_input)
                     if web_knowledge:
                         search_scores = self.rerank(query_input, web_knowledge,sm_client,cross_model_endpoint)
@@ -637,7 +637,7 @@ class CustomDocRetriever(BaseRetriever):
                         #添加到原有的知识里,并过滤到原来知识中的低分item
                         recall_knowledge += sorted_web_knowledge
                         recall_knowledge = [item for item in  recall_knowledge if item['rank_score'] >= RERANK_THRESHOLD]
-            else:
+            elif use_search:
                 ##如果没有找到知识，则直接搜索
                 web_knowledge = self.get_websearch_documents(query_input)
                 if web_knowledge:
@@ -1160,7 +1160,7 @@ def format_reference(recall_knowledge):
     return text
 
 def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:str, embedding_model_endpoint:str, llm_model_endpoint:str, llm_model_name:str, aos_endpoint:str, aos_index:str, aos_knn_field:str, aos_result_num:int, kendra_index_id:str, 
-                   kendra_result_num:int,use_qa:bool,wsclient=None,msgid:str='',max_tokens:int = 2048,temperature:float = 0.1,template:str = '',imgurl:str = None,multi_rounds:bool = False, hide_ref:bool = False,use_stream:bool=False,example_index:str='chatbot-example-index'):
+                   kendra_result_num:int,use_qa:bool,wsclient=None,msgid:str='',max_tokens:int = 2048,temperature:float = 0.1,template:str = '',imgurl:str = None,multi_rounds:bool = False, hide_ref:bool = False,use_stream:bool=False,example_index:str='chatbot-example-index',use_search:bool=True):
     """
     Entry point for the Lambda function.
 
@@ -1191,7 +1191,8 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
             "kendra_doc": [],
             "knowledges" : [],
             "detect_query_type": '',
-            "LLM_input": ''
+            "LLM_input": '',
+            "use_search":use_search
         }
         json_obj['user_id'] = user_id
         json_obj['session_id'] = session_id
@@ -1407,7 +1408,7 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
             recall_knowledge = doc_retriever.get_relevant_documents_from_bedrock(KNOWLEDGE_BASE_ID, query_input)
         else:
             TRACE_LOGGER.trace('**Retrieving knowledge from OpenSearch...**')
-            recall_knowledge, opensearch_knn_respose, opensearch_query_response = doc_retriever.get_relevant_documents_custom(query_input) 
+            recall_knowledge, opensearch_knn_respose, opensearch_query_response = doc_retriever.get_relevant_documents_custom(query_input,use_search) 
 
         elpase_time = time.time() - start
         logger.info(f'running time of opensearch_query : {elpase_time:.3f}s seconds')
@@ -1543,7 +1544,8 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
         "knowledges" : recall_knowledge,
         "LLM_input": final_prompt,
         "LLM_model_name": llm_model_name,
-        "reply_stratgy" : reply_stratgy.name
+        "reply_stratgy" : reply_stratgy.name,
+        "use_search":use_search,
     }
     json_obj['user_id'] = user_id
     json_obj['session_id'] = session_id
@@ -1609,6 +1611,7 @@ def lambda_handler(event, context):
     global openai_api_key
     openai_api_key = event.get('OPENAI_API_KEY') 
     hide_ref = event.get('hide_ref',False)
+    feature_config = event.get('feature_config','')
     retrieve_only = event.get('retrieve_only',False)
     session_id = event['chat_name']
     wsconnection_id = event.get('wsconnection_id',session_id)
@@ -1689,6 +1692,9 @@ def lambda_handler(event, context):
     if template_id and template_id != 'default':
         prompt_template = get_template(template_id,company)
         prompt_template = '' if prompt_template is None else prompt_template['template']['S']
+    
+    use_search = False if feature_config == 'search_disabled' else True
+    logger.info(f'use_search : {use_search}')
     logger.info(f'user_id : {user_id}')
     logger.info(f'prompt_template_id : {template_id}')
     logger.info(f'prompt_template : {prompt_template}')
@@ -1708,7 +1714,7 @@ def lambda_handler(event, context):
 
     main_entry_start = time.time()  # 或者使用 time.time_ns() 获取纳秒级别的时间戳
     answer,ref_text,use_stream,query_input,opensearch_query_response,opensearch_knn_respose,recall_knowledge = main_entry_new(user_id,wsconnection_id,session_id, question, embedding_endpoint, llm_endpoint, model_name, aos_endpoint, aos_index, aos_knn_field, aos_result_num,
-                       Kendra_index_id, Kendra_result_num,use_qa,wsclient,msgid,max_tokens,temperature,prompt_template,image_path,multi_rounds,hide_ref,use_stream,example_index)
+                       Kendra_index_id, Kendra_result_num,use_qa,wsclient,msgid,max_tokens,temperature,prompt_template,image_path,multi_rounds,hide_ref,use_stream,example_index,use_search)
     main_entry_elpase = time.time() - main_entry_start  # 或者使用 time.time_ns() 获取纳秒级别的时间戳
     logger.info(f'running time of main_entry : {main_entry_elpase}s seconds')
     if use_stream: ##只有当stream输出时，把这条trace放到最后一个chunk
@@ -1737,6 +1743,7 @@ def lambda_handler(event, context):
         'headers': {'Content-Type': 'application/json'},
         'body': [{"id": str(uuid.uuid4()),
                   "use_stream":use_stream,
+                  "query":query_input,
                              "created": request_timestamp,
                              "useTime": time.time() - request_timestamp,
                              "model": "main_brain",
