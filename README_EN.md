@@ -120,3 +120,4 @@ A production-level knowledge question-and-answer chatbot implementation based on
 
 - [Full version - bilibili](https://www.bilibili.com/video/BV1HN4y1D7vy/?vd_source=2cb87d8dd3ca4ea778f5468be12405b3)
 - [Short version - bilibili](https://www.bilibili.com/video/BV1KW4y1P7yR/?spm_id_from=333.999.0.0&vd_source=511a28c6a49e890567f0de77abde6e02)
+- [Lark version - bilibili](https://www.bilibili.com/video/BV15T4y1h7th/?vd_source=511a28c6a49e890567f0de77abde6e02)

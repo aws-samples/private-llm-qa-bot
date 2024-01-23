@@ -609,7 +609,7 @@ class CustomDocRetriever(BaseRetriever):
                               (item['score'] > KNN_QQ_THRESHOLD_HARD_REFUSE and item['doc_type'] == 'Sentence')]
         filter_inverted_result = [ item for item in opensearch_query_response if item['score'] > BM25_QD_THRESHOLD_HARD_REFUSE ]
 
-
+        recall_knowledge = []
         ##是否使用rerank
         cross_model_endpoint = CROSS_MODEL_ENDPOINT
         if cross_model_endpoint:
@@ -1427,14 +1427,14 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
 
         def get_reply_stratgy(recall_knowledge):
             if not recall_knowledge:
-                stratgy = ReplyStratgy.SAY_DONT_KNOW ##如果希望LLM利用自有知识回答，则改成LLM_ONLY
+                stratgy = ReplyStratgy.LLM_ONLY ##如果希望LLM利用自有知识回答，则改成LLM_ONLY,否则SAY_DONT_KNOW
                 return stratgy
 
             ## 如果使用了rerank模型
             if CROSS_MODEL_ENDPOINT:
                 rank_score = [item['rank_score'] for item in recall_knowledge]
                 if max(rank_score) < RERANK_THRESHOLD:  ##如果所有的知识都不超过rank score阈值
-                    return ReplyStratgy.SAY_DONT_KNOW ##如果希望LLM利用自有知识回答，则改成LLM_ONLY
+                    return ReplyStratgy.LLM_ONLY ##如果希望LLM利用自有知识回答，则改成LLM_ONLY，否则SAY_DONT_KNOW
                 else:
                     return ReplyStratgy.WITH_LLM
             else:
@@ -1457,14 +1457,6 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
                         else:
                             stratgy = ReplyStratgy(min(ReplyStratgy.RETURN_OPTIONS.value, stratgy.value))
                 return stratgy
-
-        # def choose_prompt_template(stratgy:Enum, template:str, llm_model_name:str):
-        #     if stratgy in [ ReplyStratgy.WITH_LLM,ReplyStratgy.HINT_LLM_REFUSE ]:
-        #         return create_qa_prompt_templete(template)
-        #     else:
-        #         raise RuntimeError(
-        #             "unsupported startgy..."
-        #         )
 
         reply_stratgy = get_reply_stratgy(recall_knowledge)
 
