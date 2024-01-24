@@ -1382,6 +1382,11 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
         recall_knowledge,opensearch_knn_respose,opensearch_query_response = doc_retriever.get_relevant_documents_custom(query_input,use_search) 
         elpase_time = time.time() - start
         logger.info(f'running time of opensearch_query : {elpase_time:.3f}s seconds')
+        
+        reply_stratgy = get_reply_stratgy(recall_knowledge)
+        if reply_stratgy == ReplyStratgy.LLM_ONLY:
+            recall_knowledge = [] ##如果只用LLM则将知识置为空
+                
         TRACE_LOGGER.trace(f'**Running time of retrieving knowledge : {elpase_time:.3f}s**')
         TRACE_LOGGER.trace(f'**Retrieved {len(recall_knowledge)} knowledge:**')
         TRACE_LOGGER.add_ref(f'\n\n**Refer to {len(recall_knowledge)} knowledge:**')
@@ -1394,9 +1399,6 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
             #doc 太长之后进行截断
             TRACE_LOGGER.add_ref(f"{item['doc'][:500]}{'...' if len(item['doc'])>500 else ''}") 
         TRACE_LOGGER.trace('**Answer:**')
-
-
-        reply_stratgy = get_reply_stratgy(recall_knowledge)
 
         if exactly_match_result and recall_knowledge:
             answer = exactly_match_result[0]["doc"]

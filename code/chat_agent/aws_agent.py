@@ -15,6 +15,7 @@ import requests
 from pydantic import BaseModel
 from tools.get_price import query_ec2_price
 from tools.service_org_demo import service_org
+from tools.query_aws_price import query_aws_service_price
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -346,12 +347,15 @@ def lambda_handler(event, context):
             "top_p":0.85
         }
 
-        model_id = "anthropic.claude-v2"
+        model_id = "anthropic.claude-v2" 
+        # model_id = "anthropic.claude-instant-v1"
         llm = Bedrock(model_id=model_id, client=boto3_bedrock, model_kwargs=parameters)
 
     agent_tools = AgentTools(api_schema=API_SCHEMA,llm=llm)
     agent_tools.register_tool(name='ec2_price',func=query_ec2_price)
     agent_tools.register_tool(name='service_org',func=service_org)
+    agent_tools.register_tool(name='aws_service_price',func=query_aws_service_price)
+
 
     if agent_lambdas and len(agent_lambdas) > 0:
         agent_lambda_list = agent_lambdas.split(',')
@@ -399,12 +403,15 @@ def lambda_handler(event, context):
 
 ##for local test only
 if __name__ == '__main__':
+    import time
+    t1 = time.time()
     parser = argparse.ArgumentParser()
-    parser.add_argument("--query", type=str, default='查询g4dn在美西2的价格')
+    parser.add_argument("--query", type=str, default='查询KinesisFirehose在美东1的价格')
     args = parser.parse_args()
     query = args.query
-    # event = {'params':{'query':query},'use_bedrock':True}
 
-    event = {'params':{'query':query,'detection':{'func':'web_search'}},'use_bedrock':True}
+    event = {'params':{'query':query,'detection':{'func':'aws_service_price', "param": {"service_code": "AmazonKinesisFirehose",
+    "region_name": "us-east-1"}}}}
     response = lambda_handler(event,{})
     print(response['body'])
+    print(f'cost time :{(time.time()-t1):.2f}s')

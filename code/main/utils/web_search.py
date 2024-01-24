@@ -20,7 +20,7 @@ GOOGLE_CSE_ID=os.environ.get('GOOGLE_CSE_ID',None)
 
 class GoogleSearchTool():
     tool:Tool
-    topk:int = 10
+    topk:int = 5
     
     def __init__(self,top_k=10):  
         self.topk = top_k
@@ -89,7 +89,7 @@ def add_webpage_content(snippet_results):
             continue
         page_content = remove_html_tags(result)
         final_results.append({**snippet_results[i],
-                              'doc':snippet_results[i]['doc']+'\n'+page_content
+                              'doc':snippet_results[i]['doc']+'\n'+page_content[:10000] ##增加长度限制
                               })
     return final_results
 

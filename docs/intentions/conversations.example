@@ -13,6 +13,14 @@
         "detection":{"func":"chat"}
     },
     {
+        "query":"你好，你是谁",
+        "detection":{"func":"chat"}
+    },
+    {
+        "query":"请介绍下你自己",
+        "detection":{"func":"chat"}
+    },
+    {
         "query":"你好吗?",
         "detection":{"func":"chat"}
     },
@@ -78,10 +86,6 @@
     },
     {
         "query":"中国首都是哪？",
-        "detection":{"func":"chat"}
-    },
-    {
-        "query":"今天心情有点糟",
         "detection":{"func":"chat"}
     }
 ]
