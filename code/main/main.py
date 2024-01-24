@@ -1410,20 +1410,7 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
             TRACE_LOGGER.trace('**Retrieving knowledge from OpenSearch...**')
             recall_knowledge, opensearch_knn_respose, opensearch_query_response = doc_retriever.get_relevant_documents_custom(query_input) 
 
-        elpase_time = time.time() - start
-        logger.info(f'running time of opensearch_query : {elpase_time:.3f}s seconds')
-        TRACE_LOGGER.trace(f'**Running time of retrieving knowledge : {elpase_time:.3f}s**')
-        TRACE_LOGGER.trace(f'**Retrieved {len(recall_knowledge)} knowledge:**')
-        TRACE_LOGGER.add_ref(f'\n\n**Refer to {len(recall_knowledge)} knowledge:**')
 
-        ##添加召回文档到refdoc和tracelog, 按score倒序展示
-        for sn,item in enumerate(recall_knowledge[::-1]):
-            TRACE_LOGGER.trace(f"**[{sn+1}] [{item['doc_title']}] [{item['doc_classify']}] [{item['score']:.3f}] [{item['rank_score']:.3f}] author:[ {item['doc_author']} ]**")
-            TRACE_LOGGER.trace(f"{item['doc']}")
-            TRACE_LOGGER.add_ref(f"**[{sn+1}] [{item['doc_title']}] [{item['doc_classify']}] [{item['score']:.3f}] [{item['rank_score']:.3f}] author:[ {item['doc_author']} ]**")
-            #doc 太长之后进行截断
-            TRACE_LOGGER.add_ref(f"{item['doc'][:500]}{'...' if len(item['doc'])>500 else ''}") 
-        TRACE_LOGGER.trace('**Answer:**')
 
         def get_reply_stratgy(recall_knowledge):
             if not recall_knowledge:
@@ -1458,7 +1445,26 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
                             stratgy = ReplyStratgy(min(ReplyStratgy.RETURN_OPTIONS.value, stratgy.value))
                 return stratgy
 
+        elpase_time = time.time() - start
+        logger.info(f'running time of opensearch_query : {elpase_time:.3f}s seconds')
+        TRACE_LOGGER.trace(f'**Running time of retrieving knowledge : {elpase_time:.3f}s**')
+        
         reply_stratgy = get_reply_stratgy(recall_knowledge)
+        if reply_stratgy == ReplyStratgy.LLM_ONLY:
+            TRACE_LOGGER.trace('**No relevant knowledge kept...**')
+            recall_knowledge = []
+        else:
+            TRACE_LOGGER.trace(f'**Retrieved {len(recall_knowledge)} knowledge:**')
+            TRACE_LOGGER.add_ref(f'\n\n**Refer to {len(recall_knowledge)} knowledge:**')
+
+        ##添加召回文档到refdoc和tracelog, 按score倒序展示
+        for sn,item in enumerate(recall_knowledge[::-1]):
+            TRACE_LOGGER.trace(f"**[{sn+1}] [{item['doc_title']}] [{item['doc_classify']}] [{item['score']:.3f}] [{item['rank_score']:.3f}] author:[ {item['doc_author']} ]**")
+            TRACE_LOGGER.trace(f"{item['doc']}")
+            TRACE_LOGGER.add_ref(f"**[{sn+1}] [{item['doc_title']}] [{item['doc_classify']}] [{item['score']:.3f}] [{item['rank_score']:.3f}] author:[ {item['doc_author']} ]**")
+            #doc 太长之后进行截断
+            TRACE_LOGGER.add_ref(f"{item['doc'][:500]}{'...' if len(item['doc'])>500 else ''}") 
+        TRACE_LOGGER.trace('**Answer:**')
 
         if exactly_match_result and recall_knowledge:
             answer = exactly_match_result[0]["doc"]
@@ -1480,8 +1486,6 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
                 TRACE_LOGGER.postMessage(answer)
                 
         elif reply_stratgy == ReplyStratgy.LLM_ONLY: ##走LLM默认知识
-            TRACE_LOGGER.trace('**Using Non-RAG Chat...**')
-            TRACE_LOGGER.trace('**Answer:**')
             prompt_template = create_chat_prompt_templete()
             hide_ref= True ## 隐藏ref doc
             llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
