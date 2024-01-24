@@ -183,7 +183,7 @@ export class DeployStack extends Stack {
         knn_qd_threshold_soft:'0.8',
         intent_detection_threshold:'0.7',
         rerank_threshold_soft:'-2',
-        websearch_threshold_soft:'1',
+        websearch_threshold_soft:'0',
         lambda_feedback:"lambda_feedback",
         intention_list:"ec2_price,service_role,get_contact",
         neighbors:process.env.neighbors,

@@ -70,7 +70,7 @@ def web_search(**args):
     if not GOOGLE_API_KEY or not GOOGLE_CSE_ID:
         logger.info('Missing google API key')
         return []
-    tool = GoogleSearchTool(top_k=args.get('top_k',10))
+    tool = GoogleSearchTool(top_k=5)
     result = tool.run(args['query'])
     # 异常情况返回这个结果[{'Result': 'No good Google Search Result was found'}]
     return [item for item in result if 'title' in item and 'link' in item and 'snippet' in item]
