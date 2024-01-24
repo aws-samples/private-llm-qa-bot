@@ -1159,6 +1159,40 @@ def format_reference(recall_knowledge):
     text += '\n```'
     return text
 
+def get_reply_stratgy(recall_knowledge):
+    if not recall_knowledge:
+        stratgy = ReplyStratgy.LLM_ONLY ##如果希望LLM利用自有知识回答，则改成LLM_ONLY,否则SAY_DONT_KNOW
+        return stratgy
+
+    ## 如果使用了rerank模型
+    if CROSS_MODEL_ENDPOINT:
+        rank_score = [item['rank_score'] for item in recall_knowledge]
+        if max(rank_score) < RERANK_THRESHOLD:  ##如果所有的知识都不超过rank score阈值
+            return ReplyStratgy.LLM_ONLY ##如果希望LLM利用自有知识回答，则改成LLM_ONLY，否则SAY_DONT_KNOW
+        else:
+            return ReplyStratgy.WITH_LLM
+    else:
+        ##使用rerank之后，不需要这些策略
+        stratgy = ReplyStratgy.RETURN_OPTIONS
+        for item in recall_knowledge:
+            if item['score'] > 1.0:
+                if item['score'] > BM25_QD_THRESHOLD_SOFT_REFUSE:
+                    stratgy = ReplyStratgy.WITH_LLM
+                elif item['score'] > BM25_QD_THRESHOLD_HARD_REFUSE:
+                    stratgy = ReplyStratgy(min(ReplyStratgy.HINT_LLM_REFUSE.value, stratgy.value))
+                else:
+                    stratgy = ReplyStratgy(min(ReplyStratgy.RETURN_OPTIONS.value, stratgy.value))
+
+            elif item['score'] <= 1.0:
+                if item['score'] > KNN_QD_THRESHOLD_SOFT_REFUSE:
+                    stratgy = ReplyStratgy.WITH_LLM
+                elif item['score'] > KNN_QD_THRESHOLD_HARD_REFUSE:
+                    stratgy = ReplyStratgy(min(ReplyStratgy.HINT_LLM_REFUSE.value, stratgy.value))
+                else:
+                    stratgy = ReplyStratgy(min(ReplyStratgy.RETURN_OPTIONS.value, stratgy.value))
+        return stratgy
+            
+            
 def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:str, embedding_model_endpoint:str, llm_model_endpoint:str, llm_model_name:str, aos_endpoint:str, aos_index:str, aos_knn_field:str, aos_result_num:int, kendra_index_id:str, 
                    kendra_result_num:int,use_qa:bool,wsclient=None,msgid:str='',max_tokens:int = 2048,temperature:float = 0.1,template:str = '',imgurl:str = None,multi_rounds:bool = False, hide_ref:bool = False,use_stream:bool=False,example_index:str='chatbot-example-index',use_search:bool=True):
     """
@@ -1412,6 +1446,11 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
 
         elpase_time = time.time() - start
         logger.info(f'running time of opensearch_query : {elpase_time:.3f}s seconds')
+        
+        reply_stratgy = get_reply_stratgy(recall_knowledge)
+        if reply_stratgy == ReplyStratgy.LLM_ONLY: 
+            recall_knowledge = []
+            
         TRACE_LOGGER.trace(f'**Running time of retrieving knowledge : {elpase_time:.3f}s**')
         TRACE_LOGGER.trace(f'**Retrieved {len(recall_knowledge)} knowledge:**')
         TRACE_LOGGER.add_ref(f'\n\n**Refer to {len(recall_knowledge)} knowledge:**')
@@ -1424,41 +1463,6 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
             #doc 太长之后进行截断
             TRACE_LOGGER.add_ref(f"{item['doc'][:500]}{'...' if len(item['doc'])>500 else ''}") 
         TRACE_LOGGER.trace('**Answer:**')
-
-        def get_reply_stratgy(recall_knowledge):
-            if not recall_knowledge:
-                stratgy = ReplyStratgy.LLM_ONLY ##如果希望LLM利用自有知识回答，则改成LLM_ONLY,否则SAY_DONT_KNOW
-                return stratgy
-
-            ## 如果使用了rerank模型
-            if CROSS_MODEL_ENDPOINT:
-                rank_score = [item['rank_score'] for item in recall_knowledge]
-                if max(rank_score) < RERANK_THRESHOLD:  ##如果所有的知识都不超过rank score阈值
-                    return ReplyStratgy.LLM_ONLY ##如果希望LLM利用自有知识回答，则改成LLM_ONLY，否则SAY_DONT_KNOW
-                else:
-                    return ReplyStratgy.WITH_LLM
-            else:
-                ##使用rerank之后，不需要这些策略
-                stratgy = ReplyStratgy.RETURN_OPTIONS
-                for item in recall_knowledge:
-                    if item['score'] > 1.0:
-                        if item['score'] > BM25_QD_THRESHOLD_SOFT_REFUSE:
-                            stratgy = ReplyStratgy.WITH_LLM
-                        elif item['score'] > BM25_QD_THRESHOLD_HARD_REFUSE:
-                            stratgy = ReplyStratgy(min(ReplyStratgy.HINT_LLM_REFUSE.value, stratgy.value))
-                        else:
-                            stratgy = ReplyStratgy(min(ReplyStratgy.RETURN_OPTIONS.value, stratgy.value))
-
-                    elif item['score'] <= 1.0:
-                        if item['score'] > KNN_QD_THRESHOLD_SOFT_REFUSE:
-                            stratgy = ReplyStratgy.WITH_LLM
-                        elif item['score'] > KNN_QD_THRESHOLD_HARD_REFUSE:
-                            stratgy = ReplyStratgy(min(ReplyStratgy.HINT_LLM_REFUSE.value, stratgy.value))
-                        else:
-                            stratgy = ReplyStratgy(min(ReplyStratgy.RETURN_OPTIONS.value, stratgy.value))
-                return stratgy
-
-        reply_stratgy = get_reply_stratgy(recall_knowledge)
 
         if exactly_match_result and recall_knowledge:
             answer = exactly_match_result[0]["doc"]
