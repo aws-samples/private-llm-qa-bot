@@ -285,6 +285,7 @@ def lambda_handler(event, context):
     llmchain = LLMChain(llm=llm, verbose=False, prompt=prompt_template)
     answer = llmchain.run({"api_schemas":api_schema_str, "examples": example_list_str, "query":query, "prefix" : prefix})
     answer = prefix + answer.strip()
+    answer = answer.replace('</output>', '')
 
     log_dict = { "prompt" : prompt, "answer" : answer , "examples": docs_simple }
     log_dict_str = json.dumps(log_dict, ensure_ascii=False)
