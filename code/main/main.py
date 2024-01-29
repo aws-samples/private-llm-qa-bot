@@ -1159,16 +1159,28 @@ def format_reference(recall_knowledge):
     text += '\n```'
     return text
 
-def get_reply_stratgy(recall_knowledge):
-    if not recall_knowledge:
-        stratgy = ReplyStratgy.LLM_ONLY ##如果希望LLM利用自有知识回答，则改成LLM_ONLY,否则SAY_DONT_KNOW
+def get_reply_stratgy(recall_knowledge,refuse_strategy:str):
+    if not recall_knowledge:##如果希望LLM利用自有知识回答，则改成LLM_ONLY,否则SAY_DONT_KNOW
+        if refuse_strategy == 'SAY_DONT_KNOW':
+            stratgy = ReplyStratgy.SAY_DONT_KNOW
+        elif refuse_strategy == 'WITH_LLM':
+            stratgy = ReplyStratgy.WITH_LLM
+        else:
+            stratgy = ReplyStratgy.LLM_ONLY 
         return stratgy
 
     ## 如果使用了rerank模型
     if CROSS_MODEL_ENDPOINT:
         rank_score = [item['rank_score'] for item in recall_knowledge]
         if max(rank_score) < RERANK_THRESHOLD:  ##如果所有的知识都不超过rank score阈值
-            return ReplyStratgy.LLM_ONLY ##如果希望LLM利用自有知识回答，则改成LLM_ONLY，否则SAY_DONT_KNOW
+            ##如果希望LLM利用自有知识回答，则改成LLM_ONLY，否则SAY_DONT_KNOW
+            if refuse_strategy == 'SAY_DONT_KNOW':
+                stratgy = ReplyStratgy.SAY_DONT_KNOW
+            elif refuse_strategy == 'WITH_LLM':
+                stratgy = ReplyStratgy.WITH_LLM
+            else:
+                stratgy = ReplyStratgy.LLM_ONLY 
+            return stratgy
         else:
             return ReplyStratgy.WITH_LLM
     else:
@@ -1194,7 +1206,7 @@ def get_reply_stratgy(recall_knowledge):
             
             
 def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:str, embedding_model_endpoint:str, llm_model_endpoint:str, llm_model_name:str, aos_endpoint:str, aos_index:str, aos_knn_field:str, aos_result_num:int, kendra_index_id:str, 
-                   kendra_result_num:int,use_qa:bool,wsclient=None,msgid:str='',max_tokens:int = 2048,temperature:float = 0.1,template:str = '',imgurl:str = None,multi_rounds:bool = False, hide_ref:bool = False,use_stream:bool=False,example_index:str='chatbot-example-index',use_search:bool=True):
+                   kendra_result_num:int,use_qa:bool,wsclient=None,msgid:str='',max_tokens:int = 2048,temperature:float = 0.1,template:str = '',imgurl:str = None,multi_rounds:bool = False, hide_ref:bool = False,use_stream:bool=False,example_index:str='chatbot-example-index',use_search:bool=True,refuse_strategy:str = 'LLM_ONLY',refuse_answer:str = ''):
     """
     Entry point for the Lambda function.
 
@@ -1447,7 +1459,7 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
         elpase_time = time.time() - start
         logger.info(f'running time of opensearch_query : {elpase_time:.3f}s seconds')
         
-        reply_stratgy = get_reply_stratgy(recall_knowledge)
+        reply_stratgy = get_reply_stratgy(recall_knowledge,refuse_strategy)
         if reply_stratgy == ReplyStratgy.LLM_ONLY: 
             recall_knowledge = []
             
@@ -1478,7 +1490,7 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
                 TRACE_LOGGER.postMessage(answer)
                 
         elif reply_stratgy == ReplyStratgy.SAY_DONT_KNOW:
-            answer = "我不太清楚，问问人工吧。"
+            answer = refuse_answer
             hide_ref= True ## 隐藏ref doc
             if use_stream:
                 TRACE_LOGGER.postMessage(answer)
@@ -1550,6 +1562,7 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
         "LLM_model_name": llm_model_name,
         "reply_stratgy" : reply_stratgy.name,
         "use_search":use_search,
+        "aos_index":aos_index,
     }
     json_obj['user_id'] = user_id
     json_obj['session_id'] = session_id
@@ -1636,6 +1649,8 @@ def lambda_handler(event, context):
     example_index = "chatbot-example-index"
     aos_index = f'chatbot-index-{company}'
     example_index = f'chatbot-example-index-{company}'
+    refuse_strategy = event.get('refuse_strategy','')
+    refuse_answer = event.get('refuse_answer','对不起，我不太清楚这个问题，请问问人工吧')
         
     
     imgurl = event.get('imgurl')
@@ -1713,12 +1728,14 @@ def lambda_handler(event, context):
     logger.info(f'Kendra_result_num : {Kendra_result_num}')
     logger.info(f'use multiple rounds: {multi_rounds}')
     logger.info(f'intention list: {INTENTION_LIST}')
+    logger.info(f'refuse_strategy: {refuse_strategy}')
+    logger.info(f'refuse_answer: {refuse_answer}')
     global TRACE_LOGGER
     TRACE_LOGGER = TraceLogger(wsclient=wsclient,msgid=msgid,connectionId=wsconnection_id,stream=use_stream,use_trace=use_trace,hide_ref=hide_ref)
 
     main_entry_start = time.time()  # 或者使用 time.time_ns() 获取纳秒级别的时间戳
     answer,ref_text,use_stream,query_input,opensearch_query_response,opensearch_knn_respose,recall_knowledge = main_entry_new(user_id,wsconnection_id,session_id, question, embedding_endpoint, llm_endpoint, model_name, aos_endpoint, aos_index, aos_knn_field, aos_result_num,
-                       Kendra_index_id, Kendra_result_num,use_qa,wsclient,msgid,max_tokens,temperature,prompt_template,image_path,multi_rounds,hide_ref,use_stream,example_index,use_search)
+                       Kendra_index_id, Kendra_result_num,use_qa,wsclient,msgid,max_tokens,temperature,prompt_template,image_path,multi_rounds,hide_ref,use_stream,example_index,use_search,refuse_strategy,refuse_answer)
     main_entry_elpase = time.time() - main_entry_start  # 或者使用 time.time_ns() 获取纳秒级别的时间戳
     logger.info(f'running time of main_entry : {main_entry_elpase}s seconds')
     if use_stream: ##只有当stream输出时，把这条trace放到最后一个chunk
