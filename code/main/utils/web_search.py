@@ -20,9 +20,9 @@ GOOGLE_CSE_ID=os.environ.get('GOOGLE_CSE_ID',None)
 
 class GoogleSearchTool():
     tool:Tool
-    topk:int = 10
+    topk:int = 5
     
-    def __init__(self,top_k=10):  
+    def __init__(self,top_k=5):  
         self.topk = top_k
         search = GoogleSearchAPIWrapper()
         def top_results(query):
@@ -70,7 +70,7 @@ def web_search(**args):
     if not GOOGLE_API_KEY or not GOOGLE_CSE_ID:
         logger.info('Missing google API key')
         return []
-    tool = GoogleSearchTool(top_k=args.get('top_k',10))
+    tool = GoogleSearchTool(top_k=5)
     result = tool.run(args['query'])
     # 异常情况返回这个结果[{'Result': 'No good Google Search Result was found'}]
     return [item for item in result if 'title' in item and 'link' in item and 'snippet' in item]
@@ -89,7 +89,7 @@ def add_webpage_content(snippet_results):
             continue
         page_content = remove_html_tags(result)
         final_results.append({**snippet_results[i],
-                              'doc':snippet_results[i]['doc']+'\n'+page_content
+                              'doc':snippet_results[i]['doc']+'\n'+page_content[:10000]
                               })
     return final_results
 

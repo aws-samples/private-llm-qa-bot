@@ -55,18 +55,23 @@ def create_rewrite_prompt_templete():
     # prompt_template = """Given the following conversation and a follow up question, rephrase the follow up question to be a standalone question, in its original language. don't translate the chat history and input. \n\nChat History:\n{history}\nFollow Up Input: {cur_query}\nStandalone question:"""
     prompt_template = \
 """
-Human: Given the following conversation in <conversation></conversation>.
+Human: Given the following conversation in <conversation></conversation>, and a follow up user question in <question></question>.
 <conversation>
 {history}
 </conversation>
-please rephrase the latest user question to be a standalone question, respond in the original language of user's question, don't translate the chat history and user question.
+
+<question>
+{cur_query}
+</question>
+
+please use the context in the chat conversation to rephrase the user question to be a standalone question, respond in the original language of user's question, don't translate the chat history and user question.
 if you don't understand the {role_a}'s question, or the question is not relevant to the conversation. please keep the orginal question.
 Skip the preamble, don't explain, go straight into the answer. Please put the standalone question in <standalone_question> tag
 Assistant: <standalone_question>
 """
     PROMPT = PromptTemplate(
         template=prompt_template, 
-        input_variables=['history','role_a']
+        input_variables=['history','cur_query','role_a']
     )
     return PROMPT
 
@@ -129,7 +134,7 @@ def lambda_handler(event, context):
 
     history_with_role = [ "{}: {}".format(role_a if idx % 2 == 0 else role_b, item) for idx, item in enumerate(history) ]
     history_str = "\n".join(history_with_role)
-    history_str += f'\n{role_a}: {query}'
+    # history_str += f'\n{role_a}: {query}'
 
     parameters = {
         "temperature": 0.01,
@@ -161,10 +166,10 @@ def lambda_handler(event, context):
         llm = Bedrock(model_id=model_id, client=boto3_bedrock, model_kwargs=parameters)
 
     prompt_template = create_rewrite_prompt_templete()
-    prompt = prompt_template.format(history=history_str, role_a=role_a)
+    prompt = prompt_template.format(history=history_str, cur_query=query,role_a=role_a)
     
     llmchain = LLMChain(llm=llm, verbose=False, prompt=prompt_template)
-    answer = llmchain.run({'history':history_str, "role_a":role_a})
+    answer = llmchain.run({'history':history_str,  "cur_query":query,"role_a":role_a})
     answer = answer.strip()
     answer = answer.replace('</standalone_question>','')
 

@@ -66,11 +66,21 @@ def delete_doc_index(obj_key,embedding_model,index_name):
         except Exception as e:
             logger.info(str(e))
 
-def list_doc_index ():
+def list_doc_index (company):
     dynamodb = boto3.client('dynamodb')
     scan_params = {
         'TableName': DOC_INDEX_TABLE,
         'Select': 'ALL_ATTRIBUTES',  # Return all attributes
+        'ScanFilter': {
+            'company': {
+                'AttributeValueList': [
+                    {
+                        'S': company  
+                    }
+                ],
+                'ComparisonOperator': 'EQ' 
+            }
+        }
     }
     try:
         response = dynamodb.scan(**scan_params)
@@ -79,8 +89,9 @@ def list_doc_index ():
         logger.info(str(e))
         return []
 
-def get_template(id):
+def get_template(id,company):
     dynamodb = boto3.client('dynamodb')
+    records = None
     if id:
         params = {
             'TableName': os.environ.get('prompt_template_table'),
@@ -88,27 +99,28 @@ def get_template(id):
         }
         try:
             response = dynamodb.get_item(**params)
-            return response['Item']
+            records = response.get('Item')
         except Exception as e:
             logger.info(str(e))
-            return None   
     else:
-        params = {
-            'TableName': os.environ.get('prompt_template_table'),
-            'Select': 'ALL_ATTRIBUTES',  # Return all attributes
-        }
         try:
-            response = dynamodb.scan(**params)
-            return response['Items']
+            response = dynamodb.scan(
+                 TableName=os.environ.get('prompt_template_table'),
+                FilterExpression='company = :val',
+                    ExpressionAttributeValues={
+                    ':val': {'S': company}
+                    }
+            )
+            records =  response.get('Items')
         except Exception as e:
             logger.info(str(e))
-            return []
+    return records
         
 def add_template(item):
     dynamodb = boto3.client('dynamodb')
     params = {
         'TableName': os.environ.get('prompt_template_table'),
-        'Item': item,  
+        'Item': item 
     }
     try:
         dynamodb.put_item(**params)
@@ -135,7 +147,8 @@ def delete_template(key):
 ## 2. if lambda_feedback is setup, then call lambda_feedback for other managment operations
 def handle_feedback(event):
     method = event.get('method')
-    
+    company = event.get('company','default')
+    logger.info(f'handle_feedback:{method} {company}')
     ##invoke feedback lambda to store in ddb
     fn = os.environ.get('lambda_feedback')
     if method == 'post':
@@ -150,6 +163,7 @@ def handle_feedback(event):
         json_obj = {
                 "opensearch_doc":  [], #for kiness firehose log subscription filter name
                 "log_type":'feedback',
+                "company":company,
                 "msgid":body.get('msgid'),
                 "timestamp":str(datetime_utc8),
                 "username":body.get('username'),
@@ -177,7 +191,7 @@ def handle_feedback(event):
     elif method == 'get':
         results = []
         body = event.get('body')
-        json_obj = {**body,'method':method}
+        json_obj = {**body,'method':method,'company':company}
         if fn:
             response = lambda_client.invoke(
                     FunctionName = fn,
@@ -205,18 +219,19 @@ def handle_feedback(event):
     
     
 def management_api(method,resource,event):
+    company = event.get('company','default')
     if method == 'delete' and resource == 'docs':
         logger.info(f"delete doc index of:{event.get('filename')}/{event.get('embedding_model')}/{event.get('index_name')}")
         delete_doc_index(event.get('filename'),event.get('embedding_model'),event.get('index_name'))
         return {'statusCode': 200}
     ## 如果是get doc index操作
     elif method == 'get' and resource == 'docs':
-        results = list_doc_index()
+        results = list_doc_index(company)
         return {'statusCode': 200,'body':results }
     ## 如果是get template 操作
     elif method == 'get' and resource == 'template':
         id = event.get('id')
-        results = get_template(id)
+        results = get_template(id,company)
         return {'statusCode': 200,'body': {} if results is None else results }
     ## 如果是add a template 操作
     elif method == 'post' and resource == 'template':
@@ -226,8 +241,10 @@ def management_api(method,resource,event):
             'template_name':{'S':body.get('template_name','')},
             'template':{'S':body.get('template','')},
             'comment':{'S':body.get('comment','')},
-            'username':{'S':body.get('username','')}
+            'username':{'S':body.get('username','')},
+            'company':{'S':company}
         }
+        
         result = add_template(item)
         return {'statusCode': 200 if result else 500,'body':result }
      ## 如果是delete a template 操作

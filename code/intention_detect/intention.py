@@ -23,6 +23,7 @@ credentials = boto3.Session().get_credentials()
 BEDROCK_EMBEDDING_MODELID_LIST = ["cohere.embed-multilingual-v3","cohere.embed-english-v3","amazon.titan-embed-text-v1"]
 BEDROCK_LLM_MODELID_LIST = {'claude-instant':'anthropic.claude-instant-v1',
                             'claude-v2':'anthropic.claude-v2:1'}
+
 SIMS_THRESHOLD= float(os.environ.get('intent_detection_threshold',0.6))
 
 from typing import Any, Dict, List, Optional
@@ -179,8 +180,9 @@ def lambda_handler(event, context):
     embedding_endpoint = os.environ.get('embedding_endpoint')
     region = os.environ.get('region')
     aos_endpoint = os.environ.get('aos_endpoint')
-    index_name = os.environ.get('index_name')
+    # index_name = os.environ.get('index_name')
     query = event.get('query')
+    index_name = event.get('example_index')
     fewshot_cnt = event.get('fewshot_cnt')
     llm_model_endpoint = os.environ.get('llm_model_endpoint', BEDROCK_LLM_MODELID_LIST["claude-v2"])
     
@@ -224,7 +226,6 @@ def lambda_handler(event, context):
     )
 
     docs_simple = [ {"query" : doc[0].page_content, "detection" : doc[0].metadata['detection'], "api_schema" : doc[0].metadata['api_schema'], "score":doc[1]} for doc in docs if doc[1]>=SIMS_THRESHOLD]
-    
     #如果没有召回到example，则默认走QA，通过QA阶段的策略去判断，召回内容的是否跟问题相关，如果不相关则走chat
     if not docs_simple:
         answer = {"func":"QA"}

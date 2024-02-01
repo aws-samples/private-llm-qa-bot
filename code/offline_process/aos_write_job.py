@@ -564,14 +564,12 @@ def load_content_json_from_s3(bucket, object_key, content_type, credentials):
     else:
         s3 = boto3.resource('s3')
         obj = s3.Object(bucket,object_key)
-        file_content = obj.get()['Body'].read().decode('utf-8', errors='ignore').strip()
+        if content_type != 'xlsx':
+            file_content = obj.get()['Body'].read().decode('utf-8', errors='ignore').strip()
+        else:
+            # binrary mode
+            file_content = obj.get()['Body'].read()
         try:
-            if content_type != 'xlsx':
-                file_content = obj.get()['Body'].read().decode('utf-8', errors='ignore').strip()
-            else:
-                # binrary mode
-                file_content = obj.get()['Body'].read()
-
             if content_type == 'faq':
                 json_content = parse_faq_to_json(file_content)
             elif content_type == 'md':
@@ -673,7 +671,7 @@ def iterate_paragraph_wiki(content_json, object_key,doc_classify,smr_client, ind
 
 
 
-def put_idx_to_ddb(filename,username,index_name,embedding_model,category,createtime):
+def put_idx_to_ddb(filename,company,username,index_name,embedding_model,category,createtime):
     try:
         dynamodb.put_item(
             Item={
@@ -682,6 +680,9 @@ def put_idx_to_ddb(filename,username,index_name,embedding_model,category,createt
                 },
                 'username':{
                     'S':username,
+                },
+                'company':{
+                    'S':company,
                 },
                 'index_name':{
                     'S':index_name,
@@ -736,27 +737,6 @@ def query_idx_from_ddb(filename,username,embedding_model):
         print(f"Not found filename:{filename} index from ddb: {str(e)}")
         return ''
 
-def get_idx_from_ddb(filename,embedding_model):
-    try:
-        response = dynamodb.get_item(
-            Key={
-            'filename':{
-            'S':filename,
-            },
-            'embedding_model':{
-            'S':embedding_model,
-            },
-            },
-            TableName = DOC_INDEX_TABLE,
-        )
-        index_name = ''
-        if response.get('Item'):
-            index_name = response['Item']['index_name']['S']
-            print (f"Get filename:{filename} with index_name:{index_name} from ddb")
-        return index_name
-    except Exception as e:
-        print(f"Not found filename:{filename} with embedding:{embedding_model} index from ddb: {str(e)}")
-        return ''
     
 def WriteVecIndexToAOS(bucket, object_key, content_type, doc_classify,smr_client, aos_endpoint=AOS_ENDPOINT, region=REGION, index_name=INDEX_NAME):
     credentials = boto3.Session().get_credentials()
@@ -808,9 +788,9 @@ def WriteVecIndexToAOS(bucket, object_key, content_type, doc_classify,smr_client
 
 def process_s3_uploaded_file(bucket, object_key):
     print("********** object_key : " + object_key)
-
+    #if want to use different aos index, the object_key format should be: ai-content/company/username/filename
+            
     content_type = None
-    index_name = INDEX_NAME
     if object_key.endswith(".faq"):
         print("********** pre-processing faq file")
         content_type = 'faq'
@@ -835,7 +815,6 @@ def process_s3_uploaded_file(bucket, object_key):
     elif object_key.endswith(".example"):
         print("********** pre-processing example file")
         content_type = 'example'
-        index_name = EXAMPLE_INDEX_NAME
     elif object_key.endswith(".csv"):
         print("********** pre-processing csv file")
         content_type = 'csv'
@@ -856,12 +835,23 @@ def process_s3_uploaded_file(bucket, object_key):
     s3 = boto3.resource('s3')
     obj = s3.Object(bucket,object_key)
     metadata = obj.metadata
+    # company = unquote(metadata.get('company','default') if metadata else 'default')
+    
+    ## 如果满足 ai-content/company/username/file
+    company = object_key.split('/')[1] if len(object_key.split('/')) == 4 else 'default'
     doc_classify = unquote(metadata.get('category','') if metadata else '')
+        
+    if  content_type == 'example':
+        index_name = f"chatbot-example-index-{company}"
+    else:
+        index_name = f"{INDEX_NAME}-{company}"
+
+
+        
     print(metadata)
-    print(doc_classify)
+    print(f'use index :{index_name}')
     #check if it is already built
     idx_name = query_idx_from_ddb(object_key,username,EMB_MODEL_ENDPOINT)
-    # idx_name = get_idx_from_ddb(object_key,EMB_MODEL_ENDPOINT)
     if len(idx_name) > 0:
         print("doc file already exists")
         return
@@ -872,7 +862,9 @@ def process_s3_uploaded_file(bucket, object_key):
     print(response)
     print("ingest {} chunk to AOS".format(response[0]))
     timestamp_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    put_idx_to_ddb(filename=object_key,username=username,
+    put_idx_to_ddb(filename=object_key,
+                    company=company,
+                    username=username,
                         index_name=index_name,
                             embedding_model=EMB_MODEL_ENDPOINT,
                             category=doc_classify,

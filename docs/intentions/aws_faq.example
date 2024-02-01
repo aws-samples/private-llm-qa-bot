@@ -243,6 +243,12 @@
             "detection":{
                 "func":"QA"
             }
+        },
+        {
+            "query":"Sagemaker如何使用张量并行技术对模型分层",
+            "detection":{
+                "func":"QA"
+            }
         }
     ]
 }
