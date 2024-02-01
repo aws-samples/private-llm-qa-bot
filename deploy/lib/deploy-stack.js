@@ -5,7 +5,7 @@ import { DockerImageFunction }  from 'aws-cdk-lib/aws-lambda';
 import { DockerImageCode,Architecture } from 'aws-cdk-lib/aws-lambda';
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as iam from "aws-cdk-lib/aws-iam";
-import { AttributeType, Table } from "aws-cdk-lib/aws-dynamodb";
+import { AttributeType, Table, } from "aws-cdk-lib/aws-dynamodb";
 import * as ecr from 'aws-cdk-lib/aws-ecr';
 import { VpcStack } from './vpc-stack.js';
 import {GlueStack} from './glue-stack.js';
@@ -16,6 +16,7 @@ import { Ec2Stack } from "./ec2-stack.js";
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as s3n from 'aws-cdk-lib/aws-s3-notifications';
 import * as dotenv from "dotenv";
+import { addAutoScalingDDb } from "./autoscalling.js";
 
 dotenv.config();
 
@@ -116,8 +117,11 @@ export class DeployStack extends Stack {
         name: "session-id",
         type: AttributeType.STRING,
       },
+      timeToLiveAttribute:'expire_at',
       removalPolicy: RemovalPolicy.DESTROY, // NOT recommended for production code
     });
+
+    addAutoScalingDDb(chat_session_table);
 
     const user_feedback_table = new Table(this, "user_feedback_table", {
       partitionKey: {
@@ -131,6 +135,7 @@ export class DeployStack extends Stack {
       tableName:"user_feedback_table",
       removalPolicy: RemovalPolicy.DESTROY, // NOT recommended for production code
     });
+    addAutoScalingDDb(user_feedback_table);
 
     const fn_feedback = new lambda.Function(this,'lambda_feedback',{
       environment: {
