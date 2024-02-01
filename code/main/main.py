@@ -39,6 +39,7 @@ from enum import Enum
 from boto3 import client as boto3_client
 from utils.web_search import web_search,add_webpage_content
 from utils.management import management_api,get_template
+from utils.utils import add_reference, render_answer_with_ref
 
 lambda_client= boto3.client('lambda')
 dynamodb_client = boto3.resource('dynamodb')
@@ -1502,8 +1503,6 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
                 TRACE_LOGGER.postMessage(answer)
                 
         elif reply_stratgy == ReplyStratgy.LLM_ONLY: ##走LLM默认知识
-            TRACE_LOGGER.trace('**Using Non-RAG Chat...**')
-            TRACE_LOGGER.trace('**Answer:**')
             prompt_template = create_chat_prompt_templete()
             hide_ref= True ## 隐藏ref doc
             llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
@@ -1533,7 +1532,6 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
             ##最终的prompt日志
             final_prompt = prompt_template.format(question=query_input,role_bot=B_Role,context=context,chat_history=chat_history,ask_user_prompt=ask_user_prompts_str)
             # print(final_prompt)
-            # print(answer)
     else:
         #call agent for other intentions
         TRACE_LOGGER.trace('**Using Agent...**')

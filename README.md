@@ -1,51 +1,59 @@
-### 私域知识问答机器人
+<p align="left">
+    &nbsp中文&nbsp ｜ <a href="README_EN.md">English</a>&nbsp 
+</p>
+<br>
 
-- 基本介绍
-  
-  基于AWS服务和大语言模型的知识问答Chatbot项目，支持大语言模型和向量模型的灵活插拔，可支持开源模型私有化部署或者bedrock Claude以及其他商业模型。
-  
-- 常见问题
-  
-  知识召回错误率高？LLM的幻觉严重？文档量大写入管理遇到问题？
-  
-  参考PDF - [最佳实践](https://github.com/aws-samples/private-llm-qa-bot/blob/main/best_practice_summary.pdf)
-  
-- 效果展示
-  
-  - 前端界面(前后端分离, 前端仅提供功能展示)
-  
-    ![console](./readme_1.png)
-  
-  - Demo效果
-  
-    https://www.bilibili.com/video/BV1HN4y1D7vy/?vd_source=2cb87d8dd3ca4ea778f5468be12405b3
-  
-- 部署方式
-  
-  - 部署文档 
-    - [飞书](https://upgt6k0dbo.feishu.cn/docx/GiLZd1glmo0l06xNRDmcr4P1nBf)
+## 基本介绍
 
-  - 构建向量索引时的注意事项:
-    + 需要考虑knn_vector's dimension与向量模型输出纬度对齐，space_type 与向量模型支持的类型对齐
-    + 用户需要根据数据量自行决定是否开启ANN索引, 即("knn": "true")
-    + m, ef_consturtion 参数需要根据根据数据量进行调整
-  - 相关workshop地址 [workshop](https://catalog.us-east-1.prod.workshops.aws/workshops/158a2497-7cbe-4ba4-8bee-2307cb01c08a/en-US)
-  
-- 代码 & 架构
+一个基于AWS服务和LangChain框架的生产级知识问答chatbot实现, 对各个环节进行了优化。支持向量模型 & 大语言模型的灵活配置插拔。前后端分离，易集成到IM工具(如飞书)。 
 
-  - 架构图
-    ![arch](./arch.png)
-  - 代码结构
+![demo](./demo.gif) 
+
+<br>
+
+## 如何部署这个方案？
+
+- 部署文档
+  + [飞书](https://upgt6k0dbo.feishu.cn/docx/GiLZd1glmo0l06xNRDmcr4P1nBf)
+- Workshop(step-by-step)
+  + [workshop地址](https://catalog.us-east-1.prod.workshops.aws/workshops/158a2497-7cbe-4ba4-8bee-2307cb01c08a/zh-CN) *（注意：部署需参考飞书文档，workshop中部署的为一个不更新的branch，主要帮助不熟悉AWS的用户更容易的上手）*
+
+<br>
+
+## 如何快速了解这个方案？
+
+- **基础设施架构图**
+
+	![arch](./arch.png)
+	
+
+<br>
+
+- **工作流程图**
+  
+    一般来说全流程需要进行三次大语言模型调用，在下图上用红色数字标注了序号。
+    
+    ![workflow](./workflow.png)
+    
+
+<br>
+    
+- **代码介绍**
+  
+    需重点关注code/, deploy/, docs/, notebooks/ 这四个目录，code/目录中按照模块拆分了7个子目录，deploy/用于设定cdk部署资源的，docs/提供了知识/fewshot文件范例, notebooks/中提供了各类模型部署/微调/可视化的一些notebook文件，帮助你更深入的优化效果。
     
     ```shell
     .
+    ├── Agent_Pydantic_Lambda                # Agent API实现范例(submodule)
+    ├── chatbotFE                            # 前端代码(submodule)
     ├── code
     │   ├── main/                            # 主逻辑对应的lambda代码目录
     │   ├── offline_process/                 # 离线知识构建对应的执行代码目录
     │   ├── lambda_offline_trigger/          # 启动离线知识摄入的lambda代码目录
     │   ├── lambda_plugins_trigger/          # 暂不使用
     │   ├── intention_detect/                # 意图识别lambda代码目录
-    │   └── query_rewriter/                  # 用户输入重写lambda代码目录
+    │   ├── query_rewriter/                  # 用户输入重写lambda代码目录
+    │   └── chat_agent/                      # 调用API的模块
     ├── deploy
     │   ├── lib/                             # cdk 部署脚本目录
     │   └── gen_env.sh                       # 自动生成部署变量的脚本(for workshop)
@@ -68,224 +76,56 @@
     │   └── ...     
     ```
 
-- API访问接口
-  
-  【注意】Apigateway endpoint可以从后端部署后的cloudformation outputs里获得key=APIgatewayendpointurl  
-  
-  - Chat接口(POST方法)
-    ```json
-      {
-        "msgid": "类型string, 用于标识本次message id",
-        "chat_name": "类型string, 用于标识本次会话的session id",
-        "prompt":"类型string,用户的问题",
-        "use_qa": "类型Bool,是否使用知识库问答",
-        "multi_rounds":  "类型Bool,是否开启多轮会话",
-        "hide_ref": "类型Bool,回复中是否隐藏引用文档",
-        "system_role": "类型string,定义bot的扮演角色，可为空",
-        "system_role_prompt": "类型string,系统提示词，可为空",
-        "max_tokens": 2000,
-        "temperature": 0.01,
-        "use_trace": "类型Bool,是否开启调试追踪",
-        "model_name": "模型名，如claude",
-        "template_id": "类型string, prompt模板id，默认使用default",
-        "username": "类型string，用户名称",
-      }
-    ```
-    examples:
-    ```bash
-    curl -X POST -H "Content-Type: application/json" -d '{"msgid": "id-1699868804605-a4e9b6110d998_res",
-      "chat_name": "OVJ9beqoPHcCEgA=",
-      "prompt": "hello",
-      "system_role": "",
-      "use_qa": "False",
-      "multi_rounds": "True",
-      "hide_ref": "False",
-      "system_role_prompt": "",
-      "obj_prefix": "ai-content/",
-      "use_stream": "True",
-      "max_tokens": 8000,
-      "temperature": 0.01,
-      "use_trace": "False",
-      "model_name": "claude",
-      "template_id": "default",
-      "username": "admin"}' https://xxxxx.execute-api.us-west-2.amazonaws.com/prod
-    ```
-  - 知识管理接口(POST方法)
-    ```json
-      {
-        "method": "delete-删除,get-列出所有文档,",
-        "resource": "docs",
-        "filename": "类型string，上传文档名称",
-        "embedding_model": "embedding模型endpoint",
-        "index_name":"AOS 的索引名称"
-      }
-    ```
-    examples:
-    ```bash
-    curl -X POST -H "Content-Type: application/json" -d '{"method":"get","resource":"docs"}'  https://xxxxxx.execute-api.us-west-2.amazonaws.com/prod
-    ```
-  - prompt模板管理接口  
-  
-    ```json
-      {
-        "method": "delete-删除,get-列出所有,post-新增或者保存",
-        "resource": "template",
-        "body":{
-            "id": "类型string，模板id, 删除和新增操作需要",
-            "template_name": "类型string，模板名称，新增或者保存操作需要",
-            "template":"类型string，模板类容，新增或者保存操作需要",
-            "comment":"类型string，模板备注",
-            "username":"类型string，创建者名称"
-        }
-      }
-    ```
-     examples:
-      ```bash
-      curl -X POST -H "Content-Type: application/json" -d '{"method":"get","resource":"docs"}'  https://xxxxxx.execute-api.us-west-2.amazonaws.com/prod
-      ```
-  - feedback管理接口(post方法)
-    ```json
-    {
-      "method": "delete-删除,get-列出所有,post-新增",
-      "resource": "feedback",
-      "body":{
-          "session_id": "类型string，会话id，删除或者新增操作需要",
-          "msgid":  "类型string, 用于标识本次message id，删除或者新增操作需要",
-          "action":"类型string，thumb-up,thumb-down,new-added,injected",
-          "timestamp":"类型string，时间戳",
-          "username":"类型string，反馈者名称",
-          "feedback":"类型string，反馈的内容",
-          "question": "类型string，反馈的原始问题",
-          "answer": "类型string，反馈的原始答案",
-          "pagesize":"类型int, 查询的page大小，get操作需要 "
-      }
-    }
-    ```
-  
-- 流程介绍
-  
-  - 离线流程
-    - a1. 前端界面上传文档到S3
-    - a2. S3触发Lambda开启Glue处理流程，进行内容的embedding，并入库到AOS中
-    - b1. 把cloud watch中的日志通过KDF写入到AOS中，供维护迭代使用
-  - 在线流程[网页](http://chatbotfe-1170248869.us-west-2.elb.amazonaws.com/login#)
-    - 测试账号密码:test/test
-    - 使用这个公共测试前端需要填入自己的ak sk才能上传文档  
-    - 进入IAM创建一个用户，附加一个权限策略，替换"arn:aws:s3:::xxxx-chatbot-bucket"为实际的bucket
-    ```json
-    {
-        "Version": "2012-10-17",
-        "Statement": [
-            {
-                "Sid": "VisualEditor0",
-                "Effect": "Allow",
-                "Action": [
-                    "s3:ListStorageLensConfigurations",
-                    "s3:ListAccessPointsForObjectLambda",
-                    "s3:GetAccessPoint",
-                    "s3:PutAccountPublicAccessBlock",
-                    "s3:GetAccountPublicAccessBlock",
-                    "s3:ListAllMyBuckets",
-                    "s3:ListAccessPoints",
-                    "s3:PutAccessPointPublicAccessBlock",
-                    "s3:ListJobs",
-                    "s3:PutStorageLensConfiguration",
-                    "s3:ListMultiRegionAccessPoints",
-                    "s3:CreateJob"
-                ],
-                "Resource": "*"
-            },
-            {
-                "Sid": "VisualEditor1",
-                "Effect": "Allow",
-                "Action": "s3:*",
-                "Resource": "arn:aws:s3:::xxxx-chatbot-bucket"
-            },
-            {
-                "Sid": "VisualEditor2",
-                "Effect": "Allow",
-                "Action": "s3:*",
-                "Resource": "arn:aws:s3:::xxxxx-chatbot-bucket/*"
-            }
-        ]
-    }    
-    ```
-    - IAM用户创建好之后，进入安全凭证->创建访问密钥，保存到本地。
-    - a0. 登录前端页面，配置相关信息  
-    ![Alt text](image.png)
-    - 更多设置切换模型等操作
-    ![Alt text](image-1.png)
-    - a1. 前端界面发起聊天，调用AIGateway，通过Dynamodb获取session信息
-    - a2. 通过lambda访问 Sagemaker Endpoint对用户输入进行向量化
-    - a3. 通过AOS进行向量相似检索
-    - a4. 通过AOS进行倒排检索，与向量检索结果融合，构建Prompt
-    - a5. 调用LLM生成结果 
-  
+<br>
 
-- 知识库构建
+## 常见问题
 
-  参考[README.md](https://github.com/aws-samples/private-llm-qa-bot/blob/main/code/offline_process/aos_schema.md)构建知识库, 构建了知识库以后才能导入知识文件。构建完毕后，可以从前端页面导入知识。导入成功以后，能够在文档库中找到对应的知识文件
-  ![console](./readme_2.png)
+**Q1:** 如何适配到自己的业务环境？
 
-  + 构建Opensearch Index
-    其中**doc_type**可以为以下四个值**['Question','Paragraph','Sentence','Abstract']**
-    注意："dimension": 768 这个参数需要根据实际使用的向量模型输出纬度进行修改  
-    ```shell
-    PUT chatbot-index
-    {
-        "settings" : {
-            "index":{
-                "number_of_shards" : 1,
-                "number_of_replicas" : 0,
-                "knn": "true",
-                "knn.algo_param.ef_search": 32
-            }
-        },
-        "mappings": {
-            "properties": {
-                "publish_date" : {
-                    "type": "date",
-                    "format": "yyyy-MM-dd HH:mm:ss"
-                },
-                "idx" : {
-                    "type": "integer"
-                },
-                "doc_type" : {
-                    "type" : "keyword"
-                },
-                "doc": {
-                    "type": "text",
-                    "analyzer": "ik_max_word",
-                    "search_analyzer": "ik_smart"
-                },
-                "content": {
-                    "type": "text",
-                    "analyzer": "ik_max_word",
-                    "search_analyzer": "ik_smart"
-                },
-                "doc_title": {
-                    "type": "keyword"
-                },
-                "doc_author": {
-                    "type": "keyword"
-                },
-                "doc_category": {
-                    "type": "keyword"
-                },
-                "embedding": {
-                    "type": "knn_vector",
-                    "dimension": 768,
-                    "method": {
-                        "name": "hnsw",
-                        "space_type": "cosinesimil",
-                        "engine": "nmslib",
-                        "parameters": {
-                            "ef_construction": 512,
-                            "m": 32
-                        }
-                    }            
-                }
-            }
-        }
-    }
-    ```
+**A1:**  参考下面三步：
+
+- 上传自己的文档。
+
+- 上传自己的fewshot文件(参考/docs/intentions/目录), 实现定制的意图分流.
+
+- 对接到自己的前端，后端API如何调用请参考 [后端API接口](./backend_interface.md)。
+
+
+**Q2:** 知识召回错误率高如何优化？RAG的最佳实践在那？
+
+**A2:** 参考[最佳实践](./best_practice_summary.pdf)
+
+**Q3:** 支持导入哪些数据格式？
+
+**A3:** 目前支持pdf，word, txt, md, wiki 等文本格式的导入，对于FAQ形式的数据，本方案做了针对性的召回优化，可以参考docs/下面的集中FAQ格式(.faq, .csv, .xlsx)。
+
+**Q4:** 基础设施的费用如何？
+
+**A4:** 由于生产环境的数据和并发，仅仅基于测试环境给出一些数据供参考。整个方案大部份属于serverless架构，大部份服务组件(Bedrock, Glue, Lambda等)按照用量进行付费，在我们之前的经验中，大部份服务费用占比很低。其中SageMaker, OpenSearch的费用占比较高(90%+),  SageMaker在海外是optional的，如果不需要部署独立的rerank模型，则不需要。OpenSearch的费用跟机型相关，具体参考 https://aws.amazon.com/cn/opensearch-service/pricing/，方案中默认的机型2 * r6g.large.search的费用是USD 0.167/hour，可以相应的调整机型降低费用。
+
+<br>
+
+## 注意事项
+
+1. 构建向量索引时需要注意什么？
+   + 需要考虑knn_vector's dimension与向量模型输出纬度对齐，space_type 与向量模型支持的类型对齐
+   
+   + 用户需要根据数据量自行决定是否开启ANN索引, 即("knn": "true")
+   
+   + m, ef_consturtion 参数需要根据根据数据量进行调整
+   
+
+<br>
+
+## 交流&获取帮助
+
+- 加入微信群<br>
+  ![wechat](./wechat.png)
+
+<br>
+
+## 更多Demo视频
+
+- [完整版 - bilibili](https://www.bilibili.com/video/BV1HN4y1D7vy/?vd_source=2cb87d8dd3ca4ea778f5468be12405b3)
+- [简短版 - bilibili](https://www.bilibili.com/video/BV1KW4y1P7yR/?spm_id_from=333.999.0.0&vd_source=511a28c6a49e890567f0de77abde6e02)
+- [飞书版 - bilibili](https://www.bilibili.com/video/BV15T4y1h7th/?vd_source=511a28c6a49e890567f0de77abde6e02)

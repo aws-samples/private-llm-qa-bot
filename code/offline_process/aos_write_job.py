@@ -15,7 +15,7 @@ import itertools
 from bs4 import BeautifulSoup
 from langchain.document_loaders import PDFMinerPDFasHTMLLoader
 from langchain.docstore.document import Document
-from langchain.text_splitter import RecursiveCharacterTextSplitter,CharacterTextSplitter
+from langchain.text_splitter import RecursiveCharacterTextSplitter,CharacterTextSplitter, MarkdownTextSplitter
 import logging
 import urllib.parse
 import numpy as np
@@ -418,6 +418,24 @@ def parse_txt_to_json(file_content):
     json_content = json.dumps(results, ensure_ascii=False)
     return json_content
 
+def parse_md_to_json(file_content):
+    md_splitter = MarkdownTextSplitter( 
+        chunk_size = arg_chunk_size,
+        chunk_overlap  = 0,
+    )
+    
+    results = []
+    chunks = md_splitter.create_documents([ file_content ] )
+    for chunk in chunks:
+        snippet_info = {
+            "heading" : [],
+            "content" : chunk.page_content
+        }
+        results.append(snippet_info)
+
+    json_content = json.dumps(results, ensure_ascii=False)
+    return json_content
+
 def parse_example_to_json(file_content):
     arr = file_content.split(EXAMPLE_SEP)
     json_arr = []
@@ -554,6 +572,8 @@ def load_content_json_from_s3(bucket, object_key, content_type, credentials):
         try:
             if content_type == 'faq':
                 json_content = parse_faq_to_json(file_content)
+            elif content_type == 'md':
+                json_content = parse_md_to_json(file_content)
             elif content_type =='txt':
                 json_content = parse_txt_to_json(file_content)
             elif content_type =='json':
@@ -743,7 +763,7 @@ def WriteVecIndexToAOS(bucket, object_key, content_type, doc_classify,smr_client
         gen_aos_record_func = None
         if content_type in ["faq","csv","xlsx"]:
             gen_aos_record_func = iterate_QA(file_content, object_key,doc_classify,smr_client, index_name, EMB_MODEL_ENDPOINT)
-        elif content_type in ['txt', 'pdf', 'json','docx']:
+        elif content_type in ['txt', 'pdf', 'json','docx', 'md']:
             gen_aos_record_func = iterate_paragraph(file_content,object_key, doc_classify,smr_client, index_name, EMB_MODEL_ENDPOINT)
         elif content_type in [ 'pdf.json' ]:
             gen_aos_record_func = iterate_pdf_json(file_content,object_key, doc_classify,smr_client, index_name, EMB_MODEL_ENDPOINT)
@@ -804,8 +824,11 @@ def process_s3_uploaded_file(bucket, object_key):
     elif object_key.endswith(".xlsx"):
         print("********** pre-processing xlsx file")
         content_type = 'xlsx'
+    elif object_key.endswith(".md"):
+        print("********** pre-processing md file")
+        content_type = 'md'
     else:
-        raise RuntimeError("unsupport content type...(pdf, faq, txt, csv, xlsx, pdf.json are supported.)")
+        raise RuntimeError("unsupport content type...(pdf, faq, txt, csv, xlsx, pdf.json, md are supported.)")
     
     username = get_filename_from_obj_key(object_key)
     

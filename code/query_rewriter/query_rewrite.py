@@ -171,6 +171,7 @@ def lambda_handler(event, context):
     llmchain = LLMChain(llm=llm, verbose=False, prompt=prompt_template)
     answer = llmchain.run({'history':history_str,  "cur_query":query,"role_a":role_a})
     answer = answer.strip()
+    answer = answer.replace('</standalone_question>','')
 
     log_dict = { "history" : history, "answer" : answer , "cur_query": query, "prompt":prompt, "model_id" : llm_model_endpoint }
     log_dict_str = json.dumps(log_dict, ensure_ascii=False)

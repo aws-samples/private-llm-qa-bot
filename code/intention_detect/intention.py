@@ -23,8 +23,8 @@ credentials = boto3.Session().get_credentials()
 BEDROCK_EMBEDDING_MODELID_LIST = ["cohere.embed-multilingual-v3","cohere.embed-english-v3","amazon.titan-embed-text-v1"]
 BEDROCK_LLM_MODELID_LIST = {'claude-instant':'anthropic.claude-instant-v1',
                             'claude-v2':'anthropic.claude-v2:1'}
-SIMS_THRESHOLD= float(os.environ.get('intent_detection_threshold',0.7))
 
+SIMS_THRESHOLD= float(os.environ.get('intent_detection_threshold',0.6))
 
 from typing import Any, Dict, List, Optional
 from langchain.embeddings.base import Embeddings
@@ -62,7 +62,7 @@ class BedrockCohereEmbeddings(Embeddings):
         self, texts: List[str], chunk_size: int = 1
     ) -> List[List[float]]:
         input_body = {}
-        input_body["texts"] = [text[:2048] for text in texts],
+        input_body["texts"] = [text[:2048] for text in texts]
         input_body["input_type"] = 'search_document'
         # input_body["truncate"] = 'RIGHT'
         body = json.dumps(input_body)
@@ -226,7 +226,6 @@ def lambda_handler(event, context):
     )
 
     docs_simple = [ {"query" : doc[0].page_content, "detection" : doc[0].metadata['detection'], "api_schema" : doc[0].metadata['api_schema'], "score":doc[1]} for doc in docs if doc[1]>=SIMS_THRESHOLD]
-
     #如果没有召回到example，则默认走QA，通过QA阶段的策略去判断，召回内容的是否跟问题相关，如果不相关则走chat
     if not docs_simple:
         answer = {"func":"QA"}
@@ -239,7 +238,7 @@ def lambda_handler(event, context):
 
     options = set([ doc['detection'] for doc in docs_simple])
 
-    if len(options) == 1:
+    if len(options) == 1 and len(docs_simple) == fewshot_cnt:
         logger.info("Notice: Only Single latent Intention detected.")
         answer = options.pop()
         log_dict = { "answer" : answer, "examples": docs_simple }
@@ -287,6 +286,7 @@ def lambda_handler(event, context):
     llmchain = LLMChain(llm=llm, verbose=False, prompt=prompt_template)
     answer = llmchain.run({"api_schemas":api_schema_str, "examples": example_list_str, "query":query, "prefix" : prefix})
     answer = prefix + answer.strip()
+    answer = answer.replace('</output>', '')
 
     log_dict = { "prompt" : prompt, "answer" : answer , "examples": docs_simple }
     log_dict_str = json.dumps(log_dict, ensure_ascii=False)

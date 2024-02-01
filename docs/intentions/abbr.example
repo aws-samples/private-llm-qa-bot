@@ -1,0 +1,54 @@
+{
+    "api_schema":{
+        "name": "explain_abbr",
+        "description": "explain abbreviation for user",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "abbr": {
+                    "type": "string",
+                    "description": "the abbreviation of terms in AWS"
+                }
+            },
+            "required": ["abbr"]
+        }
+    },
+    "examples":[
+        {
+            "query":"MDU啥意思",
+            "detection":{
+                "func":"explain_abbr", "param" : {"abbr" : "MDU"}
+            }
+        },
+        {
+            "query":"YOY什么意思",
+            "detection":{
+                "func":"explain_abbr", "param" : {"abbr" : "YOY"}
+            }
+        },
+        {
+            "query":"CSDC是啥？",
+            "detection":{
+                "func":"explain_abbr", "param" : {"abbr" : "CSDC"}
+            }
+        },
+        {
+            "query":"WWSO",
+            "detection":{
+                "func":"explain_abbr", "param" : {"abbr" : "WWSO"}
+            }
+        },
+        {
+            "query":"CSDC",
+            "detection":{
+                "func":"explain_abbr", "param" : {"abbr" : "CSDC"}
+            }
+        },
+        {
+            "query":"缩写OP2",
+            "detection":{
+                "func":"explain_abbr", "param" : {"abbr" : "OP2"}
+            }
+        }
+    ]
+}
