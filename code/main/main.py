@@ -62,6 +62,7 @@ RESET = '/rs'
 openai_api_key = None
 STOP=[f"\n{A_Role_en}", f"\n{A_Role}", f"\n{Fewshot_prefix_Q}","</response>"]
 CHANNEL_RET_CNT = 10
+SESSION_EXPIRES_DAYS = 1
 
 BM25_QD_THRESHOLD_HARD_REFUSE = float(os.environ.get('bm25_qd_threshold_hard',15.0))
 BM25_QD_THRESHOLD_SOFT_REFUSE = float(os.environ.get('bm25_qd_threshold_soft',20.0))
@@ -957,7 +958,11 @@ def update_session(session_id,user_id,msgid, question, answer, intention):
         chat_history = []
         
     timestamp_str = str(datetime.now())
-    chat_history.append([question, answer, intention,msgid,timestamp_str])
+    expire_at = int(time.time())+3600*24*SESSION_EXPIRES_DAYS #session expires in 1 days 
+
+    chat_history = [item for item in chat_history if len(item) >=6 and item[5] < int(time.time())]
+
+    chat_history.append([question, answer, intention,msgid,timestamp_str,expire_at])
     content = json.dumps(chat_history,ensure_ascii=False)
 
     # inserting values into table
@@ -967,6 +972,7 @@ def update_session(session_id,user_id,msgid, question, answer, intention):
             'user_id':user_id,
             'content': content,
             'last_updatetime':timestamp_str,
+            'expire_at':expire_at
         }
     )
 

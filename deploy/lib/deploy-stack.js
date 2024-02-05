@@ -116,6 +116,7 @@ export class DeployStack extends Stack {
         name: "session-id",
         type: AttributeType.STRING,
       },
+      timeToLiveAttribute:'expire_at',
       removalPolicy: RemovalPolicy.DESTROY, // NOT recommended for production code
     });
     addAutoScalingDDb(chat_session_table);
