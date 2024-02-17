@@ -638,7 +638,7 @@ class CustomDocRetriever(BaseRetriever):
                         
                         #添加到原有的知识里,并过滤到原来知识中的低分item
                         recall_knowledge += sorted_web_knowledge
-                        recall_knowledge = [item for item in  recall_knowledge if item['rank_score'] >= RERANK_THRESHOLD]
+                        #recall_knowledge = [item for item in  recall_knowledge if item['rank_score'] >= RERANK_THRESHOLD]
             elif use_search:
                 ##如果没有找到知识，则直接搜索
                 web_knowledge = self.get_websearch_documents(query_input)
@@ -649,6 +649,8 @@ class CustomDocRetriever(BaseRetriever):
                     ## 前面返回的是snippet内容，可以对结果继续用爬虫抓取完整内容
                     recall_knowledge = add_webpage_content(sorted_web_knowledge)
 
+            #filter unrelevant knowledge by rerank score
+            recall_knowledge = [item for item in  recall_knowledge if item['rank_score'] >= RERANK_THRESHOLD]
         else:
             recall_knowledge = combine_recalls(filter_knn_result, filter_inverted_result)
             recall_knowledge = [{**doc,'rank_score':0 } for doc in recall_knowledge]
