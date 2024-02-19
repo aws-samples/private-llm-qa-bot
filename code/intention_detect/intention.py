@@ -61,7 +61,7 @@ class BedrockCohereEmbeddings(Embeddings):
         input_body = {}
         input_body["texts"] = texts
         input_body["input_type"] = 'search_document'
-        input_body["truncate"] = 'RIGHT'
+        #input_body["truncate"] = 'RIGHT'
         body = json.dumps(input_body)
         content_type = "application/json"
         accepts = "application/json"
@@ -85,7 +85,7 @@ class BedrockCohereEmbeddings(Embeddings):
         input_body = {}
         input_body["texts"] = [ text ]
         input_body["input_type"] = 'search_query'
-        input_body["truncate"] = 'RIGHT'
+        #input_body["truncate"] = 'RIGHT'
         body = json.dumps(input_body)
         content_type = "application/json"
         accepts = "application/json"
