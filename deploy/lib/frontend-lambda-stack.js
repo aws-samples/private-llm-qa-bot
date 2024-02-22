@@ -46,6 +46,7 @@ export class LambdaStack extends NestedStack {
     super(scope, id, props);
 
     const user_table = props.user_table;
+    const agents_table = props.agents_table;
     // const doc_index_table = props.doc_index_table;
     this.handlersMap = new Map();
 
@@ -189,7 +190,7 @@ export class LambdaStack extends NestedStack {
       {
         ...commonProps,
         environment: {
-          DOC_INDEX_TABLE:'chatbot_doc_index',
+          AGENTS_TABLE_NAME:agents_table.tableName,
           MAIN_FUN_ARN:process.env.MAIN_FUN_ARN
         },
       }
@@ -217,6 +218,8 @@ export class LambdaStack extends NestedStack {
     const main_fn = lambda.Function.fromFunctionArn(this,'main func',process.env.MAIN_FUN_ARN);
     main_fn.grantInvoke(this.lambda_chat_py);
     main_fn.grantInvoke(this.lambda_list_idx);
+
+    agents_table.grantReadWriteData(this.lambda_list_idx);
 
     const api = new RestApi(this, "ChatbotFERestApi", {
       cloudWatchRole: true,
@@ -281,6 +284,12 @@ export class LambdaStack extends NestedStack {
     feedback.addMethod('DELETE',feedbackIntegration,{authorizer});
     feedback.addMethod('GET',feedbackIntegration,{authorizer});
 
+    const agentsIntegration = new LambdaIntegration(this.lambda_list_idx );
+    const agents = api.root.addResource('agents');
+    agents.addMethod('POST',agentsIntegration,{authorizer});
+    agents.addMethod('DELETE',agentsIntegration,{authorizer});
+    agents.addMethod('GET',agentsIntegration,{authorizer});
+    agents.addResource("{id}").addMethod("GET",agentsIntegration,{authorizer});
 
 
 

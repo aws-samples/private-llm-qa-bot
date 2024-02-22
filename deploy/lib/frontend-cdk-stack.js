@@ -23,9 +23,19 @@ export class FrontendCdkStack extends Stack {
       tableName :"chatbotFE_user",
       removalPolicy: RemovalPolicy.DESTROY, // NOT recommended for production code
     });
+
+    const agents_table = new Table(this, "agents_table", {
+      partitionKey: {
+        name: "agentid",
+        type: AttributeType.STRING,
+      },
+      tableName:'agents_table',
+      removalPolicy: RemovalPolicy.DESTROY, // NOT recommended for production code
+    });
    
     const lambdastack = new LambdaStack(this, "lambdas", {
       user_table,
+      agents_table
     });
 
     new CfnOutput(this, `API gateway endpoint url`, {
