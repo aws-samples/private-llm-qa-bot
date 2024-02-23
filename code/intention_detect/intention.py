@@ -23,7 +23,7 @@ credentials = boto3.Session().get_credentials()
 BEDROCK_EMBEDDING_MODELID_LIST = ["cohere.embed-multilingual-v3","cohere.embed-english-v3","amazon.titan-embed-text-v1"]
 BEDROCK_LLM_MODELID_LIST = {'claude-instant':'anthropic.claude-instant-v1',
                             'claude-v2':'anthropic.claude-v2:1'}
-SIMS_THRESHOLD= float(os.environ.get('intent_detection_threshold',0.6))
+SIMS_THRESHOLD= float(os.environ.get('intent_detection_threshold',0.7))
 
 from typing import Any, Dict, List, Optional
 from langchain.embeddings.base import Embeddings
