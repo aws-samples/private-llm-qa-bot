@@ -15,7 +15,7 @@ import itertools
 from bs4 import BeautifulSoup
 from langchain.document_loaders import PDFMinerPDFasHTMLLoader
 from langchain.docstore.document import Document
-from langchain.text_splitter import RecursiveCharacterTextSplitter,CharacterTextSplitter
+from langchain.text_splitter import RecursiveCharacterTextSplitter,CharacterTextSplitter, MarkdownTextSplitter
 import logging
 import urllib.parse
 import numpy as np
@@ -418,6 +418,24 @@ def parse_txt_to_json(file_content):
     json_content = json.dumps(results, ensure_ascii=False)
     return json_content
 
+def parse_md_to_json(file_content):
+    md_splitter = MarkdownTextSplitter( 
+        chunk_size = arg_chunk_size,
+        chunk_overlap  = 0,
+    )
+    
+    results = []
+    chunks = md_splitter.create_documents([ file_content ] )
+    for chunk in chunks:
+        snippet_info = {
+            "heading" : [],
+            "content" : chunk.page_content
+        }
+        results.append(snippet_info)
+
+    json_content = json.dumps(results, ensure_ascii=False)
+    return json_content
+
 def parse_example_to_json(file_content):
     arr = file_content.split(EXAMPLE_SEP)
     json_arr = []
@@ -459,6 +477,8 @@ def parse_xlsx_to_json(file_content):
     import io
 
     df = pd.read_excel(io.BytesIO(file_content))
+    df.fillna(value='', inplace=True)
+
     json_arr = df.to_dict(orient='records')
     qa_content = {
         "doc_title" : "",
@@ -546,16 +566,16 @@ def load_content_json_from_s3(bucket, object_key, content_type, credentials):
     else:
         s3 = boto3.resource('s3')
         obj = s3.Object(bucket,object_key)
-        file_content = obj.get()['Body'].read().decode('utf-8', errors='ignore').strip()
+        if content_type != 'xlsx':
+            file_content = obj.get()['Body'].read().decode('utf-8', errors='ignore').strip()
+        else:
+            # binrary mode
+            file_content = obj.get()['Body'].read()
         try:
-            if content_type != 'xlsx':
-                file_content = obj.get()['Body'].read().decode('utf-8', errors='ignore').strip()
-            else:
-                # binrary mode
-                file_content = obj.get()['Body'].read()
-
             if content_type == 'faq':
                 json_content = parse_faq_to_json(file_content)
+            elif content_type == 'md':
+                json_content = parse_md_to_json(file_content)
             elif content_type =='txt':
                 json_content = parse_txt_to_json(file_content)
             elif content_type =='json':
@@ -653,7 +673,7 @@ def iterate_paragraph_wiki(content_json, object_key,doc_classify,smr_client, ind
 
 
 
-def put_idx_to_ddb(filename,username,index_name,embedding_model,category,createtime):
+def put_idx_to_ddb(filename,company,username,index_name,embedding_model,category,createtime):
     try:
         dynamodb.put_item(
             Item={
@@ -662,6 +682,9 @@ def put_idx_to_ddb(filename,username,index_name,embedding_model,category,createt
                 },
                 'username':{
                     'S':username,
+                },
+                'company':{
+                    'S':company,
                 },
                 'index_name':{
                     'S':index_name,
@@ -713,30 +736,9 @@ def query_idx_from_ddb(filename,username,embedding_model):
         return index_name
     
     except Exception as e:
-        print(f"Not found filename:{filename} index from ddb: {str(e)}")
+        print(f"Not found filename:{filename}, username:{username}, embedding_model:{embedding_model} index from ddb")
         return ''
 
-def get_idx_from_ddb(filename,embedding_model):
-    try:
-        response = dynamodb.get_item(
-            Key={
-            'filename':{
-            'S':filename,
-            },
-            'embedding_model':{
-            'S':embedding_model,
-            },
-            },
-            TableName = DOC_INDEX_TABLE,
-        )
-        index_name = ''
-        if response.get('Item'):
-            index_name = response['Item']['index_name']['S']
-            print (f"Get filename:{filename} with index_name:{index_name} from ddb")
-        return index_name
-    except Exception as e:
-        print(f"Not found filename:{filename} with embedding:{embedding_model} index from ddb: {str(e)}")
-        return ''
     
 def WriteVecIndexToAOS(bucket, object_key, content_type, doc_classify,smr_client, aos_endpoint=AOS_ENDPOINT, region=REGION, index_name=INDEX_NAME):
     credentials = boto3.Session().get_credentials()
@@ -763,7 +765,7 @@ def WriteVecIndexToAOS(bucket, object_key, content_type, doc_classify,smr_client
         gen_aos_record_func = None
         if content_type in ["faq","csv","xlsx"]:
             gen_aos_record_func = iterate_QA(file_content, object_key,doc_classify,smr_client, index_name, EMB_MODEL_ENDPOINT)
-        elif content_type in ['txt', 'pdf', 'json','docx']:
+        elif content_type in ['txt', 'pdf', 'json','docx', 'md']:
             gen_aos_record_func = iterate_paragraph(file_content,object_key, doc_classify,smr_client, index_name, EMB_MODEL_ENDPOINT)
         elif content_type in [ 'pdf.json' ]:
             gen_aos_record_func = iterate_pdf_json(file_content,object_key, doc_classify,smr_client, index_name, EMB_MODEL_ENDPOINT)
@@ -788,9 +790,9 @@ def WriteVecIndexToAOS(bucket, object_key, content_type, doc_classify,smr_client
 
 def process_s3_uploaded_file(bucket, object_key):
     print("********** object_key : " + object_key)
-
+    #if want to use different aos index, the object_key format should be: ai-content/company/username/filename
+            
     content_type = None
-    index_name = INDEX_NAME
     if object_key.endswith(".faq"):
         print("********** pre-processing faq file")
         content_type = 'faq'
@@ -815,7 +817,6 @@ def process_s3_uploaded_file(bucket, object_key):
     elif object_key.endswith(".example"):
         print("********** pre-processing example file")
         content_type = 'example'
-        index_name = EXAMPLE_INDEX_NAME
     elif object_key.endswith(".csv"):
         print("********** pre-processing csv file")
         content_type = 'csv'
@@ -825,20 +826,34 @@ def process_s3_uploaded_file(bucket, object_key):
     elif object_key.endswith(".xlsx"):
         print("********** pre-processing xlsx file")
         content_type = 'xlsx'
+    elif object_key.endswith(".md"):
+        print("********** pre-processing md file")
+        content_type = 'md'
     else:
-        raise RuntimeError("unsupport content type...(pdf, faq, txt, csv, xlsx, pdf.json are supported.)")
+        raise RuntimeError("unsupport content type...(pdf, faq, txt, csv, xlsx, pdf.json, md are supported.)")
     
     username = get_filename_from_obj_key(object_key)
     
     s3 = boto3.resource('s3')
     obj = s3.Object(bucket,object_key)
     metadata = obj.metadata
+    # company = unquote(metadata.get('company','default') if metadata else 'default')
+    
+    ## 如果满足 ai-content/company/username/file
+    company = object_key.split('/')[1] if len(object_key.split('/')) == 4 else 'default'
     doc_classify = unquote(metadata.get('category','') if metadata else '')
+        
+    if  content_type == 'example':
+        index_name = f"chatbot-example-index-{company}"
+    else:
+        index_name = f"{INDEX_NAME}-{company}"
+
+
+        
     print(metadata)
-    print(doc_classify)
+    print(f'use index :{index_name}')
     #check if it is already built
     idx_name = query_idx_from_ddb(object_key,username,EMB_MODEL_ENDPOINT)
-    # idx_name = get_idx_from_ddb(object_key,EMB_MODEL_ENDPOINT)
     if len(idx_name) > 0:
         print("doc file already exists")
         return
@@ -849,7 +864,9 @@ def process_s3_uploaded_file(bucket, object_key):
     print(response)
     print("ingest {} chunk to AOS".format(response[0]))
     timestamp_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    put_idx_to_ddb(filename=object_key,username=username,
+    put_idx_to_ddb(filename=object_key,
+                    company=company,
+                    username=username,
                         index_name=index_name,
                             embedding_model=EMB_MODEL_ENDPOINT,
                             category=doc_classify,

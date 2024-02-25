@@ -65,6 +65,7 @@ RESET = '/rs'
 openai_api_key = None
 STOP=[f"\n{A_Role_en}", f"\n{A_Role}", f"\n{Fewshot_prefix_Q}", '</response>']
 CHANNEL_RET_CNT = 10
+SESSION_EXPIRES_DAYS = 1
 
 BM25_QD_THRESHOLD_HARD_REFUSE = float(os.environ.get('bm25_qd_threshold_hard',15.0))
 BM25_QD_THRESHOLD_SOFT_REFUSE = float(os.environ.get('bm25_qd_threshold_soft',20.0))
@@ -519,7 +520,7 @@ class CustomDocRetriever(BaseRetriever):
                              'doc_classify':'web_search','doc_type':'web_search','score':0.8,'doc_author':item['link']} for item in all_docs]
         return recall_knowledge
     
-    def get_relevant_documents_custom(self, query_input: str):
+    def get_relevant_documents_custom(self, query_input: str,use_search:bool = True):
         global BM25_QD_THRESHOLD_HARD_REFUSE, BM25_QD_THRESHOLD_SOFT_REFUSE
         global KNN_QQ_THRESHOLD_HARD_REFUSE, KNN_QQ_THRESHOLD_SOFT_REFUSE,WEBSEARCH_THRESHOLD
         global KNN_QD_THRESHOLD_HARD_REFUSE, KNN_QD_THRESHOLD_SOFT_REFUSE
@@ -624,7 +625,7 @@ class CustomDocRetriever(BaseRetriever):
                 recall_knowledge = [{**all_docs[idx],'rank_score':scores[idx] } for idx in sorted_indices[-TOP_K:] ] 
                 
                 ## 引入web search结果重新排序
-                if max(scores) < WEBSEARCH_THRESHOLD:
+                if max(scores) < WEBSEARCH_THRESHOLD and use_search:
                     web_knowledge = self.get_websearch_documents(query_input)
                     if web_knowledge:
                         search_scores = self.rerank(query_input, web_knowledge,sm_client,cross_model_endpoint)
@@ -637,8 +638,8 @@ class CustomDocRetriever(BaseRetriever):
                         
                         #添加到原有的知识里,并过滤到原来知识中的低分item
                         recall_knowledge += sorted_web_knowledge
-                        recall_knowledge = [item for item in  recall_knowledge if item['rank_score'] >= RERANK_THRESHOLD]
-            else:
+                        #recall_knowledge = [item for item in  recall_knowledge if item['rank_score'] >= RERANK_THRESHOLD]
+            elif use_search:
                 ##如果没有找到知识，则直接搜索
                 web_knowledge = self.get_websearch_documents(query_input)
                 if web_knowledge:
@@ -648,6 +649,8 @@ class CustomDocRetriever(BaseRetriever):
                     ## 前面返回的是snippet内容，可以对结果继续用爬虫抓取完整内容
                     recall_knowledge = add_webpage_content(sorted_web_knowledge)
 
+            #filter unrelevant knowledge by rerank score
+            recall_knowledge = [item for item in  recall_knowledge if item['rank_score'] >= RERANK_THRESHOLD]
         else:
             recall_knowledge = combine_recalls(filter_knn_result, filter_inverted_result)
             recall_knowledge = [{**doc,'rank_score':0 } for doc in recall_knowledge]
@@ -693,8 +696,8 @@ def handle_error(func):
 
     return wrapper
 
-def detect_intention(query, fewshot_cnt=5):
-    msg = {"fewshot_cnt":fewshot_cnt, "query": query}
+def detect_intention(query, example_index='chatbot-example-index',fewshot_cnt=5):
+    msg = {"fewshot_cnt":fewshot_cnt, "query": query,"example_index":example_index}
     invoke_response = lambda_client.invoke(FunctionName="Detect_Intention",
                                            InvocationType='RequestResponse',
                                            Payload=json.dumps(msg))
@@ -986,7 +989,11 @@ def update_session(session_id,user_id,msgid, question, answer, intention):
         chat_history = []
 
     timestamp_str = str(datetime.now())
-    chat_history.append([question, answer, intention,msgid,timestamp_str])
+    expire_at = int(time.time())+3600*24*SESSION_EXPIRES_DAYS #session expires in 1 days 
+    
+    chat_history = [item for item in chat_history if len(item) >=6 and item[5] < int(time.time())]
+    
+    chat_history.append([question, answer, intention,msgid,timestamp_str,expire_at])
     content = json.dumps(chat_history,ensure_ascii=False)
 
     # inserting values into table
@@ -995,7 +1002,8 @@ def update_session(session_id,user_id,msgid, question, answer, intention):
             'session-id': session_id,
             'user_id':user_id,
             'content': content,
-            'last_updatetime':timestamp_str
+            'last_updatetime':timestamp_str,
+            'expire_at':expire_at
         }
     )
 
@@ -1160,8 +1168,54 @@ def format_reference(recall_knowledge):
     text += '\n```'
     return text
 
+def get_reply_stratgy(recall_knowledge,refuse_strategy:str):
+    if not recall_knowledge:##如果希望LLM利用自有知识回答，则改成LLM_ONLY,否则SAY_DONT_KNOW
+        if refuse_strategy == 'SAY_DONT_KNOW':
+            stratgy = ReplyStratgy.SAY_DONT_KNOW
+        elif refuse_strategy == 'WITH_LLM':
+            stratgy = ReplyStratgy.WITH_LLM
+        else:
+            stratgy = ReplyStratgy.LLM_ONLY 
+        return stratgy
+
+    ## 如果使用了rerank模型
+    if CROSS_MODEL_ENDPOINT:
+        rank_score = [item['rank_score'] for item in recall_knowledge]
+        if max(rank_score) < RERANK_THRESHOLD:  ##如果所有的知识都不超过rank score阈值
+            ##如果希望LLM利用自有知识回答，则改成LLM_ONLY，否则SAY_DONT_KNOW
+            if refuse_strategy == 'SAY_DONT_KNOW':
+                stratgy = ReplyStratgy.SAY_DONT_KNOW
+            elif refuse_strategy == 'WITH_LLM':
+                stratgy = ReplyStratgy.WITH_LLM
+            else:
+                stratgy = ReplyStratgy.LLM_ONLY 
+            return stratgy
+        else:
+            return ReplyStratgy.WITH_LLM
+    else:
+        ##使用rerank之后，不需要这些策略
+        stratgy = ReplyStratgy.RETURN_OPTIONS
+        for item in recall_knowledge:
+            if item['score'] > 1.0:
+                if item['score'] > BM25_QD_THRESHOLD_SOFT_REFUSE:
+                    stratgy = ReplyStratgy.WITH_LLM
+                elif item['score'] > BM25_QD_THRESHOLD_HARD_REFUSE:
+                    stratgy = ReplyStratgy(min(ReplyStratgy.HINT_LLM_REFUSE.value, stratgy.value))
+                else:
+                    stratgy = ReplyStratgy(min(ReplyStratgy.RETURN_OPTIONS.value, stratgy.value))
+
+            elif item['score'] <= 1.0:
+                if item['score'] > KNN_QD_THRESHOLD_SOFT_REFUSE:
+                    stratgy = ReplyStratgy.WITH_LLM
+                elif item['score'] > KNN_QD_THRESHOLD_HARD_REFUSE:
+                    stratgy = ReplyStratgy(min(ReplyStratgy.HINT_LLM_REFUSE.value, stratgy.value))
+                else:
+                    stratgy = ReplyStratgy(min(ReplyStratgy.RETURN_OPTIONS.value, stratgy.value))
+        return stratgy
+            
+            
 def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:str, embedding_model_endpoint:str, llm_model_endpoint:str, llm_model_name:str, aos_endpoint:str, aos_index:str, aos_knn_field:str, aos_result_num:int, kendra_index_id:str, 
-                   kendra_result_num:int,use_qa:bool,wsclient=None,msgid:str='',max_tokens:int = 2048,temperature:float = 0.1,template:str = '',imgurl:str = None,multi_rounds:bool = False, hide_ref:bool = False,use_stream:bool=False):
+                   kendra_result_num:int,use_qa:bool,wsclient=None,msgid:str='',max_tokens:int = 2048,temperature:float = 0.1,template:str = '',imgurl:str = None,multi_rounds:bool = False, hide_ref:bool = False,use_stream:bool=False,example_index:str='chatbot-example-index',use_search:bool=True,refuse_strategy:str = 'LLM_ONLY',refuse_answer:str = ''):
     """
     Entry point for the Lambda function.
 
@@ -1192,7 +1246,8 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
             "kendra_doc": [],
             "knowledges" : [],
             "detect_query_type": '',
-            "LLM_input": ''
+            "LLM_input": '',
+            "use_search":use_search
         }
         json_obj['user_id'] = user_id
         json_obj['session_id'] = session_id
@@ -1339,7 +1394,7 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
     if use_qa and not cache_answer and len(other_intentions) > 0 and len(other_intentions[0]) > 1:
         before_detect = time.time()
         TRACE_LOGGER.trace(f'**Detecting intention...**')
-        detection = detect_intention(query_input, fewshot_cnt=5)
+        detection = detect_intention(query_input,example_index, fewshot_cnt=5)
         intention = detection['func']
         elpase_time_detect = time.time() - before_detect
         logger.info(f'detection: {detection}')
@@ -1408,54 +1463,18 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
             recall_knowledge = doc_retriever.get_relevant_documents_from_bedrock(KNOWLEDGE_BASE_ID, query_input)
         else:
             TRACE_LOGGER.trace('**Retrieving knowledge from OpenSearch...**')
-            recall_knowledge, opensearch_knn_respose, opensearch_query_response = doc_retriever.get_relevant_documents_custom(query_input) 
-
-
-
-        def get_reply_stratgy(recall_knowledge):
-            if not recall_knowledge:
-                stratgy = ReplyStratgy.LLM_ONLY ##如果希望LLM利用自有知识回答，则改成LLM_ONLY,否则SAY_DONT_KNOW
-                return stratgy
-
-            ## 如果使用了rerank模型
-            if CROSS_MODEL_ENDPOINT:
-                rank_score = [item['rank_score'] for item in recall_knowledge]
-                if max(rank_score) < RERANK_THRESHOLD:  ##如果所有的知识都不超过rank score阈值
-                    return ReplyStratgy.LLM_ONLY ##如果希望LLM利用自有知识回答，则改成LLM_ONLY，否则SAY_DONT_KNOW
-                else:
-                    return ReplyStratgy.WITH_LLM
-            else:
-                ##使用rerank之后，不需要这些策略
-                stratgy = ReplyStratgy.RETURN_OPTIONS
-                for item in recall_knowledge:
-                    if item['score'] > 1.0:
-                        if item['score'] > BM25_QD_THRESHOLD_SOFT_REFUSE:
-                            stratgy = ReplyStratgy.WITH_LLM
-                        elif item['score'] > BM25_QD_THRESHOLD_HARD_REFUSE:
-                            stratgy = ReplyStratgy(min(ReplyStratgy.HINT_LLM_REFUSE.value, stratgy.value))
-                        else:
-                            stratgy = ReplyStratgy(min(ReplyStratgy.RETURN_OPTIONS.value, stratgy.value))
-
-                    elif item['score'] <= 1.0:
-                        if item['score'] > KNN_QD_THRESHOLD_SOFT_REFUSE:
-                            stratgy = ReplyStratgy.WITH_LLM
-                        elif item['score'] > KNN_QD_THRESHOLD_HARD_REFUSE:
-                            stratgy = ReplyStratgy(min(ReplyStratgy.HINT_LLM_REFUSE.value, stratgy.value))
-                        else:
-                            stratgy = ReplyStratgy(min(ReplyStratgy.RETURN_OPTIONS.value, stratgy.value))
-                return stratgy
+            recall_knowledge, opensearch_knn_respose, opensearch_query_response = doc_retriever.get_relevant_documents_custom(query_input,use_search) 
 
         elpase_time = time.time() - start
         logger.info(f'running time of opensearch_query : {elpase_time:.3f}s seconds')
-        TRACE_LOGGER.trace(f'**Running time of retrieving knowledge : {elpase_time:.3f}s**')
         
-        reply_stratgy = get_reply_stratgy(recall_knowledge)
-        if reply_stratgy == ReplyStratgy.LLM_ONLY:
-            TRACE_LOGGER.trace('**No relevant knowledge kept...**')
+        reply_stratgy = get_reply_stratgy(recall_knowledge,refuse_strategy)
+        if reply_stratgy == ReplyStratgy.LLM_ONLY: 
             recall_knowledge = []
-        else:
-            TRACE_LOGGER.trace(f'**Retrieved {len(recall_knowledge)} knowledge:**')
-            TRACE_LOGGER.add_ref(f'\n\n**Refer to {len(recall_knowledge)} knowledge:**')
+            
+        TRACE_LOGGER.trace(f'**Running time of retrieving knowledge : {elpase_time:.3f}s**')
+        TRACE_LOGGER.trace(f'**Retrieved {len(recall_knowledge)} knowledge:**')
+        TRACE_LOGGER.add_ref(f'\n\n**Refer to {len(recall_knowledge)} knowledge:**')
 
         ##添加召回文档到refdoc和tracelog, 按score倒序展示
         for sn,item in enumerate(recall_knowledge[::-1]):
@@ -1480,7 +1499,7 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
                 TRACE_LOGGER.postMessage(answer)
                 
         elif reply_stratgy == ReplyStratgy.SAY_DONT_KNOW:
-            answer = "我不太清楚，问问人工吧。"
+            answer = refuse_answer
             hide_ref= True ## 隐藏ref doc
             if use_stream:
                 TRACE_LOGGER.postMessage(answer)
@@ -1547,7 +1566,9 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
         "knowledges" : recall_knowledge,
         "LLM_input": final_prompt,
         "LLM_model_name": llm_model_name,
-        "reply_stratgy" : reply_stratgy.name
+        "reply_stratgy" : reply_stratgy.name,
+        "use_search":use_search,
+        "aos_index":aos_index,
     }
     json_obj['user_id'] = user_id
     json_obj['session_id'] = session_id
@@ -1613,6 +1634,7 @@ def lambda_handler(event, context):
     global openai_api_key
     openai_api_key = event.get('OPENAI_API_KEY') 
     hide_ref = event.get('hide_ref',False)
+    feature_config = event.get('feature_config','')
     retrieve_only = event.get('retrieve_only',False)
     session_id = event['chat_name']
     wsconnection_id = event.get('wsconnection_id',session_id)
@@ -1628,6 +1650,15 @@ def lambda_handler(event, context):
     msgid = event.get('msgid')
     max_tokens = event.get('max_tokens',2048)
     temperature =  event.get('temperature',0.1)
+    aos_index = os.environ.get("aos_index", "")
+    company = event.get("company",'default')
+    example_index = "chatbot-example-index"
+    aos_index = f'chatbot-index-{company}'
+    example_index = f'chatbot-example-index-{company}'
+    refuse_strategy = event.get('refuse_strategy','')
+    refuse_answer = event.get('refuse_answer','对不起，我不太清楚这个问题，请问问人工吧')
+        
+    
     imgurl = event.get('imgurl')
     image_path = ''
     if imgurl:
@@ -1642,7 +1673,7 @@ def lambda_handler(event, context):
     if retrieve_only:
         doc_retriever = CustomDocRetriever.from_endpoints(embedding_model_endpoint=embedding_endpoint,
                                     aos_endpoint= os.environ.get("aos_endpoint", ""),
-                                    aos_index=os.environ.get("aos_index", ""))
+                                    aos_index=aos_index)
         recall_knowledge,opensearch_knn_respose,opensearch_query_response = doc_retriever.get_relevant_documents_custom(question) 
         extra_info = {"query_input": question, "opensearch_query_response" : opensearch_query_response, "opensearch_knn_respose": opensearch_knn_respose,"recall_knowledge":recall_knowledge }
         return {
@@ -1674,7 +1705,6 @@ def lambda_handler(event, context):
 
     # embedding_endpoint = os.environ.get("embedding_endpoint", "")
     aos_endpoint = os.environ.get("aos_endpoint", "")
-    aos_index = os.environ.get("aos_index", "")
     aos_knn_field = os.environ.get("aos_knn_field", "")
     aos_result_num = int(os.environ.get("aos_results", 4))
 
@@ -1685,8 +1715,11 @@ def lambda_handler(event, context):
 
     ##如果指定了prompt 模板
     if template_id and template_id != 'default':
-        prompt_template = get_template(template_id)
+        prompt_template = get_template(template_id,company)
         prompt_template = '' if prompt_template is None else prompt_template['template']['S']
+    
+    use_search = False if feature_config == 'search_disabled' else True
+    logger.info(f'use_search : {use_search}')
     logger.info(f'user_id : {user_id}')
     logger.info(f'prompt_template_id : {template_id}')
     logger.info(f'prompt_template : {prompt_template}')
@@ -1701,12 +1734,14 @@ def lambda_handler(event, context):
     logger.info(f'Kendra_result_num : {Kendra_result_num}')
     logger.info(f'use multiple rounds: {multi_rounds}')
     logger.info(f'intention list: {INTENTION_LIST}')
+    logger.info(f'refuse_strategy: {refuse_strategy}')
+    logger.info(f'refuse_answer: {refuse_answer}')
     global TRACE_LOGGER
     TRACE_LOGGER = TraceLogger(wsclient=wsclient,msgid=msgid,connectionId=wsconnection_id,stream=use_stream,use_trace=use_trace,hide_ref=hide_ref)
 
     main_entry_start = time.time()  # 或者使用 time.time_ns() 获取纳秒级别的时间戳
     answer,ref_text,use_stream,query_input,opensearch_query_response,opensearch_knn_respose,recall_knowledge = main_entry_new(user_id,wsconnection_id,session_id, question, embedding_endpoint, llm_endpoint, model_name, aos_endpoint, aos_index, aos_knn_field, aos_result_num,
-                       Kendra_index_id, Kendra_result_num,use_qa,wsclient,msgid,max_tokens,temperature,prompt_template,image_path,multi_rounds,hide_ref,use_stream)
+                       Kendra_index_id, Kendra_result_num,use_qa,wsclient,msgid,max_tokens,temperature,prompt_template,image_path,multi_rounds,hide_ref,use_stream,example_index,use_search,refuse_strategy,refuse_answer)
     main_entry_elpase = time.time() - main_entry_start  # 或者使用 time.time_ns() 获取纳秒级别的时间戳
     logger.info(f'running time of main_entry : {main_entry_elpase}s seconds')
     if use_stream: ##只有当stream输出时，把这条trace放到最后一个chunk
@@ -1735,6 +1770,7 @@ def lambda_handler(event, context):
         'headers': {'Content-Type': 'application/json'},
         'body': [{"id": str(uuid.uuid4()),
                   "use_stream":use_stream,
+                  "query":query_input,
                              "created": request_timestamp,
                              "useTime": time.time() - request_timestamp,
                              "model": "main_brain",
