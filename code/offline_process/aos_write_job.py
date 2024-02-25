@@ -477,6 +477,8 @@ def parse_xlsx_to_json(file_content):
     import io
 
     df = pd.read_excel(io.BytesIO(file_content))
+    df.fillna(value='', inplace=True)
+
     json_arr = df.to_dict(orient='records')
     qa_content = {
         "doc_title" : "",
@@ -734,7 +736,7 @@ def query_idx_from_ddb(filename,username,embedding_model):
         return index_name
     
     except Exception as e:
-        print(f"Not found filename:{filename} index from ddb: {str(e)}")
+        print(f"Not found filename:{filename}, username:{username}, embedding_model:{embedding_model} index from ddb")
         return ''
 
     
