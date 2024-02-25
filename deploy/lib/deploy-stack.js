@@ -266,7 +266,7 @@ export class DeployStack extends Stack {
       securityGroups:securityGroups,
       architecture: Architecture.X86_64,
       environment: {
-        llm_model_endpoint:'anthropic.claude-instant-v1',
+        llm_model_endpoint:'anthropic.claude-v2',
         region:region
       },
     });
