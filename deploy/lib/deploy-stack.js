@@ -231,6 +231,7 @@ export class DeployStack extends Stack {
         aos_knn_field:process.env.aos_knn_field,
         embedding_endpoint:process.env.embedding_endpoint,
         llm_model_endpoint:"anthropic.claude-instant-v1",
+        intent_detection_threshold:"0.7",
         region:region
       },
     });
