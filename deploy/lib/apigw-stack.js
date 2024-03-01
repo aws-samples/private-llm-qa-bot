@@ -18,9 +18,9 @@ export class ApiGatewayStack extends NestedStack {
       // console.log('props:',props)
 
     const lambda_fn = props.lambda_fn;
+    const name = props.name;
 
-
-    const api = new RestApi(this, 'MainBrainProxy', {
+    const api = new RestApi(this, name, {
       cloudWatchRole:true,
       endpointConfiguration: {
         types: [EndpointType.REGIONAL],
