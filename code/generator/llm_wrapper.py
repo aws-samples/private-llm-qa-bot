@@ -98,7 +98,7 @@ def get_langchain_llm_model(llm_model_id, params, region):
                     adapt_parameters.pop(key, None)
         elif llm_model_id.startswith('amazon'):
             for key, value in parameters.items():
-                if key in ['temperature', 'max_tokens', 'top_p', 'stop']:
+                if key in ['temperature', 'max_tokens', 'top_p']:
                     if key == 'top_p':
                         adapt_parameters['topP'] = adapt_parameters.pop("top_p", None)
                     elif key == 'max_tokens':
