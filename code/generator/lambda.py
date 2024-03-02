@@ -1,7 +1,8 @@
 import boto3
 import os
 import logging
-from llm_wrapper import get_all_model_ids, get_langchain_llm_model
+from llm_wrapper import get_langchain_llm_model
+from llm_manager import get_all_model_ids
 from enum import Enum
 from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
@@ -47,23 +48,21 @@ def lambda_handler(event, context):
     other_accounts = os.environ.get('other_accounts', '')
     region = os.environ.get('region')
 
-    query = event.get('query', '')
     model_id = event.get('model_id', '')
     prompt = event.get('prompt', '')
     method = event.get('method', LAMBDA_SUPPORT_METHOD.GET_ALL_MODEL_IDS.value)
+    params = event.get('params', {})
 
     logger.info("other_accounts: {}".format(other_accounts))
     logger.info("region:{}".format(region))
-    logger.info("query:{}".format(query))
     logger.info("model_id:{}".format(model_id))
     logger.info("prompt:{}".format(prompt))
-
 
     if method == LAMBDA_SUPPORT_METHOD.GET_ALL_MODEL_IDS.value:
         all_model_ids = get_all_model_ids()
         return {"all_model_ids" : all_model_ids}
     elif method == LAMBDA_SUPPORT_METHOD.INVOKE_LLM.value:
-        langchain_llm = get_langchain_llm_model(model_id)
+        langchain_llm = get_langchain_llm_model(model_id, params, region)
 
         PROMPT = PromptTemplate(
             template=prompt, 
@@ -71,7 +70,7 @@ def lambda_handler(event, context):
         )
 
         llmchain = LLMChain(llm=langchain_llm, verbose=False, prompt=PROMPT)
-        answer = llmchain.run({"role": "Jason"})
+        answer = llmchain.run({})
         return {"output": answer, "prompt" : prompt}
     elif method == LAMBDA_SUPPORT_METHOD.SAVE_PROMPT_TEMPLATE.value:
         raise RuntimeError(f"unsupported method - {method}.") 

@@ -17,7 +17,7 @@ invoke_response = lambda_client.invoke(FunctionName="Invoke_Generator",
                                         Payload=json.dumps(msg))
 
 # 2. Invoke LLM
-msg = {"prompt": "hello", "model_id": "anthropic.claude-v2", "method" : "INVOKE_LLM"}
+msg = {"prompt": "hello", "model_id": "anthropic.claude-v2", "method" : "INVOKE_LLM", "params": {"temperature":0.1, "max_tokens": 256, "top_p": 0.8}  }
 invoke_response = lambda_client.invoke(FunctionName="Invoke_Generator",
                                         InvocationType='RequestResponse',
                                         Payload=json.dumps(msg))
