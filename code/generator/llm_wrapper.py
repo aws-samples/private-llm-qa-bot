@@ -1,12 +1,17 @@
 import boto3
 import json
-from typing import Any, Dict, List, Union,Mapping, Optional, TypeVar, Union
+from typing import Any, Dict, List
+import logging
+import copy
 from langchain.chains import LLMChain
 from langchain.llms.bedrock import Bedrock
 from langchain.llms.sagemaker_endpoint import LLMContentHandler
 from langchain.llms import SagemakerEndpoint
 from langchain.prompts import PromptTemplate
 from llm_manager import get_all_private_llm, get_all_bedrock_llm
+
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 
 bedrock_llms = get_all_bedrock_llm()
 private_llm = get_all_private_llm()
@@ -25,7 +30,7 @@ def get_langchain_llm_model(llm_model_id, params, region):
         params keys should be in [temperature, max_tokens, top_p, top_k, stop]
     '''
     llm = None
-    support_parameters = { item[0]:item[1] for item in params.items() if item[0] in ['temperature', 'max_tokens', 'top_p', 'top_k', 'stop']}
+    parameters = { item[0]:item[1] for item in params.items() if item[0] in ['temperature', 'max_tokens', 'top_p', 'top_k', 'stop']}
 
     if llm_model_id in bedrock_llms:
         boto3_bedrock = boto3.client(
@@ -33,62 +38,82 @@ def get_langchain_llm_model(llm_model_id, params, region):
             region_name=region
         )
 
-        parameters = {'temperature':0.1, 'max_tokens': 256, 'top_p': 0.8}
+        # make sure its default value
+        if bool(parameters) == False:
+            parameters = {'temperature':0.1, 'max_tokens': 256, 'top_p': 0.8}
+
+        adapt_parameters = copy.deepcopy(parameters)
+        
         if llm_model_id.startswith('anthropic'):
-            for key, value in support_parameters.items():
+            for key, value in parameters.items():
                 if key in ['temperature', 'max_tokens', 'top_p', 'top_k', 'stop']:
                     if key == 'max_tokens':
-                        parameters['max_tokens_to_sample'] = parameters.pop("max_tokens", None)
+                        adapt_parameters['max_tokens_to_sample'] = adapt_parameters.pop("max_tokens", None)
                     elif key == 'stop':
-                        parameters['stop_sequences'] = parameters.pop("stop", None)
+                        adapt_parameters['stop_sequences'] = adapt_parameters.pop("stop", None)
                     else:
-                        parameters[key] = value
+                        adapt_parameters[key] = value
+                else:
+                    adapt_parameters.pop(key, None)
         elif llm_model_id.startswith('mistral'):
-            for key, value in support_parameters.items():
+            for key, value in parameters.items():
                 if key in ['temperature', 'max_tokens', 'top_p', 'top_k', 'stop']:
-                    parameters[key] = value
+                    adapt_parameters[key] = value
+                else:
+                    adapt_parameters.pop(key, None)
         elif llm_model_id.startswith('meta'):
-            for key, value in support_parameters.items():
+            for key, value in parameters.items():
                 if key in ['max_tokens', 'temperature', 'top_p']:
                     if key == 'max_tokens':
-                        parameters['max_gen_len'] = parameters.pop("max_tokens", None)
+                        adapt_parameters['max_gen_len'] = adapt_parameters.pop("max_tokens", None)
                     else:
-                        parameters[key] = value
+                        adapt_parameters[key] = value
+                else:
+                    adapt_parameters.pop(key, None)
         elif llm_model_id.startswith('ai21'):
-            for key, value in support_parameters.items():
+            for key, value in parameters.items():
                 if key in ['max_tokens', 'temperature', 'top_p', 'stop']:
                     if key == 'max_tokens':
-                        parameters['maxTokens'] = parameters.pop("max_tokens", None)
+                        adapt_parameters['maxTokens'] = adapt_parameters.pop("max_tokens", None)
                     elif key == 'top_p':
-                        parameters['topP'] = parameters.pop("top_p", None)
+                        adapt_parameters['topP'] = adapt_parameters.pop("top_p", None)
                     elif key == 'stop':
-                        parameters['stopSequences'] = parameters.pop("stop", None)
+                        adapt_parameters['stopSequences'] = adapt_parameters.pop("stop", None)
                     else:
-                        parameters[key] = value
+                        adapt_parameters[key] = value
+                else:
+                    adapt_parameters.pop(key, None)
         elif llm_model_id.startswith('cohere'):
-            for key, value in support_parameters.items():
+            for key, value in parameters.items():
                 if key in ['temperature', 'max_tokens', 'top_p', 'top_k', 'stop']:
                     if key == 'top_p':
-                        parameters['p'] = parameters.pop("top_p", None)
+                        adapt_parameters['p'] = adapt_parameters.pop("top_p", None)
                     elif key == 'top_k':
-                        parameters['k'] = parameters.pop("top_k", None)
+                        adapt_parameters['k'] = adapt_parameters.pop("top_k", None)
                     elif key == 'stop':
-                        parameters['stop_sequences'] = parameters.pop("stop", None)
+                        adapt_parameters['stop_sequences'] = adapt_parameters.pop("stop", None)
                     else:
-                        parameters[key] = value
+                        adapt_parameters[key] = value
+                else:
+                    adapt_parameters.pop(key, None)
         elif llm_model_id.startswith('amazon'):
-            for key, value in support_parameters.items():
+            for key, value in parameters.items():
                 if key in ['temperature', 'max_tokens', 'top_p', 'stop']:
                     if key == 'top_p':
-                        parameters['topP'] = parameters.pop("top_p", None)
+                        adapt_parameters['topP'] = adapt_parameters.pop("top_p", None)
                     elif key == 'max_tokens':
-                        parameters['maxTokenCount'] = parameters.pop("max_tokens", None)
+                        adapt_parameters['maxTokenCount'] = adapt_parameters.pop("max_tokens", None)
                     elif key == 'stop':
-                        parameters['stopSequences'] = parameters.pop("stop", None)
+                        adapt_parameters['stopSequences'] = adapt_parameters.pop("stop", None)
                     else:
-                        parameters[key] = value
+                        adapt_parameters[key] = value
+                else:
+                    adapt_parameters.pop(key, None)
             
-        llm = Bedrock(model_id=llm_model_id, client=boto3_bedrock, streaming=False, model_kwargs=parameters) 
+        logger.info("--------adapt_parameters------")
+        logger.info(adapt_parameters)
+        logger.info("--------adapt_parameters------")
+        llm = Bedrock(model_id=llm_model_id, client=boto3_bedrock, streaming=False, model_kwargs=adapt_parameters) 
 
     elif llm_model_id in list(private_llm.keys()):
         llm_model_endpoint = private_llm[llm_model_id]
@@ -96,7 +121,7 @@ def get_langchain_llm_model(llm_model_id, params, region):
         llm = SagemakerEndpoint(
                 endpoint_name=llm_model_endpoint, 
                 region_name=region, 
-                model_kwargs={'parameters': support_parameters},
+                model_kwargs={'parameters': parameters},
                 content_handler=llmcontent_handler
             )
     else:

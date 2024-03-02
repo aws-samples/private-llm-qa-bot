@@ -61,6 +61,7 @@ export class GeneratorCdkStack extends Stack {
           "sagemaker:InvokeEndpoint",
           "dynamodb:*",
           "secretsmanager:GetSecretValue",
+          "ssm:GetParameters",
           "bedrock:*"
           ],
         effect: iam.Effect.ALLOW,

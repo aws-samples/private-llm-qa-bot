@@ -71,7 +71,11 @@ def lambda_handler(event, context):
 
         llmchain = LLMChain(llm=langchain_llm, verbose=False, prompt=PROMPT)
         answer = llmchain.run({})
-        return {"output": answer, "prompt" : prompt}
+
+        if type(answer) == dict and 'text' in answer.keys():
+            return {"output": answer.get('text', ''), "prompt" : prompt, "params" : params}
+
+        return {"output": answer, "prompt" : prompt, "params" : params}
     elif method == LAMBDA_SUPPORT_METHOD.SAVE_PROMPT_TEMPLATE.value:
         raise RuntimeError(f"unsupported method - {method}.") 
     else:
