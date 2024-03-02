@@ -28,8 +28,7 @@ def get_all_private_llm(other_account_list=OTHER_ACCOUNT_LLM_ENDPOINTS):
         parameter = ssm.get_parameter(Name=SMM_KEY_AVAIL_LLM_ENDPOINTS, WithDecryption=False)
         ret=json.loads(parameter['Parameter']['Value'])
     except Exception as e:
-        print(str(e))
-
+        print("There is no llm endpoint existed.")
 
     if type(other_account_list) == list:
         # get all of llm endpoint from other account
@@ -47,12 +46,17 @@ def llm_endpoint_regist(model_id, model_endpoint):
     existed_llm_endpoints_dict.update(append_llm_endpoint)
 
     ssm_val = json.dumps(existed_llm_endpoints_dict)
-    ssm.put_parameter(
-        Name=SMM_KEY_AVAIL_LLM_ENDPOINTS,
-        Overwrite=True,
-        Type='String',
-        Value=ssm_val,
-    )
+    try:
+        ssm.put_parameter(
+            Name=SMM_KEY_AVAIL_LLM_ENDPOINTS,
+            Overwrite=True,
+            Type='String',
+            Value=ssm_val,
+        )
+    except Exception as e:
+        return False
+    
+    return True 
 
 def get_all_model_ids():
     private_llms = get_all_private_llm()

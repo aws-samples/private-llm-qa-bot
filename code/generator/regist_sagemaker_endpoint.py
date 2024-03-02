@@ -10,4 +10,8 @@ if __name__ == '__main__':
     endpoint_name = args.endpoint
     llm_model = args.llm_model
     
-    llm_endpoint_regist(llm_model, endpoint_name)
+    success = llm_endpoint_regist(llm_model, endpoint_name)
+    if success:
+        print("Update LLM endpoint successfully.")
+    else:
+        print("Update LLM endpoint failed.")
