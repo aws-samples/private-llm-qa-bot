@@ -86,7 +86,8 @@ KNOWLEDGE_BASE_ID = os.environ.get('knowledge_base_id',None)
 
 BEDROCK_EMBEDDING_MODELID_LIST = ["cohere.embed-multilingual-v3","cohere.embed-english-v3","amazon.titan-embed-text-v1"]
 BEDROCK_LLM_MODELID_LIST = {'claude-instant':'anthropic.claude-instant-v1',
-                            'claude-v2':'anthropic.claude-v2'}
+                            'claude-v2':'anthropic.claude-v2',
+                            'claude-v3-sonnet': 'anthropic.claude-3-sonnet-20240229-v1:0'}
 
 boto3_bedrock = boto3.client(
     service_name="bedrock-runtime",
@@ -1273,8 +1274,8 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
             "top_p":0.95
         }
 
-        model_id = BEDROCK_LLM_MODELID_LIST[llm_model_name] if llm_model_name == 'claude-instant' else BEDROCK_LLM_MODELID_LIST['claude-v2']
-
+        model_id = BEDROCK_LLM_MODELID_LIST.get(llm_model_name,BEDROCK_LLM_MODELID_LIST['claude-v2'])
+        logger.info(f"model_id:{model_id}")
         llm = Bedrock(model_id=model_id, 
                       client=boto3_bedrock,
                       streaming=use_stream,

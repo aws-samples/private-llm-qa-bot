@@ -23,7 +23,8 @@ credentials = boto3.Session().get_credentials()
 lambda_client= boto3.client('lambda')
 BEDROCK_REGION = None
 BEDROCK_LLM_MODELID_LIST = {'claude-instant':'anthropic.claude-instant-v1',
-                            'claude-v2':'anthropic.claude-v2:1'}
+                            'claude-v2':'anthropic.claude-v2:1',
+                            'claude-v3-sonnet':'anthropic.claude-3-sonnet-20240229-v1:0'}
 REFUSE_ANSWER = '对不起, 根据{func_name}({args}),没有查询到您想要的信息，请您更具体的描述下您的要求.'
 
 ERROR_ANSWER = """
@@ -345,7 +346,7 @@ def lambda_handler(event, context):
             "top_p":0.85
         }
         
-        model_id = "anthropic.claude-v2"
+        model_id = BEDROCK_LLM_MODELID_LIST['claude-3-sonnet']
         llm = Bedrock(model_id=model_id, client=boto3_bedrock, model_kwargs=parameters)
 
     agent_tools = AgentTools(api_schema=API_SCHEMA,llm=llm)
