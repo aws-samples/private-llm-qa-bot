@@ -60,7 +60,7 @@ def _anthropic_messages_format(input_text: str) -> str:
             message = {"role": "user", "content": talk[0]}
             messages.append(message)
             if len(talk) == 2:
-                message = {"role": "user", "content": talk[1]}
+                message = {"role": "assistant", "content": talk[1]}
                 messages.append(message)
 
         return messages
@@ -202,7 +202,8 @@ class LLMInputOutputAdapter:
                 return
                 # chunk obj format varies with provider
             yield GenerationChunk(
-                text=chunk_obj[output_key],
+                #text=chunk_obj[output_key],
+                text = chunk_obj["delta"]["text"] if chunk_obj["type"] == "content_block_delta" else '',
                 generation_info={
                     GUARDRAILS_BODY_KEY: chunk_obj.get(GUARDRAILS_BODY_KEY)
                     if GUARDRAILS_BODY_KEY in chunk_obj

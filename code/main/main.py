@@ -198,6 +198,7 @@ class CustomStreamingOutCallbackHandler(BaseCallbackHandler):
     def on_llm_new_token(self, token: str, **kwargs: Any) -> None:
         """Run on new LLM token. Only available when streaming is enabled."""
         data = json.dumps({ 'msgid':self.msgid, 'role': "AI", 'text': {'content':token},'connectionId':self.connectionId})
+        print(f"on_llm_new_token: {token}")
         self.postMessage(data)
 
     def on_llm_end(self, response: LLMResult, **kwargs: Any) -> None:
@@ -1090,14 +1091,14 @@ Once again, the user's query is:
 {question}
 </query>
 
-Please put your answer between <response> tags and follow below requirements:{ask_user_prompt}
+Please follow below requirements:{ask_user_prompt}
 - Respond in the original language of the question.
 - Please try you best to leverage the image and hyperlink provided in <information>, you need to keep them in Markdown format.
 - Do not directly reference the content of <information> in your answer.
 - Skip the preamble, go straight into the answer. The answers will strictly be based on relevant knowledge in <information>.
 - if the information is empty or not relevant to user's query, then reponse don't know.
 
-Assistant: <response>"""
+Assistant:"""
     else:
         prompt_template_zh = prompt_template + '{ask_user_prompt}'
     PROMPT = PromptTemplate(
@@ -1139,8 +1140,8 @@ def create_chat_prompt_templete(prompt_template='', llm_model_name='claude'):
 <history> {chat_history} </history>
 Here is the user’s question: <question> {question} </question>
 How do you respond to the user’s question?
-Think about your answer first before you respond. Put your response in <response></response> tags.
-Assistant: <response>"""
+Think about your answer first before you respond.
+Assistant:"""
         PROMPT = PromptTemplate(
             template=prompt_template_zh, 
             partial_variables={'system_role_prompt':SYSTEM_ROLE_PROMPT},
