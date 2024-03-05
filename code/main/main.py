@@ -503,7 +503,8 @@ class CustomDocRetriever(BaseRetriever):
             },
             retrievalConfiguration={
                 'vectorSearchConfiguration': {
-                    'numberOfResults': TOP_K 
+                    'numberOfResults': TOP_K,
+                    'overrideSearchType': 'HYBRID',
                 }
             },
         )
