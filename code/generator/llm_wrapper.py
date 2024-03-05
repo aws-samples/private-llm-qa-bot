@@ -4,7 +4,8 @@ from typing import Any, Dict, List
 import logging
 import copy
 from langchain.chains import LLMChain
-from langchain.llms.bedrock import Bedrock
+# from langchain.llms.bedrock import Bedrock
+from langchain_bedrock import Bedrock
 from langchain.llms.sagemaker_endpoint import LLMContentHandler
 from langchain.llms import SagemakerEndpoint
 from langchain.prompts import PromptTemplate
@@ -47,9 +48,9 @@ def get_langchain_llm_model(llm_model_id, params, region):
         if llm_model_id.startswith('anthropic'):
             for key, value in parameters.items():
                 if key in ['temperature', 'max_tokens', 'top_p', 'top_k', 'stop']:
-                    if key == 'max_tokens':
-                        adapt_parameters['max_tokens_to_sample'] = adapt_parameters.pop("max_tokens", None)
-                    elif key == 'stop':
+                    # if key == 'max_tokens':
+                    #     adapt_parameters['max_tokens_to_sample'] = adapt_parameters.pop("max_tokens", None)
+                    if key == 'stop':
                         adapt_parameters['stop_sequences'] = adapt_parameters.pop("stop", None)
                     else:
                         adapt_parameters[key] = value
@@ -147,12 +148,18 @@ if __name__ == "__main__":
         return PROMPT
 
     prompt_templ = create_detect_prompt_templete()
-    
-    INVOKE_MODEL_ID = 'cohere.command-text-v14'
-    llm = get_langchain_llm_model(INVOKE_MODEL_ID, params, REGION)
-    llmchain = LLMChain(llm=llm, verbose=False, prompt=prompt_templ)
+
+    INVOKE_MODEL_ID = 'anthropic.claude-3-sonnet-20240229-v1:0'
+    llm2 = get_langchain_llm_model(INVOKE_MODEL_ID, params, REGION)
+    llmchain = LLMChain(llm=llm2, verbose=False, prompt=prompt_templ)
     answer = llmchain.run({})
-    print("cohere:" + answer)
+    print("claude:" + answer)
+    
+    # INVOKE_MODEL_ID = 'cohere.command-text-v14'
+    # llm = get_langchain_llm_model(INVOKE_MODEL_ID, params, REGION)
+    # llmchain = LLMChain(llm=llm, verbose=False, prompt=prompt_templ)
+    # answer = llmchain.run({})
+    # print("cohere:" + answer)
 
     INVOKE_MODEL_ID = 'anthropic.claude-v2'
     llm2 = get_langchain_llm_model(INVOKE_MODEL_ID, params, REGION)
@@ -160,27 +167,27 @@ if __name__ == "__main__":
     answer = llmchain.run({})
     print("claude:" + answer)
 
-    INVOKE_MODEL_ID = 'meta.llama2-13b-chat-v1'
-    llm3 = get_langchain_llm_model(INVOKE_MODEL_ID, params, REGION)
-    llmchain = LLMChain(llm=llm3, verbose=False, prompt=prompt_templ)
-    answer = llmchain.run({})
-    print("llama:" + answer)
+    # INVOKE_MODEL_ID = 'meta.llama2-13b-chat-v1'
+    # llm3 = get_langchain_llm_model(INVOKE_MODEL_ID, params, REGION)
+    # llmchain = LLMChain(llm=llm3, verbose=False, prompt=prompt_templ)
+    # answer = llmchain.run({})
+    # print("llama:" + answer)
 
-    INVOKE_MODEL_ID = 'amazon.titan-text-express-v1'
-    llm5 = get_langchain_llm_model(INVOKE_MODEL_ID, params, REGION)
-    llmchain = LLMChain(llm=llm5, verbose=False, prompt=prompt_templ)
-    answer = llmchain.run({})
-    print("amazon:" + answer)
+    # INVOKE_MODEL_ID = 'amazon.titan-text-express-v1'
+    # llm5 = get_langchain_llm_model(INVOKE_MODEL_ID, params, REGION)
+    # llmchain = LLMChain(llm=llm5, verbose=False, prompt=prompt_templ)
+    # answer = llmchain.run({})
+    # print("amazon:" + answer)
 
-    INVOKE_MODEL_ID = 'ai21.j2-mid-v1'
-    prompt_templ = create_detect_prompt_templete()
-    llm6 = get_langchain_llm_model(INVOKE_MODEL_ID, params, REGION)
-    llmchain = LLMChain(llm=llm6, verbose=False, prompt=prompt_templ)
-    answer = llmchain.run({})
-    print("ai21:" + answer)
+    # INVOKE_MODEL_ID = 'ai21.j2-mid-v1'
+    # prompt_templ = create_detect_prompt_templete()
+    # llm6 = get_langchain_llm_model(INVOKE_MODEL_ID, params, REGION)
+    # llmchain = LLMChain(llm=llm6, verbose=False, prompt=prompt_templ)
+    # answer = llmchain.run({})
+    # print("ai21:" + answer)
     
-    INVOKE_MODEL_ID = 'mistral.mistral-7b-instruct-v0:2'
-    llm4 = get_langchain_llm_model(INVOKE_MODEL_ID, params, REGION)
-    llmchain = LLMChain(llm=llm4, verbose=False, prompt=prompt_templ)
-    answer = llmchain.run({})
-    print("mistral:" + answer)
+    # INVOKE_MODEL_ID = 'mistral.mistral-7b-instruct-v0:2'
+    # llm4 = get_langchain_llm_model(INVOKE_MODEL_ID, params, REGION)
+    # llmchain = LLMChain(llm=llm4, verbose=False, prompt=prompt_templ)
+    # answer = llmchain.run({})
+    # print("mistral:" + answer)
