@@ -9,11 +9,11 @@ from langchain.llms.base import LLM
 from langchain.callbacks.base import BaseCallbackHandler
 from langchain.callbacks.manager import CallbackManagerForLLMRun
 # from langchain.llms.bedrock import Bedrock
-from langchain_bedrock import Bedrock
+from .langchain_bedrock import Bedrock
 from langchain.llms.sagemaker_endpoint import LLMContentHandler, SagemakerEndpoint
 # from langchain.llms import SagemakerEndpoint
 from langchain.prompts import PromptTemplate
-from llm_manager import get_all_private_llm, get_all_bedrock_llm
+from .llm_manager import get_all_private_llm, get_all_bedrock_llm
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
