@@ -37,7 +37,7 @@ class OpenSearchConstruct extends Construct {
     // Network policy is required so that the dashboard can be viewed!
     const netPolicy = new ops.CfnSecurityPolicy(this, 'ProductNetworkPolicy', {
       name: 'kb-network-policy',
-      policy: `[{"Rules":[{"ResourceType":"collection","Resource":["collection/kb-collection"]}, {"ResourceType":"dashboard","Resource":["collection/kb-collection"]}],"AllowFromPublic":true,"SourceVPCEs":["${props.vpc.vpcId}"]}]`,
+      policy: `[{"Rules":[{"ResourceType":"collection","Resource":["collection/kb-collection"]}, {"ResourceType":"dashboard","Resource":["collection/kb-collection"]}],"AllowFromPublic":true}]`,
       type: 'network'
     });
     collection.addDependency(netPolicy);
