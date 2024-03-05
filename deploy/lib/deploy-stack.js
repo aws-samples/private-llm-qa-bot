@@ -17,6 +17,7 @@ import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as s3n from 'aws-cdk-lib/aws-s3-notifications';
 import * as dotenv from "dotenv";
 import { addAutoScalingDDb } from "./autoscalling.js";
+import {OpenSearchServerlessStack} from "./opensearch-serverless-stack.js";
 
 dotenv.config();
 
@@ -57,11 +58,17 @@ export class DeployStack extends Stack {
       // Create open search if the aos endpoint not provided
     let opensearch_endpoint=aos_existing_endpoint;
     let opensearchStack;
+    // if (!aos_existing_endpoint || aos_existing_endpoint === 'optional'){
+    //      opensearchStack = new OpenSearchStack(this,'os-chat-dev',
+    //           {vpc:vpc,subnets:subnets,securityGroup:securityGroups[0]});
+    //     opensearch_endpoint = opensearchStack.domainEndpoint;
+    //     opensearchStack.addDependency(vpcStack);
+    // }
     if (!aos_existing_endpoint || aos_existing_endpoint === 'optional'){
-         opensearchStack = new OpenSearchStack(this,'os-chat-dev',
-              {vpc:vpc,subnets:subnets,securityGroup:securityGroups[0]});
-        opensearch_endpoint = opensearchStack.domainEndpoint;
-        opensearchStack.addDependency(vpcStack);
+      opensearchStack = new OpenSearchServerlessStack(this,'os-chat-serverless',
+           {vpc:vpc,subnets:subnets,securityGroup:securityGroups[0]});
+     opensearch_endpoint = opensearchStack.domainEndpoint;
+     opensearchStack.addDependency(vpcStack);
     }
     new CfnOutput(this,'VPC',{value:vpc.vpcId});
     new CfnOutput(this,'opensearch endpoint',{value:opensearch_endpoint});
