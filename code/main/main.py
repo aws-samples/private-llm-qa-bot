@@ -40,6 +40,7 @@ from boto3 import client as boto3_client
 from utils.web_search import web_search,add_webpage_content
 from utils.management import management_api,get_template
 from utils.utils import add_reference, render_answer_with_ref
+from generator.llm_wrapper import get_langchain_llm_model
 
 lambda_client= boto3.client('lambda')
 dynamodb_client = boto3.resource('dynamodb')
@@ -86,7 +87,8 @@ KNOWLEDGE_BASE_ID = os.environ.get('knowledge_base_id',None)
 
 BEDROCK_EMBEDDING_MODELID_LIST = ["cohere.embed-multilingual-v3","cohere.embed-english-v3","amazon.titan-embed-text-v1"]
 BEDROCK_LLM_MODELID_LIST = {'claude-instant':'anthropic.claude-instant-v1',
-                            'claude-v2':'anthropic.claude-v2'}
+                            'claude-v2':'anthropic.claude-v2',
+                            'claude-v3-sonnet': 'anthropic.claude-3-sonnet-20240229-v1:0'}
 
 boto3_bedrock = boto3.client(
     service_name="bedrock-runtime",
@@ -137,24 +139,24 @@ class TraceLogger(BaseModel):
     
 TRACE_LOGGER = None
 
-class StreamScanner:    
-    def __init__(self):
-        self.buff = io.BytesIO()
-        self.read_pos = 0
+# class StreamScanner:    
+#     def __init__(self):
+#         self.buff = io.BytesIO()
+#         self.read_pos = 0
         
-    def write(self, content):
-        self.buff.seek(0, io.SEEK_END)
-        self.buff.write(content)
+#     def write(self, content):
+#         self.buff.seek(0, io.SEEK_END)
+#         self.buff.write(content)
         
-    def readlines(self):
-        self.buff.seek(self.read_pos)
-        for line in self.buff.readlines():
-            if line[-1] != b'\n':
-                self.read_pos += len(line)
-                yield line[:-1]
+#     def readlines(self):
+#         self.buff.seek(self.read_pos)
+#         for line in self.buff.readlines():
+#             if line[-1] != b'\n':
+#                 self.read_pos += len(line)
+#                 yield line[:-1]
                 
-    def reset(self):
-        self.read_pos = 0
+#     def reset(self):
+#         self.read_pos = 0
 
 class CustomStreamingOutCallbackHandler(BaseCallbackHandler):
     """Callback handler for streaming. Only works with LLMs that support streaming."""
@@ -196,6 +198,7 @@ class CustomStreamingOutCallbackHandler(BaseCallbackHandler):
     def on_llm_new_token(self, token: str, **kwargs: Any) -> None:
         """Run on new LLM token. Only available when streaming is enabled."""
         data = json.dumps({ 'msgid':self.msgid, 'role': "AI", 'text': {'content':token},'connectionId':self.connectionId})
+        print(f"on_llm_new_token: {token}")
         self.postMessage(data)
 
     def on_llm_end(self, response: LLMResult, **kwargs: Any) -> None:
@@ -213,114 +216,114 @@ class CustomStreamingOutCallbackHandler(BaseCallbackHandler):
         data = json.dumps({ 'msgid':self.msgid, 'role': "AI", 'text': {'content':str(error[0])+'[DONE]'},'connectionId':self.connectionId})
         self.postMessage(data)
 
-class SagemakerStreamContentHandler(LLMContentHandler):
-    content_type: Optional[str] = "application/json"
-    accepts: Optional[str] = "application/json"
-    callbacks:BaseCallbackHandler
-    class Config:
-        """Configuration for this pydantic object."""
-        extra = Extra.forbid
+# class SagemakerStreamContentHandler(LLMContentHandler):
+#     content_type: Optional[str] = "application/json"
+#     accepts: Optional[str] = "application/json"
+#     callbacks:BaseCallbackHandler
+#     class Config:
+#         """Configuration for this pydantic object."""
+#         extra = Extra.forbid
     
-    def __init__(self,callbacks:BaseCallbackHandler,**kwargs) -> None:
-        super().__init__(**kwargs)
-        self.callbacks = callbacks
+#     def __init__(self,callbacks:BaseCallbackHandler,**kwargs) -> None:
+#         super().__init__(**kwargs)
+#         self.callbacks = callbacks
  
-    def transform_input(self, prompt: str, model_kwargs: Dict) -> bytes:
-        input_str = json.dumps({'inputs': prompt,**model_kwargs})
-        # logger.info(f'transform_input:{input_str}')
-        return input_str.encode('utf-8')
+#     def transform_input(self, prompt: str, model_kwargs: Dict) -> bytes:
+#         input_str = json.dumps({'inputs': prompt,**model_kwargs})
+#         # logger.info(f'transform_input:{input_str}')
+#         return input_str.encode('utf-8')
     
-    def transform_output(self, event_stream: Any) -> str:
-        scanner = StreamScanner()
-        text = ''
-        for event in event_stream:
-            scanner.write(event['PayloadPart']['Bytes'])
-            for line in scanner.readlines():
-                try:
-                    resp = json.loads(line)
-                    token = resp.get("outputs")['outputs']
-                    text += token
-                    for stop in STOP: ##如果碰到STOP截断
-                        if text.endswith(stop):
-                            self.callbacks.on_llm_end(None)
-                            text = text.rstrip(stop)
-                            return text
-                    self.callbacks.on_llm_new_token(token)
-                    # print(token, end='')
-                except Exception as e:
-                    # print(line)
-                    continue
-        self.callbacks.on_llm_end(None)
-        return text
+#     def transform_output(self, event_stream: Any) -> str:
+#         scanner = StreamScanner()
+#         text = ''
+#         for event in event_stream:
+#             scanner.write(event['PayloadPart']['Bytes'])
+#             for line in scanner.readlines():
+#                 try:
+#                     resp = json.loads(line)
+#                     token = resp.get("outputs")['outputs']
+#                     text += token
+#                     for stop in STOP: ##如果碰到STOP截断
+#                         if text.endswith(stop):
+#                             self.callbacks.on_llm_end(None)
+#                             text = text.rstrip(stop)
+#                             return text
+#                     self.callbacks.on_llm_new_token(token)
+#                     # print(token, end='')
+#                 except Exception as e:
+#                     # print(line)
+#                     continue
+#         self.callbacks.on_llm_end(None)
+#         return text
     
-class SagemakerStreamEndpoint(LLM):
-    endpoint_name: str = ""
-    region_name: str = ""
-    content_handler: LLMContentHandler
-    model_kwargs: Optional[Dict] = None
-    endpoint_kwargs: Optional[Dict] = None
-    class Config:
-        """Configuration for this pydantic object."""
-        extra = Extra.forbid
+# class SagemakerStreamEndpoint(LLM):
+#     endpoint_name: str = ""
+#     region_name: str = ""
+#     content_handler: LLMContentHandler
+#     model_kwargs: Optional[Dict] = None
+#     endpoint_kwargs: Optional[Dict] = None
+#     class Config:
+#         """Configuration for this pydantic object."""
+#         extra = Extra.forbid
     
-    @root_validator()
-    def validate_environment(cls, values: Dict) -> Dict:
-        """Validate that AWS credentials to and python package exists in environment."""
-        try:
-            session = boto3.Session()
-            values["client"] = session.client(
-                "sagemaker-runtime", region_name=values["region_name"]
-            )
-        except Exception as e:
-            raise ValueError(
-                "Could not load credentials to authenticate with AWS client. "
-                "Please check that credentials in the specified "
-                "profile name are valid."
-            ) from e
-        return values
+#     @root_validator()
+#     def validate_environment(cls, values: Dict) -> Dict:
+#         """Validate that AWS credentials to and python package exists in environment."""
+#         try:
+#             session = boto3.Session()
+#             values["client"] = session.client(
+#                 "sagemaker-runtime", region_name=values["region_name"]
+#             )
+#         except Exception as e:
+#             raise ValueError(
+#                 "Could not load credentials to authenticate with AWS client. "
+#                 "Please check that credentials in the specified "
+#                 "profile name are valid."
+#             ) from e
+#         return values
     
-    @property
-    def _identifying_params(self) -> Mapping[str, Any]:
-        """Get the identifying parameters."""
-        _model_kwargs = self.model_kwargs or {}
-        return {
-            **{"endpoint_name": self.endpoint_name},
-            **{"model_kwargs": _model_kwargs},
-        }
+#     @property
+#     def _identifying_params(self) -> Mapping[str, Any]:
+#         """Get the identifying parameters."""
+#         _model_kwargs = self.model_kwargs or {}
+#         return {
+#             **{"endpoint_name": self.endpoint_name},
+#             **{"model_kwargs": _model_kwargs},
+#         }
 
-    @property
-    def _llm_type(self) -> str:
-        """Return type of llm."""
-        return "sagemaker_stream_endpoint"
+#     @property
+#     def _llm_type(self) -> str:
+#         """Return type of llm."""
+#         return "sagemaker_stream_endpoint"
     
-    def _call(
-        self,
-        prompt: str,
-        stop: Optional[List[str]] = None,
-        run_manager: Optional[CallbackManagerForLLMRun] = None,
-        **kwargs: Any,
-    ) -> str:
-        _model_kwargs = self.model_kwargs or {}
-        _model_kwargs = {**_model_kwargs, **kwargs}
-        _endpoint_kwargs = self.endpoint_kwargs or {}
+#     def _call(
+#         self,
+#         prompt: str,
+#         stop: Optional[List[str]] = None,
+#         run_manager: Optional[CallbackManagerForLLMRun] = None,
+#         **kwargs: Any,
+#     ) -> str:
+#         _model_kwargs = self.model_kwargs or {}
+#         _model_kwargs = {**_model_kwargs, **kwargs}
+#         _endpoint_kwargs = self.endpoint_kwargs or {}
 
-        body = self.content_handler.transform_input(prompt, _model_kwargs)
-        content_type = self.content_handler.content_type
-        accepts = self.content_handler.accepts
+#         body = self.content_handler.transform_input(prompt, _model_kwargs)
+#         content_type = self.content_handler.content_type
+#         accepts = self.content_handler.accepts
 
-        # send request
-        try:
-            response = self.client.invoke_endpoint_with_response_stream(
-                EndpointName=self.endpoint_name,
-                Body=body,
-                ContentType=content_type,
-                Accept=accepts,
-                **_endpoint_kwargs,
-            )
-        except Exception as e:
-            raise ValueError(f"Error raised by inference endpoint: {e}")
-        text = self.content_handler.transform_output(response["Body"])
-        return text
+#         # send request
+#         try:
+#             response = self.client.invoke_endpoint_with_response_stream(
+#                 EndpointName=self.endpoint_name,
+#                 Body=body,
+#                 ContentType=content_type,
+#                 Accept=accepts,
+#                 **_endpoint_kwargs,
+#             )
+#         except Exception as e:
+#             raise ValueError(f"Error raised by inference endpoint: {e}")
+#         text = self.content_handler.transform_output(response["Body"])
+#         return text
        
 class ContentHandler(EmbeddingsContentHandler):
     parameters = {
@@ -337,14 +340,14 @@ class ContentHandler(EmbeddingsContentHandler):
         response_json = json.loads(output.read().decode("utf-8"))
         return response_json["sentence_embeddings"]
 
-class llmContentHandler(LLMContentHandler):
-    def transform_input(self, prompt: str, model_kwargs: Dict) -> bytes:
-        input_str = json.dumps({'inputs': prompt,**model_kwargs})
-        return input_str.encode('utf-8')
+# class llmContentHandler(LLMContentHandler):
+#     def transform_input(self, prompt: str, model_kwargs: Dict) -> bytes:
+#         input_str = json.dumps({'inputs': prompt,**model_kwargs})
+#         return input_str.encode('utf-8')
     
-    def transform_output(self, output: bytes) -> str:
-        response_json = json.loads(output.read().decode("utf-8"))
-        return response_json["outputs"]
+#     def transform_output(self, output: bytes) -> str:
+#         response_json = json.loads(output.read().decode("utf-8"))
+#         return response_json["outputs"]
 
 class CustomDocRetriever(BaseRetriever):
     embedding_model_endpoint :str
@@ -1088,14 +1091,14 @@ Once again, the user's query is:
 {question}
 </query>
 
-Please put your answer between <response> tags and follow below requirements:{ask_user_prompt}
+Please follow below requirements:{ask_user_prompt}
 - Respond in the original language of the question.
 - Please try you best to leverage the image and hyperlink provided in <information>, you need to keep them in Markdown format.
 - Do not directly reference the content of <information> in your answer.
 - Skip the preamble, go straight into the answer. The answers will strictly be based on relevant knowledge in <information>.
 - if the information is empty or not relevant to user's query, then reponse don't know.
 
-Assistant: <response>"""
+Assistant:"""
     else:
         prompt_template_zh = prompt_template + '{ask_user_prompt}'
     PROMPT = PromptTemplate(
@@ -1137,8 +1140,8 @@ def create_chat_prompt_templete(prompt_template='', llm_model_name='claude'):
 <history> {chat_history} </history>
 Here is the user’s question: <question> {question} </question>
 How do you respond to the user’s question?
-Think about your answer first before you respond. Put your response in <response></response> tags.
-Assistant: <response>"""
+Think about your answer first before you respond.
+Assistant:"""
         PROMPT = PromptTemplate(
             template=prompt_template_zh, 
             partial_variables={'system_role_prompt':SYSTEM_ROLE_PROMPT},
@@ -1263,68 +1266,81 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
     logger.info("llm_model_name : {} ,use_stream :{}".format(llm_model_name,use_stream))
     llm = None
     stream_callback = CustomStreamingOutCallbackHandler(wsclient,msgid, wsconnection_id,llm_model_name,hide_ref,use_stream)
-    if llm_model_name.startswith('claude'):
-        # ACCESS_KEY, SECRET_KEY=get_bedrock_aksk()
 
-        parameters = {
-            "max_tokens_to_sample": max_tokens,
-            "stop_sequences":STOP,
-            "temperature":temperature,
-            "top_p":0.95
-        }
 
-        model_id = BEDROCK_LLM_MODELID_LIST[llm_model_name] if llm_model_name == 'claude-instant' else BEDROCK_LLM_MODELID_LIST['claude-v2']
+    # if llm_model_name.startswith('claude'):
+    #     # ACCESS_KEY, SECRET_KEY=get_bedrock_aksk()
 
-        llm = Bedrock(model_id=model_id, 
-                      client=boto3_bedrock,
-                      streaming=use_stream,
-                      callbacks=[stream_callback],
-                        model_kwargs=parameters)
+    #     parameters = {
+    #         "max_tokens_to_sample": max_tokens,
+    #         "stop_sequences":STOP,
+    #         "temperature":temperature,
+    #         "top_p":0.95
+    #     }
 
-    elif llm_model_name.startswith('gpt-3.5-turbo'):
-        global openai_api_key
-        llm=ChatOpenAI(model = llm_model_name,
-                       openai_api_key = openai_api_key,
-                       streaming = use_stream,
-                       callbacks=[stream_callback],
-                       temperature = temperature)
+    #     model_id = BEDROCK_LLM_MODELID_LIST[llm_model_name] if llm_model_name == 'claude-instant' else BEDROCK_LLM_MODELID_LIST['claude-v2']
+
+    #     llm = Bedrock(model_id=model_id, 
+    #                   client=boto3_bedrock,
+    #                   streaming=use_stream,
+    #                   callbacks=[stream_callback],
+    #                     model_kwargs=parameters)
+
+    # elif llm_model_name.startswith('gpt-3.5-turbo'):
+    #     global openai_api_key
+    #     llm=ChatOpenAI(model = llm_model_name,
+    #                    openai_api_key = openai_api_key,
+    #                    streaming = use_stream,
+    #                    callbacks=[stream_callback],
+    #                    temperature = temperature)
         
-    elif use_stream:
-        parameters = {
-                "max_length": max_tokens,
-                "temperature": temperature,
-                "top_p":0.95
-                }
-        llmcontent_handler = SagemakerStreamContentHandler(
-            callbacks=stream_callback
-            )
+    # elif use_stream:
+    #     parameters = {
+    #             "max_length": max_tokens,
+    #             "temperature": temperature,
+    #             "top_p":0.95
+    #             }
+    #     llmcontent_handler = SagemakerStreamContentHandler(
+    #         callbacks=stream_callback
+    #         )
 
-        model_kwargs={'parameters':parameters,'history':[],'image':imgurl,'stream':use_stream}
-        logging.info(f"model_kwargs:{model_kwargs}")
-        llm = SagemakerStreamEndpoint(endpoint_name=llm_model_endpoint, 
-                region_name=region, 
-                model_kwargs=model_kwargs,
-                content_handler=llmcontent_handler,
-                endpoint_kwargs={'CustomAttributes':'accept_eula=true'} ##for llama2
-                )
+    #     model_kwargs={'parameters':parameters,'history':[],'image':imgurl,'stream':use_stream}
+    #     logging.info(f"model_kwargs:{model_kwargs}")
+    #     llm = SagemakerStreamEndpoint(endpoint_name=llm_model_endpoint, 
+    #             region_name=region, 
+    #             model_kwargs=model_kwargs,
+    #             content_handler=llmcontent_handler,
+    #             endpoint_kwargs={'CustomAttributes':'accept_eula=true'} ##for llama2
+    #             )
+    # else:
+    #     parameters = {
+    #         "max_length": max_tokens,
+    #         "temperature": temperature,
+    #         "top_p":0.95
+    #     }
+
+    #     model_kwargs={'parameters':parameters,'history':[],'image':imgurl}
+    #     logging.info(f"model_kwargs:{model_kwargs}")
+    #     llmcontent_handler = llmContentHandler()
+    #     llm=SagemakerEndpoint(
+    #             endpoint_name=llm_model_endpoint, 
+    #             region_name=region, 
+    #             model_kwargs=model_kwargs,
+    #             content_handler=llmcontent_handler,
+    #             endpoint_kwargs={'CustomAttributes':'accept_eula=true'} ##for llama2
+    #         )
+    params = {
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+        "top_p":0.95
+    }
+
+    if llm_model_name.startswith('claude'):
+        model_id = BEDROCK_LLM_MODELID_LIST.get(llm_model_name, 'anthropic.claude-v2')
     else:
-        parameters = {
-            "max_length": max_tokens,
-            "temperature": temperature,
-            "top_p":0.95
-        }
+        model_id = llm_model_endpoint
 
-        model_kwargs={'parameters':parameters,'history':[],'image':imgurl}
-        logging.info(f"model_kwargs:{model_kwargs}")
-        llmcontent_handler = llmContentHandler()
-        llm=SagemakerEndpoint(
-                endpoint_name=llm_model_endpoint, 
-                region_name=region, 
-                model_kwargs=model_kwargs,
-                content_handler=llmcontent_handler,
-                endpoint_kwargs={'CustomAttributes':'accept_eula=true'} ##for llama2
-            )
-    
+    llm = get_langchain_llm_model(model_id, params, region, llm_stream=use_stream, llm_callbacks=[stream_callback])
     
     # 1. get_session
     start1 = time.time()

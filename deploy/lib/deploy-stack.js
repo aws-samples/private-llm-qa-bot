@@ -449,7 +449,7 @@ export class DeployStack extends Stack {
 
 
        //create REST api
-    const restapi = new ApiGatewayStack(this,'ChatBotRestApi',{lambda_fn:lambda_main_brain})
+    const restapi = new ApiGatewayStack(this,'ChatBotRestApi',{lambda_fn:lambda_main_brain,name:"chatbot_entry"})
     new CfnOutput(this, `API gateway endpoint url`,{value:`${restapi.endpoint}`});
 
     const role = new iam.Role(this, 'chatbot-kinesis-firehose', {

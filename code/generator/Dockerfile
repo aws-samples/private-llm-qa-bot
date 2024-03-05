@@ -1,14 +1,13 @@
 FROM --platform=linux/amd64 public.ecr.aws/lambda/python:3.9
 
-COPY requirements.txt  .
+COPY ./requirements.txt  .
 
 RUN  pip3 install -r requirements.txt --target "${LAMBDA_TASK_ROOT}"
 
 # Copy function code
-COPY main.py ${LAMBDA_TASK_ROOT}
-COPY utils ${LAMBDA_TASK_ROOT}/utils
-RUN mkdir -p ${LAMBDA_TASK_ROOT}/generator
-COPY generator/*.py ${LAMBDA_TASK_ROOT}/generator/
+COPY lambda.py ${LAMBDA_TASK_ROOT}
+COPY llm_wrapper.py ${LAMBDA_TASK_ROOT}
+COPY llm_manager.py ${LAMBDA_TASK_ROOT}
 
 # Set the CMD to your handler (could also be done as a parameter override outside of the Dockerfile)
-CMD [ "main.lambda_handler" ]
+CMD [ "lambda.lambda_handler" ]
