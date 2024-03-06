@@ -382,6 +382,7 @@ class CustomDocRetriever(BaseRetriever):
                 scores = self.rerank(query_input, all_docs, sm_client, cross_model_endpoint)
                 sorted_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=False)
                 recall_knowledge = [{**all_docs[idx],'rank_score':scores[idx] } for idx in sorted_indices[-TOP_K:] ]
+                recall_knowledge = [item for item in recall_knowledge if item['rank_score'] >= RERANK_THRESHOLD]
                 return recall_knowledge
         
         return all_docs
