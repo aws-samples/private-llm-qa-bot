@@ -51,27 +51,30 @@ export class DeployStack extends Stack {
 
     const cn_region = ["cn-north-1","cn-northwest-1"];
 
-    const ec2stack = new Ec2Stack(this,'Ec2Stack',{vpc:vpc,securityGroup:securityGroups[0]});
-    new CfnOutput(this, 'OpenSearch EC2 Proxy Address', { value: `http://${ec2stack.publicIP}/_dashboards/`});
-    ec2stack.addDependency(vpcStack);
-
       // Create open search if the aos endpoint not provided
-    let opensearch_endpoint=aos_existing_endpoint;
-    let opensearchStack;
-    // if (!aos_existing_endpoint || aos_existing_endpoint === 'optional'){
-    //      opensearchStack = new OpenSearchStack(this,'os-chat-dev',
-    //           {vpc:vpc,subnets:subnets,securityGroup:securityGroups[0]});
-    //     opensearch_endpoint = opensearchStack.domainEndpoint;
-    //     opensearchStack.addDependency(vpcStack);
-    // }
-    if (!aos_existing_endpoint || aos_existing_endpoint === 'optional'){
-      opensearchStack = new OpenSearchServerlessStack(this,'os-chat-serverless',
-           {vpc:vpc,subnets:subnets,securityGroup:securityGroups[0]});
-     opensearch_endpoint = opensearchStack.domainEndpoint;
-     opensearchStack.addDependency(vpcStack);
+
+    if (props.aos_required==='true'||props.aos_required==='1'){
+      let opensearch_endpoint=aos_existing_endpoint;
+      let opensearchStack;
+      const ec2stack = new Ec2Stack(this,'Ec2Stack',{vpc:vpc,securityGroup:securityGroups[0]});
+      new CfnOutput(this, 'OpenSearch EC2 Proxy Address', { value: `http://${ec2stack.publicIP}/_dashboards/`});
+      ec2stack.addDependency(vpcStack);
+      if (!aos_existing_endpoint || aos_existing_endpoint === 'optional'){
+        opensearchStack = new OpenSearchStack(this,'os-chat-dev',
+             {vpc:vpc,subnets:subnets,securityGroup:securityGroups[0]});
+       opensearch_endpoint = opensearchStack.domainEndpoint;
+       opensearchStack.addDependency(vpcStack);
+      // if (!aos_existing_endpoint || aos_existing_endpoint === 'optional'){
+      //   opensearchStack = new OpenSearchServerlessStack(this,'os-chat-serverless',
+      //        {vpc:vpc,subnets:subnets,securityGroup:securityGroups[0]});
+      //  opensearch_endpoint = opensearchStack.domainEndpoint;
+      //  opensearchStack.addDependency(vpcStack);
+      // }
+       new CfnOutput(this,'opensearch endpoint',{value:opensearch_endpoint});
+   }
     }
+
     new CfnOutput(this,'VPC',{value:vpc.vpcId});
-    new CfnOutput(this,'opensearch endpoint',{value:opensearch_endpoint});
     new CfnOutput(this,'region',{value:process.env.CDK_DEFAULT_REGION});
     new CfnOutput(this,'UPLOAD_BUCKET',{value:process.env.UPLOAD_BUCKET});
     new CfnOutput(this,'llm_model_endpoint',{value:process.env.llm_model_endpoint});

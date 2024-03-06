@@ -29,6 +29,7 @@ llm_model_endpoint="${unique_tag}-llm-model-endpoint"
 bucket="${unique_tag}-bucket"
 main_fun_arn="${arn}lambda:${region}:${account_id}:function:Ask_Assistant"
 token_key="${unique_tag}"
+aos_required=true
 
 echo "CDK_DEFAULT_ACCOUNT=${account_id}" > .env
 echo "CDK_DEFAULT_REGION=${region}" >> .env
@@ -48,4 +49,5 @@ echo "neighbors=1" >>.env
 echo "TOP_K=4" >>.env
 echo "MAIN_FUN_ARN=${main_fun_arn}" >>.env
 echo "TOKEN_KEY=${token_key}" >>.env
+echo "aos_required=${aos_required}" >>.env
 

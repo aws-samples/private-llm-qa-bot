@@ -11,7 +11,7 @@ dotenv.config()
 console.log(process.env.CDK_DEFAULT_ACCOUNT,process.env.CDK_DEFAULT_REGION);
 const app = new cdk.App();
 new DeployStack(app, 'QAChatDeployStack', {
-  env: { account: process.env.CDK_DEFAULT_ACCOUNT, region: process.env.CDK_DEFAULT_REGION },
+  env: { account: process.env.CDK_DEFAULT_ACCOUNT, region: process.env.CDK_DEFAULT_REGION, aos_required:process.env.aos_required??false},
 });
 
 new FrontendCdkStack(app, 'ChatFrontendDeployStack', {
