@@ -512,9 +512,16 @@ class CustomDocRetriever(BaseRetriever):
         def remove_s3_prefix(s3_path):
             return '/'.join(s3_path.split('/', 3)[3:])
 
-        ret = [ {'idx': 1, 'rank_score':0, 'doc_classify':'-', 'doc_author':'-', 'doc_category': '-', 'doc_type':'Paragraph', 'doc':item['content']['text'],'score':item['score'], 'doc_title': remove_s3_prefix(item['location']['s3Location']['uri']) } for item in response['retrievalResults']]
-
-        return ret
+        all_docs = [ {'idx': 1, 'rank_score':0, 'doc_classify':'-', 'doc_author':'-', 'doc_category': '-', 'doc_type':'Paragraph', 'doc':item['content']['text'],'score':item['score'], 'doc_title': remove_s3_prefix(item['location']['s3Location']['uri']) } for item in response['retrievalResults']]
+        cross_model_endpoint = CROSS_MODEL_ENDPOINT
+        if cross_model_endpoint:
+            if all_docs:
+                scores = self.rerank(query_input, all_docs, sm_client, cross_model_endpoint)
+                sorted_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=False)
+                recall_knowledge = [{**all_docs[idx],'rank_score':scores[idx] } for idx in sorted_indices[-TOP_K:] ]
+                return recall_knowledge
+        
+        return all_docs
     
     def get_websearch_documents(self, query_input: str) -> list:
         # 使用agent方式速度比较慢，直接改成调用search api
