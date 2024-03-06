@@ -359,10 +359,11 @@ class CustomDocRetriever(BaseRetriever):
         return nodup
 
     def get_relevant_documents_from_bedrock(self, knowledge_base_id:str, query_input:str):
+        BEDROCK_RETRIEVE_LIMIT=1000
         response = knowledgebase_client.retrieve(
             knowledgeBaseId=knowledge_base_id,
             retrievalQuery={
-                'text': query_input
+                'text': query_input[:BEDROCK_RETRIEVE_LIMIT]
             },
             retrievalConfiguration={
                 'vectorSearchConfiguration': {
