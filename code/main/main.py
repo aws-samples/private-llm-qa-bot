@@ -198,7 +198,7 @@ class CustomStreamingOutCallbackHandler(BaseCallbackHandler):
     def on_llm_new_token(self, token: str, **kwargs: Any) -> None:
         """Run on new LLM token. Only available when streaming is enabled."""
         data = json.dumps({ 'msgid':self.msgid, 'role': "AI", 'text': {'content':token},'connectionId':self.connectionId})
-        print(f"on_llm_new_token: {token}")
+        # print(f"on_llm_new_token: {token}")
         self.postMessage(data)
 
     def on_llm_end(self, response: LLMResult, **kwargs: Any) -> None:
