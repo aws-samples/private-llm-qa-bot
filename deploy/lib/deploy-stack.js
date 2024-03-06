@@ -53,7 +53,7 @@ export class DeployStack extends Stack {
 
       // Create open search if the aos endpoint not provided
     let opensearch_endpoint=aos_existing_endpoint;
-    if (props.aos_required==='true'||props.aos_required==='1'){
+    if (process.env.aos_required==='true'||process.env.aos_required==='1'){
       let opensearchStack;
       const ec2stack = new Ec2Stack(this,'Ec2Stack',{vpc:vpc,securityGroup:securityGroups[0]});
       new CfnOutput(this, 'OpenSearch EC2 Proxy Address', { value: `http://${ec2stack.publicIP}/_dashboards/`});
