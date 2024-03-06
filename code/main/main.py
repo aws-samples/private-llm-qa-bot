@@ -179,7 +179,7 @@ class CustomStreamingOutCallbackHandler(BaseCallbackHandler):
     def on_llm_new_token(self, token: str, **kwargs: Any) -> None:
         """Run on new LLM token. Only available when streaming is enabled."""
         data = json.dumps({ 'msgid':self.msgid, 'role': "AI", 'text': {'content':token},'connectionId':self.connectionId})
-        print(f"on_llm_new_token: {token}")
+        # print(f"on_llm_new_token: {token}")
         self.postMessage(data)
 
     def on_llm_end(self, response: LLMResult, **kwargs: Any) -> None:
@@ -1558,6 +1558,12 @@ def lambda_handler(event, context):
     logger.info(f'intention list: {INTENTION_LIST}')
     logger.info(f'refuse_strategy: {refuse_strategy}')
     logger.info(f'refuse_answer: {refuse_answer}')
+    
+    ##if aos and bedrock kb are null then set use_qa = false
+    if not aos_endpoint and not KNOWLEDGE_BASE_ID:
+        use_qa = False
+        logger.info(f'force set use_qa: {use_qa}')
+        
     global TRACE_LOGGER
     TRACE_LOGGER = TraceLogger(wsclient=wsclient,msgid=msgid,connectionId=wsconnection_id,stream=use_stream,use_trace=use_trace,hide_ref=hide_ref)
 
