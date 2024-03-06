@@ -1178,11 +1178,7 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
         TRACE_LOGGER.trace(f'**Rewrite: {origin_query} => {query_input}, elpase_time:{elpase_time_rewrite}**')
         logger.info(f'Rewrite: {origin_query} => {query_input}')
         #add history parameter
-        if isinstance(llm,SagemakerStreamEndpoint) or isinstance(llm,SagemakerEndpoint):
-            chat_history=''
-            llm.model_kwargs['history'] = chat_coversions[-2:]
-        else:
-            chat_history= get_chat_history(chat_coversions[-2:])
+        chat_history= get_chat_history(chat_coversions[-2:])
     else:
         chat_history=''
 
