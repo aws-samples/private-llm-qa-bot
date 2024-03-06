@@ -200,7 +200,8 @@ export class DeployStack extends Stack {
         neighbors:process.env.neighbors,
         TOP_K:process.env.TOP_K,
         GOOGLE_API_KEY:process.env.GOOGLE_API_KEY,
-        GOOGLE_CSE_ID:process.env.GOOGLE_CSE_ID
+        GOOGLE_CSE_ID:process.env.GOOGLE_CSE_ID,
+        aos_required:process.env.aos_required
       },
     });
 
