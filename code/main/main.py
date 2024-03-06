@@ -139,25 +139,6 @@ class TraceLogger(BaseModel):
     
 TRACE_LOGGER = None
 
-# class StreamScanner:    
-#     def __init__(self):
-#         self.buff = io.BytesIO()
-#         self.read_pos = 0
-        
-#     def write(self, content):
-#         self.buff.seek(0, io.SEEK_END)
-#         self.buff.write(content)
-        
-#     def readlines(self):
-#         self.buff.seek(self.read_pos)
-#         for line in self.buff.readlines():
-#             if line[-1] != b'\n':
-#                 self.read_pos += len(line)
-#                 yield line[:-1]
-                
-#     def reset(self):
-#         self.read_pos = 0
-
 class CustomStreamingOutCallbackHandler(BaseCallbackHandler):
     """Callback handler for streaming. Only works with LLMs that support streaming."""
     def __init__(self,wsclient:str,msgid:str,connectionId:str ,model_name:str,hide_ref:bool,use_stream:bool, **kwargs: Any) -> None:
@@ -216,115 +197,6 @@ class CustomStreamingOutCallbackHandler(BaseCallbackHandler):
         data = json.dumps({ 'msgid':self.msgid, 'role': "AI", 'text': {'content':str(error[0])+'[DONE]'},'connectionId':self.connectionId})
         self.postMessage(data)
 
-# class SagemakerStreamContentHandler(LLMContentHandler):
-#     content_type: Optional[str] = "application/json"
-#     accepts: Optional[str] = "application/json"
-#     callbacks:BaseCallbackHandler
-#     class Config:
-#         """Configuration for this pydantic object."""
-#         extra = Extra.forbid
-    
-#     def __init__(self,callbacks:BaseCallbackHandler,**kwargs) -> None:
-#         super().__init__(**kwargs)
-#         self.callbacks = callbacks
- 
-#     def transform_input(self, prompt: str, model_kwargs: Dict) -> bytes:
-#         input_str = json.dumps({'inputs': prompt,**model_kwargs})
-#         # logger.info(f'transform_input:{input_str}')
-#         return input_str.encode('utf-8')
-    
-#     def transform_output(self, event_stream: Any) -> str:
-#         scanner = StreamScanner()
-#         text = ''
-#         for event in event_stream:
-#             scanner.write(event['PayloadPart']['Bytes'])
-#             for line in scanner.readlines():
-#                 try:
-#                     resp = json.loads(line)
-#                     token = resp.get("outputs")['outputs']
-#                     text += token
-#                     for stop in STOP: ##如果碰到STOP截断
-#                         if text.endswith(stop):
-#                             self.callbacks.on_llm_end(None)
-#                             text = text.rstrip(stop)
-#                             return text
-#                     self.callbacks.on_llm_new_token(token)
-#                     # print(token, end='')
-#                 except Exception as e:
-#                     # print(line)
-#                     continue
-#         self.callbacks.on_llm_end(None)
-#         return text
-    
-# class SagemakerStreamEndpoint(LLM):
-#     endpoint_name: str = ""
-#     region_name: str = ""
-#     content_handler: LLMContentHandler
-#     model_kwargs: Optional[Dict] = None
-#     endpoint_kwargs: Optional[Dict] = None
-#     class Config:
-#         """Configuration for this pydantic object."""
-#         extra = Extra.forbid
-    
-#     @root_validator()
-#     def validate_environment(cls, values: Dict) -> Dict:
-#         """Validate that AWS credentials to and python package exists in environment."""
-#         try:
-#             session = boto3.Session()
-#             values["client"] = session.client(
-#                 "sagemaker-runtime", region_name=values["region_name"]
-#             )
-#         except Exception as e:
-#             raise ValueError(
-#                 "Could not load credentials to authenticate with AWS client. "
-#                 "Please check that credentials in the specified "
-#                 "profile name are valid."
-#             ) from e
-#         return values
-    
-#     @property
-#     def _identifying_params(self) -> Mapping[str, Any]:
-#         """Get the identifying parameters."""
-#         _model_kwargs = self.model_kwargs or {}
-#         return {
-#             **{"endpoint_name": self.endpoint_name},
-#             **{"model_kwargs": _model_kwargs},
-#         }
-
-#     @property
-#     def _llm_type(self) -> str:
-#         """Return type of llm."""
-#         return "sagemaker_stream_endpoint"
-    
-#     def _call(
-#         self,
-#         prompt: str,
-#         stop: Optional[List[str]] = None,
-#         run_manager: Optional[CallbackManagerForLLMRun] = None,
-#         **kwargs: Any,
-#     ) -> str:
-#         _model_kwargs = self.model_kwargs or {}
-#         _model_kwargs = {**_model_kwargs, **kwargs}
-#         _endpoint_kwargs = self.endpoint_kwargs or {}
-
-#         body = self.content_handler.transform_input(prompt, _model_kwargs)
-#         content_type = self.content_handler.content_type
-#         accepts = self.content_handler.accepts
-
-#         # send request
-#         try:
-#             response = self.client.invoke_endpoint_with_response_stream(
-#                 EndpointName=self.endpoint_name,
-#                 Body=body,
-#                 ContentType=content_type,
-#                 Accept=accepts,
-#                 **_endpoint_kwargs,
-#             )
-#         except Exception as e:
-#             raise ValueError(f"Error raised by inference endpoint: {e}")
-#         text = self.content_handler.transform_output(response["Body"])
-#         return text
-       
 class ContentHandler(EmbeddingsContentHandler):
     parameters = {
         "max_new_tokens": 50,
@@ -339,15 +211,6 @@ class ContentHandler(EmbeddingsContentHandler):
     def transform_output(self, output: bytes) -> List[List[float]]:
         response_json = json.loads(output.read().decode("utf-8"))
         return response_json["sentence_embeddings"]
-
-# class llmContentHandler(LLMContentHandler):
-#     def transform_input(self, prompt: str, model_kwargs: Dict) -> bytes:
-#         input_str = json.dumps({'inputs': prompt,**model_kwargs})
-#         return input_str.encode('utf-8')
-    
-#     def transform_output(self, output: bytes) -> str:
-#         response_json = json.loads(output.read().decode("utf-8"))
-#         return response_json["outputs"]
 
 class CustomDocRetriever(BaseRetriever):
     embedding_model_endpoint :str
@@ -503,7 +366,8 @@ class CustomDocRetriever(BaseRetriever):
             },
             retrievalConfiguration={
                 'vectorSearchConfiguration': {
-                    'numberOfResults': TOP_K 
+                    'numberOfResults': TOP_K,
+                    'overrideSearchType': 'HYBRID',
                 }
             },
         )
@@ -511,9 +375,17 @@ class CustomDocRetriever(BaseRetriever):
         def remove_s3_prefix(s3_path):
             return '/'.join(s3_path.split('/', 3)[3:])
 
-        ret = [ {'idx': 1, 'rank_score':0, 'doc_classify':'-', 'doc_author':'-', 'doc_category': '-', 'doc_type':'Paragraph', 'doc':item['content']['text'],'score':item['score'], 'doc_title': remove_s3_prefix(item['location']['s3Location']['uri']) } for item in response['retrievalResults']]
-
-        return ret
+        all_docs = [ {'idx': 1, 'rank_score':0, 'doc_classify':'-', 'doc_author':'-', 'doc_category': '-', 'doc_type':'Paragraph', 'doc':item['content']['text'],'score':item['score'], 'doc_title': remove_s3_prefix(item['location']['s3Location']['uri']) } for item in response['retrievalResults']]
+        cross_model_endpoint = CROSS_MODEL_ENDPOINT
+        if cross_model_endpoint:
+            if all_docs:
+                scores = self.rerank(query_input, all_docs, sm_client, cross_model_endpoint)
+                sorted_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=False)
+                recall_knowledge = [{**all_docs[idx],'rank_score':scores[idx] } for idx in sorted_indices[-TOP_K:] ]
+                recall_knowledge = [item for item in recall_knowledge if item['rank_score'] >= RERANK_THRESHOLD]
+                return recall_knowledge
+        
+        return all_docs
     
     def get_websearch_documents(self, query_input: str) -> list:
         # 使用agent方式速度比较慢，直接改成调用search api
@@ -1267,68 +1139,6 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
     llm = None
     stream_callback = CustomStreamingOutCallbackHandler(wsclient,msgid, wsconnection_id,llm_model_name,hide_ref,use_stream)
 
-
-    # if llm_model_name.startswith('claude'):
-    #     # ACCESS_KEY, SECRET_KEY=get_bedrock_aksk()
-
-    #     parameters = {
-    #         "max_tokens_to_sample": max_tokens,
-    #         "stop_sequences":STOP,
-    #         "temperature":temperature,
-    #         "top_p":0.95
-    #     }
-
-    #     model_id = BEDROCK_LLM_MODELID_LIST[llm_model_name] if llm_model_name == 'claude-instant' else BEDROCK_LLM_MODELID_LIST['claude-v2']
-
-    #     llm = Bedrock(model_id=model_id, 
-    #                   client=boto3_bedrock,
-    #                   streaming=use_stream,
-    #                   callbacks=[stream_callback],
-    #                     model_kwargs=parameters)
-
-    # elif llm_model_name.startswith('gpt-3.5-turbo'):
-    #     global openai_api_key
-    #     llm=ChatOpenAI(model = llm_model_name,
-    #                    openai_api_key = openai_api_key,
-    #                    streaming = use_stream,
-    #                    callbacks=[stream_callback],
-    #                    temperature = temperature)
-        
-    # elif use_stream:
-    #     parameters = {
-    #             "max_length": max_tokens,
-    #             "temperature": temperature,
-    #             "top_p":0.95
-    #             }
-    #     llmcontent_handler = SagemakerStreamContentHandler(
-    #         callbacks=stream_callback
-    #         )
-
-    #     model_kwargs={'parameters':parameters,'history':[],'image':imgurl,'stream':use_stream}
-    #     logging.info(f"model_kwargs:{model_kwargs}")
-    #     llm = SagemakerStreamEndpoint(endpoint_name=llm_model_endpoint, 
-    #             region_name=region, 
-    #             model_kwargs=model_kwargs,
-    #             content_handler=llmcontent_handler,
-    #             endpoint_kwargs={'CustomAttributes':'accept_eula=true'} ##for llama2
-    #             )
-    # else:
-    #     parameters = {
-    #         "max_length": max_tokens,
-    #         "temperature": temperature,
-    #         "top_p":0.95
-    #     }
-
-    #     model_kwargs={'parameters':parameters,'history':[],'image':imgurl}
-    #     logging.info(f"model_kwargs:{model_kwargs}")
-    #     llmcontent_handler = llmContentHandler()
-    #     llm=SagemakerEndpoint(
-    #             endpoint_name=llm_model_endpoint, 
-    #             region_name=region, 
-    #             model_kwargs=model_kwargs,
-    #             content_handler=llmcontent_handler,
-    #             endpoint_kwargs={'CustomAttributes':'accept_eula=true'} ##for llama2
-    #         )
     params = {
         "max_tokens": max_tokens,
         "temperature": temperature,
@@ -1369,11 +1179,7 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
         TRACE_LOGGER.trace(f'**Rewrite: {origin_query} => {query_input}, elpase_time:{elpase_time_rewrite}**')
         logger.info(f'Rewrite: {origin_query} => {query_input}')
         #add history parameter
-        if isinstance(llm,SagemakerStreamEndpoint) or isinstance(llm,SagemakerEndpoint):
-            chat_history=''
-            llm.model_kwargs['history'] = chat_coversions[-2:]
-        else:
-            chat_history= get_chat_history(chat_coversions[-2:])
+        chat_history= get_chat_history(chat_coversions[-2:])
     else:
         chat_history=''
 
