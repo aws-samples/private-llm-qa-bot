@@ -16,14 +16,13 @@ from opensearchpy import OpenSearch, RequestsHttpConnection
 from requests_aws4auth import AWS4Auth
 from langchain.chains.question_answering import load_qa_chain
 from langchain.chat_models import ChatOpenAI
-from langchain.embeddings import SagemakerEndpointEmbeddings
+from langchain_community.embeddings import SagemakerEndpointEmbeddings
 from langchain.embeddings.sagemaker_endpoint import EmbeddingsContentHandler
 from langchain.llms.sagemaker_endpoint import LLMContentHandler,SagemakerEndpoint
 from langchain.prompts import PromptTemplate
 from langchain.chains import LLMChain,ConversationalRetrievalChain,ConversationChain
 from langchain.schema import BaseRetriever
 from langchain.schema import Document
-from langchain.llms.bedrock import Bedrock
 from pydantic import BaseModel,Field
 from langchain.pydantic_v1 import Extra, root_validator
 
@@ -41,6 +40,13 @@ from utils.web_search import web_search,add_webpage_content
 from utils.management import management_api,get_template
 from utils.utils import add_reference, render_answer_with_ref
 from generator.llm_wrapper import get_langchain_llm_model
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.messages import HumanMessage,AIMessage,SystemMessage
+from langchain_core.prompts import ChatPromptTemplate,MessagesPlaceholder
+from langchain_community.chat_models import BedrockChat
+import base64
+
 
 lambda_client= boto3.client('lambda')
 dynamodb_client = boto3.resource('dynamodb')
@@ -59,7 +65,7 @@ QA_SEP = "=>"
 A_Role="用户"
 B_Role="AWSBot"
 A_Role_en="user"
-SYSTEM_ROLE_PROMPT = '你是云服务AWS的智能客服机器人AWSBot'
+SYSTEM_ROLE_PROMPT = ''
 Fewshot_prefix_Q="问题"
 Fewshot_prefix_A="回答"
 RESET = '/rs'
@@ -1091,7 +1097,7 @@ def get_reply_stratgy(recall_knowledge,refuse_strategy:str):
             
             
 def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:str, embedding_model_endpoint:str, llm_model_endpoint:str, llm_model_name:str, aos_endpoint:str, aos_index:str, aos_knn_field:str, aos_result_num:int, kendra_index_id:str, 
-                   kendra_result_num:int,use_qa:bool,wsclient=None,msgid:str='',max_tokens:int = 2048,temperature:float = 0.1,template:str = '',imgurl:str = None,multi_rounds:bool = False, hide_ref:bool = False,use_stream:bool=False,example_index:str='chatbot-example-index',use_search:bool=True,refuse_strategy:str = 'LLM_ONLY',refuse_answer:str = ''):
+                   kendra_result_num:int,use_qa:bool,wsclient=None,msgid:str='',stop_sequences:list = ["\n\nHuman:"], max_tokens:int = 2048,temperature:float = 0.1,template:str = '',imgurl:str = None,multi_rounds:bool = False, hide_ref:bool = False,use_stream:bool=False,example_index:str='chatbot-example-index',use_search:bool=True,refuse_strategy:str = 'LLM_ONLY',refuse_answer:str = ''):
     """
     Entry point for the Lambda function.
 
@@ -1143,6 +1149,7 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
     params = {
         "max_tokens": max_tokens,
         "temperature": temperature,
+        "stop_sequences":stop_sequences,
         "top_p":0.95
     }
 
@@ -1414,6 +1421,20 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
     return answer,ref_text,use_stream,query_input,opensearch_query_response,opensearch_knn_respose,recall_knowledge
 
 
+def get_s3_image_base64(bucket_name, key):
+    # Create an S3 client
+    s3 = boto3.client('s3')
+    # Get the object from S3
+    try:
+        response = s3.get_object(Bucket=bucket_name, Key=key)
+        image_data = response['Body'].read()
+        # Encode the image data as base64
+        base64_image = base64.b64encode(image_data).decode('utf-8')
+        return base64_image
+    except Exception as e:
+        print(f"Error getting object from S3: {e}")
+        return None
+    
 
 def generate_s3_image_url(bucket_name, key, expiration=3600):
     s3_client = boto3.client('s3')
@@ -1424,6 +1445,103 @@ def generate_s3_image_url(bucket_name, key, expiration=3600):
     )
     return url
 
+def pehub_chat(query_input:str,system_prompt:str,model_kargs:Dict[str,Any],user_id:str,wsclient:str,wsconnection_id:str,msgid:str,session_id:str,llm_model_endpoint:str, llm_model_name:str, use_stream:bool,multi_rounds:bool,images_base64:List[str]):
+    
+    json_obj = {
+        "query": query_input,
+        "opensearch_doc":  [],
+        "opensearch_knn_doc":  [],
+        "kendra_doc": [],
+        "knowledges" : [],
+        "detect_query_type": '',
+        "LLM_input": '',
+
+    }
+    json_obj['user_id'] = user_id
+    json_obj['session_id'] = session_id
+
+    if query_input == RESET:
+        delete_session(session_id,user_id)
+        answer = '历史对话已清空'
+        json_obj['chatbot_answer'] = answer
+        json_obj['conversations'] = []
+        json_obj['timestamp'] = int(time.time())
+        json_obj['log_type'] = "all"
+        json_obj_str = json.dumps(json_obj, ensure_ascii=False)
+        logger.info(json_obj_str)
+        use_stream = False
+        return answer,'',use_stream,[],[],[]
+    else:
+        hide_ref= True
+        logger.info("llm_model_name : {} ,use_stream :{}".format(llm_model_name,use_stream))
+        stream_callback = CustomStreamingOutCallbackHandler(wsclient,msgid, wsconnection_id,llm_model_name,hide_ref,use_stream)
+
+        def prompt_func(data_dict) ->list:
+            messages = []
+            # Adding image(s) to the messages if present
+            if images:= data_dict.get("images"):
+                for img_base64 in images:
+                    image_message = {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{img_base64}"
+                        },
+                    }
+                    messages.append(image_message)
+
+            # Adding the text message for analysis
+            text_message = {
+                "type": "text",
+                "text": f"{data_dict['query_input']}"
+            }
+            messages.append(text_message)
+            return [HumanMessage(content=messages)]
+
+        if llm_model_name.startswith('claude'):
+            model_id = BEDROCK_LLM_MODELID_LIST.get(llm_model_name, BEDROCK_LLM_MODELID_LIST['claude-v3-sonnet'])
+            llm = BedrockChat(model_id=model_id, streaming=use_stream,model_kwargs=model_kargs,callbacks=[stream_callback])
+        else:
+            model_id = llm_model_endpoint
+            llm = get_langchain_llm_model(model_id, model_kargs, region, llm_stream=use_stream, llm_callbacks=[stream_callback])
+            
+         # 1. get_session
+        start1 = time.time()
+        session_history = get_session(session_id=session_id,user_id=user_id)
+        chat_conversions = []
+        if multi_rounds:
+            for item in session_history:
+                chat_conversions.append(HumanMessage(content=item[0]))
+                chat_conversions.append(AIMessage(content = item[1]))
+
+        elpase_time = time.time() - start1
+        logger.info(f'running time of get_session : {elpase_time}s seconds')
+    
+        # output_parser = StrOutputParser()
+        # prompt = ChatPromptTemplate.from_messages(
+        #     [
+        #         MessagesPlaceholder(variable_name="history"),
+        #         ("human", "{query_input}"),
+        #     ]
+        # )       
+        # chain = prompt | llm | output_parser
+        # answer = chain.invoke({'history':chat_conversions,'query_input':query_input})
+        
+        ##alway put system message in the first slot
+        system_message = [SystemMessage(content=system_prompt)]
+        messages = system_message+ chat_conversions+prompt_func({'query_input':query_input,'images':images_base64})
+        response = llm.invoke(messages)
+        answer = response.content
+        
+        if session_id != 'OnlyForDEBUG':
+            update_session(session_id=session_id,user_id=user_id, question=query_input, answer=answer, intention='chat', msgid=msgid)
+        json_obj['chatbot_answer'] = answer
+        json_obj['conversations'] = []
+        json_obj['timestamp'] = int(time.time())
+        json_obj['log_type'] = "all"
+        json_obj_str = json.dumps(json_obj, ensure_ascii=False)
+        logger.info(json_obj_str)
+        return answer,'',use_stream,[],[],[]
+        
 
 
 @handle_error
@@ -1480,17 +1598,19 @@ def lambda_handler(event, context):
     example_index = f'chatbot-example-index-{company}'
     refuse_strategy = event.get('refuse_strategy','')
     refuse_answer = event.get('refuse_answer','对不起，我不太清楚这个问题，请问问人工吧')
-        
+    stop_sequences = event.get('stop_sequences',['\n\nHuman:'])
     
-    imgurl = event.get('imgurl')
+    imgurls = event.get('imgurl')
     image_path = ''
-    if imgurl:
-        if imgurl.startswith('https://'):
-            image_path = imgurl
-        else:
+    images_base64 = []
+    if imgurls:
+        logger.info(f"imgurls:{imgurls}")
+        for imgurl in imgurls:
             bucket,imgobj = imgurl.split('/',1)
-            image_path = generate_s3_image_url(bucket,imgobj)
-        logger.info(f"image_path:{image_path}")
+            # image_path = generate_s3_image_url(bucket,imgobj)
+            image_base64 = get_s3_image_base64(bucket,imgobj)
+            images_base64.append(image_base64)
+
 
     ## 用于trulength接口，只返回recall 知识
     if retrieve_only:
@@ -1508,9 +1628,9 @@ def lambda_handler(event, context):
     ##获取前端给的系统设定，如果没有，则使用lambda里的默认值
     global B_Role,SYSTEM_ROLE_PROMPT
     B_Role = event.get('system_role',B_Role)
-    SYSTEM_ROLE_PROMPT = event.get('system_role_prompt',SYSTEM_ROLE_PROMPT)
+    system_role_prompt = event.get('system_role_prompt',SYSTEM_ROLE_PROMPT)
     
-    logger.info(f'system_role:{B_Role},system_role_prompt:{SYSTEM_ROLE_PROMPT}')
+    logger.info(f'system_role:{B_Role},system_role_prompt:{system_role_prompt}')
 
     llm_endpoint = os.environ.get('llm_model_endpoint')
 
@@ -1537,9 +1657,11 @@ def lambda_handler(event, context):
     prompt_template = ''
 
     ##如果指定了prompt 模板
-    if template_id and template_id != 'default':
+    if template_id not in ['default','empty']:
         prompt_template = get_template(template_id,company)
         prompt_template = '' if prompt_template is None else prompt_template['template']['S']
+
+        
     
     use_search = False if feature_config == 'search_disabled' else True
     logger.info(f'use_search : {use_search}')
@@ -1559,6 +1681,8 @@ def lambda_handler(event, context):
     logger.info(f'intention list: {INTENTION_LIST}')
     logger.info(f'refuse_strategy: {refuse_strategy}')
     logger.info(f'refuse_answer: {refuse_answer}')
+    logger.info(f'stop_sequences: {stop_sequences}')
+
     
     ##if aos and bedrock kb are null then set use_qa = false
     if not aos_endpoint and not KNOWLEDGE_BASE_ID:
@@ -1569,8 +1693,30 @@ def lambda_handler(event, context):
     TRACE_LOGGER = TraceLogger(wsclient=wsclient,msgid=msgid,connectionId=wsconnection_id,stream=use_stream,use_trace=use_trace,hide_ref=hide_ref)
 
     main_entry_start = time.time()  # 或者使用 time.time_ns() 获取纳秒级别的时间戳
-    answer,ref_text,use_stream,query_input,opensearch_query_response,opensearch_knn_respose,recall_knowledge = main_entry_new(user_id,wsconnection_id,session_id, question, embedding_endpoint, llm_endpoint, model_name, aos_endpoint, aos_index, aos_knn_field, aos_result_num,
-                       Kendra_index_id, Kendra_result_num,use_qa,wsclient,msgid,max_tokens,temperature,prompt_template,image_path,multi_rounds,hide_ref,use_stream,example_index,use_search,refuse_strategy,refuse_answer)
+    model_kargs={
+        'max_tokens':max_tokens,
+        "temperature": temperature,
+        "stop_sequences":stop_sequences
+    }
+    if template_id == 'empty':
+        answer,ref_text,use_stream,opensearch_query_response,opensearch_knn_respose,recall_knowledge = pehub_chat(query_input=question,
+                                                                                                                  system_prompt=system_role_prompt,
+                                                                                                                model_kargs=model_kargs,
+                                                                                                                user_id=user_id,
+                                                                                                                wsclient=wsclient,
+                                                                                                                wsconnection_id=wsconnection_id,
+                                                                                                                msgid=msgid,
+                                                                                                                session_id=session_id,
+                                                                                                                llm_model_endpoint=llm_endpoint,
+                                                                                                                llm_model_name=model_name,
+                                                                                                                use_stream=use_stream ,
+                                                                                                                multi_rounds =multi_rounds,
+                                                                                                                images_base64 =images_base64                                                                                           
+                                                                                                                              )
+        query_input = question
+    else:
+        answer,ref_text,use_stream,query_input,opensearch_query_response,opensearch_knn_respose,recall_knowledge = main_entry_new(user_id,wsconnection_id,session_id, question, embedding_endpoint, llm_endpoint, model_name, aos_endpoint, aos_index, aos_knn_field, aos_result_num,
+                       Kendra_index_id, Kendra_result_num,use_qa,wsclient,msgid,stop_sequences,max_tokens,temperature,prompt_template,image_path,multi_rounds,hide_ref,use_stream,example_index,use_search,refuse_strategy,refuse_answer)
     main_entry_elpase = time.time() - main_entry_start  # 或者使用 time.time_ns() 获取纳秒级别的时间戳
     logger.info(f'running time of main_entry : {main_entry_elpase}s seconds')
     if use_stream: ##只有当stream输出时，把这条trace放到最后一个chunk

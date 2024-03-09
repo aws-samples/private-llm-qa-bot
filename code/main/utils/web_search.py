@@ -1,5 +1,5 @@
 
-from langchain.utilities import GoogleSearchAPIWrapper
+from langchain_community.utilities import GoogleSearchAPIWrapper
 from langchain.agents import Tool
 import asyncio
 import aiohttp
