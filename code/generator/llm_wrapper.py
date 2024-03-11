@@ -3,6 +3,7 @@ import json
 from typing import Any, Dict, List, Optional, Mapping
 import logging
 import copy
+import io
 from langchain.pydantic_v1 import Extra, root_validator
 from langchain.chains import LLMChain
 from langchain.llms.base import LLM
@@ -13,7 +14,7 @@ from langchain_community.chat_models import BedrockChat
 from langchain.llms.sagemaker_endpoint import LLMContentHandler, SagemakerEndpoint
 from langchain.prompts import PromptTemplate
 from langchain_core.prompts import ChatPromptTemplate
-from llm_manager import get_all_private_llm, get_all_bedrock_llm
+from .llm_manager import get_all_private_llm, get_all_bedrock_llm
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 
 logger = logging.getLogger()
@@ -338,6 +339,7 @@ def format_to_message(query:str, image_base64_list:List[str]=None, role:str = "u
     return {"role": role, "content": query }
 
 def invoke_model(llm, prompt:str=None, messages:List[Dict]=[]) -> AIMessage:
+    logger.info(f'invoke_model with input [prompt=>{prompt}; messages=>{json.dumps(messages)}]')
     ai_reply = None
     if isinstance(llm, BedrockChat):
         if messages:
@@ -347,10 +349,14 @@ def invoke_model(llm, prompt:str=None, messages:List[Dict]=[]) -> AIMessage:
     elif isinstance(llm, Bedrock) or isinstance(llm, SagemakerEndpoint) or isinstance(llm, SagemakerStreamEndpoint):
         if prompt:
             answer = llm.invoke(input=prompt)
+            logger.info(f'The result of invoke_model=> {answer}')
             ai_reply = AIMessage(answer)
         else:
             raise RuntimeError("No valid input for Bedrock/SagemakerEndpoint/SagemakerStreamEndpoint")
+    else:
+        raise RuntimeError("unsupported LLM type.")
 
+    logger.info(f'[2]The result of invoke_model=> {ai_reply.content}')
     return ai_reply
 
 if __name__ == "__main__":

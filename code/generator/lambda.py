@@ -1,8 +1,8 @@
 import boto3
 import os
 import logging
-from llm_wrapper import get_langchain_llm_model, invoke_model
-from llm_manager import get_all_model_ids
+from .llm_wrapper import get_langchain_llm_model, invoke_model
+from .llm_manager import get_all_model_ids
 from enum import Enum
 from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
