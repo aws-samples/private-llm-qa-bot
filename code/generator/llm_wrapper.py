@@ -307,7 +307,7 @@ def get_langchain_llm_model(llm_model_id, params, region, llm_stream=False, llm_
 
     return llm
 
-def format_to_message(query:str, image_base64:str=None, role:str = "user"):
+def format_to_message(query:str, image_base64_list:List[str]=None, role:str = "user"):
     '''
     history format:
     "history": [
@@ -330,20 +330,18 @@ def format_to_message(query:str, image_base64:str=None, role:str = "user"):
         }
     ]
     '''
-    if image_base64:
-        content =  [{ "type": "image", "source": { "type": "base64", "media_type": "image/jpeg", "data": image_base64 } }, { "type": "text", "text": query }]
+    if image_base64_list:
+        content = [{ "type": "image", "source": { "type": "base64", "media_type": "image/jpeg", "data": image_base64 }} for image_base64 in image_base64_list ]
+        content.append({ "type": "text", "text": query })
         return { "role": role, "content": content }
 
     return {"role": role, "content": query }
 
-def invoke_model(llm, prompt:str=None, messages:List[Dict]=None) -> AIMessage:
+def invoke_model(llm, prompt:str=None, messages:List[Dict]=[]) -> AIMessage:
     ai_reply = None
     if isinstance(llm, BedrockChat):
         if messages:
             ai_reply = llm.invoke(input=messages)
-        elif prompt:
-            msg = format_to_message(prompt)
-            ai_reply = llm.invoke(input=[msg])
         else:
             raise RuntimeError("No valid input for BedrockChat")
     elif isinstance(llm, Bedrock) or isinstance(llm, SagemakerEndpoint) or isinstance(llm, SagemakerStreamEndpoint):

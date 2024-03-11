@@ -1,11 +1,12 @@
 import boto3
 import os
 import logging
-from llm_wrapper import get_langchain_llm_model
+from llm_wrapper import get_langchain_llm_model, invoke_model
 from llm_manager import get_all_model_ids
 from enum import Enum
 from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
+
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -50,6 +51,7 @@ def lambda_handler(event, context):
 
     model_id = event.get('model_id', '')
     prompt = event.get('prompt', '')
+    history_message = event.get('messages', [])
     method = event.get('method', LAMBDA_SUPPORT_METHOD.GET_ALL_MODEL_IDS.value)
     params = event.get('params', {})
 
@@ -62,20 +64,14 @@ def lambda_handler(event, context):
         all_model_ids = get_all_model_ids()
         return {"all_model_ids" : all_model_ids}
     elif method == LAMBDA_SUPPORT_METHOD.INVOKE_LLM.value:
-        langchain_llm = get_langchain_llm_model(model_id, params, region)
+        if prompt:
+            langchain_llm = get_langchain_llm_model(model_id, params, region)
+            ai_reply = invoke_model(langchain_llm, prompt, messages)
+            answer = ai_reply.content
 
-        PROMPT = PromptTemplate(
-            template=prompt, 
-            input_variables=[]
-        )
-
-        llmchain = LLMChain(llm=langchain_llm, verbose=False, prompt=PROMPT)
-        answer = llmchain.run({})
-
-        if type(answer) == dict and 'text' in answer.keys():
-            return {"output": answer.get('text', ''), "prompt" : prompt, "params" : params}
-
-        return {"output": answer, "prompt" : prompt, "params" : params}
+            return {"output": answer, "prompt" : prompt, "params" : params}
+        else:
+            raise RuntimeError("None Prompt is not allowed.")
     elif method == LAMBDA_SUPPORT_METHOD.SAVE_PROMPT_TEMPLATE.value:
         raise RuntimeError(f"unsupported method - {method}.") 
     else:
