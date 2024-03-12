@@ -6,6 +6,7 @@ RUN  pip3 install -r requirements.txt --target "${LAMBDA_TASK_ROOT}"
 
 # Copy function code
 COPY main.py ${LAMBDA_TASK_ROOT}
+RUN mkdir -p ${LAMBDA_TASK_ROOT}/utils
 COPY utils ${LAMBDA_TASK_ROOT}/utils
 RUN mkdir -p ${LAMBDA_TASK_ROOT}/generator
 COPY generator/*.py ${LAMBDA_TASK_ROOT}/generator/

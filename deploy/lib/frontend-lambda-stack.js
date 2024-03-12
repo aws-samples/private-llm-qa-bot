@@ -17,6 +17,7 @@ import { join } from "path";
 import * as dotenv from "dotenv";
 import { WebSocketLambdaIntegration } from "@aws-cdk/aws-apigatewayv2-integrations-alpha";
 import * as apigwv2 from "@aws-cdk/aws-apigatewayv2-alpha";
+import * as ecr from "aws-cdk-lib/aws-ecr";
 
 
 dotenv.config();
@@ -46,7 +47,9 @@ export class LambdaStack extends NestedStack {
     super(scope, id, props);
 
     const user_table = props.user_table;
-    // const doc_index_table = props.doc_index_table;
+    const agents_table = props.agents_table;
+    const prompt_hub_table = props.prompt_hub_table;
+    const model_hub_table = props.model_hub_table;
     this.handlersMap = new Map();
 
     const createNodeJsLambdaFn = (scope, path, index_fname, api, envProps) => {
@@ -78,7 +81,7 @@ export class LambdaStack extends NestedStack {
         UPLOAD_BUCKET: process.env.UPLOAD_BUCKET,
         UPLOAD_OBJ_PREFIX:process.env.UPLOAD_OBJ_PREFIX,
         OPENAI_API_KEY: process.env.OPENAI_API_KEY,
-        START_CMD: '/rs',
+        START_CMD: process.env.START_CMD,
       },
       runtime: lambda.Runtime.NODEJS_18_X,
       memorySize: 256,
@@ -87,7 +90,7 @@ export class LambdaStack extends NestedStack {
 
     this.login_fn = createNodeJsLambdaFn(
       this,
-      "../chatbotFE/deploy/lambda/login",
+      "lambda/login",
       "index.js",
       "login",
       {
@@ -102,7 +105,7 @@ export class LambdaStack extends NestedStack {
 
     this.auth_fn = createNodeJsLambdaFn(
       this,
-      "../chatbotFE/deploy/lambda/auth",
+      "lambda/auth",
       "index.js",
       "lambda_auth",
       {
@@ -117,7 +120,7 @@ export class LambdaStack extends NestedStack {
 
     this.users_fn = createNodeJsLambdaFn(
       this,
-      "../chatbotFE/deploy/lambda/admin_users",
+      "lambda/admin_users",
       "index.js",
       "users",
       {
@@ -131,14 +134,15 @@ export class LambdaStack extends NestedStack {
     user_table.grantReadWriteData(this.users_fn);
     
     const layer = new lambda.LayerVersion(this, 'ChatbotLayer', {
-      code: lambda.Code.fromAsset('../chatbotFE/deploy/layer/ChatbotFELayer.zip'),
+      code: lambda.Code.fromAsset('layer/ChatbotFELayer.zip'),
       description: 'ChatbotFELayer Python helper utility',
       compatibleRuntimes: [lambda.Runtime.PYTHON_3_9],
       layerVersionName:'ChatbotFELayer',
     });
 
+
     this.lambda_chat_py = new lambda.Function(this, 'handle_chat_py',{
-      code: lambda.Code.fromAsset('../chatbotFE/deploy/lambda/lambda_chat_py'),
+      code: lambda.Code.fromAsset('lambda/lambda_chat_py'),
       layers:[layer],
       handler: 'app.handler',
       runtime: lambda.Runtime.PYTHON_3_9,
@@ -159,7 +163,7 @@ export class LambdaStack extends NestedStack {
 
     this.lambda_connect_handle = createNodeJsLambdaFn(
       this,
-      "../chatbotFE/deploy/lambda/lambda_connect_handle",
+      "lambda/lambda_connect_handle",
       "index.mjs",
       "lambda_connect_handle",
       {
@@ -173,7 +177,7 @@ export class LambdaStack extends NestedStack {
 
     this.lambda_handle_chat = createNodeJsLambdaFn(
       this,
-      "../chatbotFE/deploy/lambda/lambda_handle_chat",
+      "lambda/lambda_handle_chat",
       "index.mjs",
       "lambda_handle_chat",
       {
@@ -183,13 +187,13 @@ export class LambdaStack extends NestedStack {
 
     this.lambda_list_idx = createNodeJsLambdaFn(
       this,
-      "../chatbotFE/deploy/lambda/lambda_list_idx",
+      "lambda/lambda_list_idx",
       "index.mjs",
       "lambda_list_idx",
       {
         ...commonProps,
         environment: {
-          DOC_INDEX_TABLE:'chatbot_doc_index',
+          AGENTS_TABLE_NAME:agents_table.tableName,
           MAIN_FUN_ARN:process.env.MAIN_FUN_ARN
         },
       }
@@ -197,7 +201,7 @@ export class LambdaStack extends NestedStack {
   
     this.lambda_handle_upload = createNodeJsLambdaFn(
       this,
-      "../chatbotFE/deploy/lambda/lambda_handle_upload",
+      "lambda/lambda_handle_upload",
       "index.js",
       "lambda_handle_upload",
       {
@@ -210,6 +214,32 @@ export class LambdaStack extends NestedStack {
         },
       }
     );
+    
+    // prompt hub 管理函数
+    this.lambda_prompt_hub = new lambda.Function(this, 'lambda_prompthub',{
+      code: lambda.Code.fromAsset('lambda/lambda_prompthub'),
+      handler: 'app.handler',
+      runtime: lambda.Runtime.PYTHON_3_10,
+      timeout: Duration.minutes(3),
+      environment: {
+      },
+      memorySize: 256,
+    })
+    prompt_hub_table.grantReadWriteData(this.lambda_prompt_hub);
+
+    // model hub 管理函数
+    this.lambda_model_hub = new lambda.Function(this, 'lambda_modelhub',{
+      code: lambda.Code.fromAsset('lambda/lambda_modelhub'),
+      handler: 'app.handler',
+      runtime: lambda.Runtime.PYTHON_3_10,
+      timeout: Duration.minutes(3),
+      environment: {
+      },
+      memorySize: 256,
+    })
+    model_hub_table.grantReadWriteData(this.lambda_model_hub);
+
+
     // doc_index_table.grantReadWriteData(this.lambda_list_idx )
     const bucket = s3.Bucket.fromBucketName(this, 'DocUploadBucket',process.env.UPLOAD_BUCKET);
     bucket.grantReadWrite(this.lambda_handle_upload);
@@ -217,6 +247,8 @@ export class LambdaStack extends NestedStack {
     const main_fn = lambda.Function.fromFunctionArn(this,'main func',process.env.MAIN_FUN_ARN);
     main_fn.grantInvoke(this.lambda_chat_py);
     main_fn.grantInvoke(this.lambda_list_idx);
+
+    agents_table.grantReadWriteData(this.lambda_list_idx);
 
     const api = new RestApi(this, "ChatbotFERestApi", {
       cloudWatchRole: true,
@@ -281,8 +313,29 @@ export class LambdaStack extends NestedStack {
     feedback.addMethod('DELETE',feedbackIntegration,{authorizer});
     feedback.addMethod('GET',feedbackIntegration,{authorizer});
 
+    const agentsIntegration = new LambdaIntegration(this.lambda_list_idx );
+    const agents = api.root.addResource('agents');
+    agents.addMethod('POST',agentsIntegration,{authorizer});
+    agents.addMethod('DELETE',agentsIntegration,{authorizer});
+    agents.addMethod('GET',agentsIntegration,{authorizer});
+    agents.addResource("{id}").addMethod("GET",agentsIntegration,{authorizer});
 
 
+     // prompt hub api
+    const promptHubIntegration = new LambdaIntegration(this.lambda_prompt_hub );
+    const prompt_hub = api.root.addResource('prompt_hub');
+    prompt_hub.addMethod('POST',promptHubIntegration,{authorizer});
+    prompt_hub.addMethod('DELETE',promptHubIntegration,{authorizer});
+    prompt_hub.addMethod('GET',promptHubIntegration,{authorizer});
+    prompt_hub.addResource("{id}").addMethod("GET",promptHubIntegration,{authorizer});
+
+     // model hub api
+     const modelHubIntegration = new LambdaIntegration(this.lambda_model_hub );
+     const model_hub = api.root.addResource('model_hub');
+     model_hub.addMethod('POST',modelHubIntegration,{authorizer});
+     model_hub.addMethod('DELETE',modelHubIntegration,{authorizer});
+     model_hub.addMethod('GET',modelHubIntegration,{authorizer});
+     model_hub.addResource("{id}").addMethod("GET",modelHubIntegration,{authorizer});
 
     const loginIntegration = new LambdaIntegration(this.login_fn);
     const login = api.root.addResource("login");

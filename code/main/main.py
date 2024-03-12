@@ -44,7 +44,9 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import HumanMessage,AIMessage,SystemMessage
 from langchain_core.prompts import ChatPromptTemplate,MessagesPlaceholder
-from langchain_community.chat_models import BedrockChat
+# from langchain_community.chat_models import BedrockChat
+
+from utils.chatmodel_bedrock import BedrockChat
 import base64
 
 
@@ -190,6 +192,11 @@ class CustomStreamingOutCallbackHandler(BaseCallbackHandler):
 
     def on_llm_end(self, response: LLMResult, **kwargs: Any) -> None:
         """Run when LLM ends running."""
+        if metrics:=kwargs.get('invocationMetrics'):
+            TRACE_LOGGER.trace(f'\n\n**Invoke Metrics : {metrics}*')
+            # data = json.dumps({ 'msgid':self.msgid, 'role': "AI", 'text': {'content':f'\n\n**metrics: {metrics}\n\n'},'connectionId':self.connectionId })
+            # self.postMessage(data)
+            
         if (not self.hide_ref) and self.use_stream:
             text = format_reference(self.recall_knowledge)
             data = json.dumps({ 'msgid':self.msgid, 'role': "AI", 'text': {'content':f'{text}'},'connectionId':self.connectionId })
@@ -1720,11 +1727,12 @@ def lambda_handler(event, context):
     main_entry_elpase = time.time() - main_entry_start  # 或者使用 time.time_ns() 获取纳秒级别的时间戳
     logger.info(f'running time of main_entry : {main_entry_elpase}s seconds')
     if use_stream: ##只有当stream输出时，把这条trace放到最后一个chunk
-        TRACE_LOGGER.trace(f'\n\n**Total running time : {main_entry_elpase:.3f}s**')
+        # TRACE_LOGGER.trace(f'\n\n**Total running time : {main_entry_elpase:.3f}s**')
+        pass
     if TRACE_LOGGER.use_trace:
         tracelogs_str = TRACE_LOGGER.dump_logs_to_string()
         ## 返回非stream的结果，把这条trace放到末尾
-        answer =f'{tracelogs_str}\n\n{answer}\n\n**Total running time : {main_entry_elpase:.3f}s**'
+        # answer =f'{tracelogs_str}\n\n{answer}\n\n**Total running time : {main_entry_elpase:.3f}s**'
     else:
         answer = answer if hide_ref else f'{answer}{ref_text}'
     # 2. return rusult

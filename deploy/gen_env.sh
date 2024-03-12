@@ -29,13 +29,11 @@ llm_model_endpoint="${unique_tag}-llm-model-endpoint"
 bucket="${unique_tag}-bucket"
 main_fun_arn="${arn}lambda:${region}:${account_id}:function:Ask_Assistant"
 token_key="${unique_tag}"
-aos_required=true
+aos_required=false
 
 echo "CDK_DEFAULT_ACCOUNT=${account_id}" > .env
 echo "CDK_DEFAULT_REGION=${region}" >> .env
 echo "existing_vpc_id=optional" >> .env
-echo "Kendra_index_id=f36f5962-4ca8-4a65-9c60-5b813e5f46bc" >> .env
-echo "Kendra_result_num=3" >> .env
 echo "aos_index=chatbot-index" >> .env
 echo "aos_knn_field=embedding" >> .env
 echo "aos_results=3" >> .env
