@@ -1266,12 +1266,15 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
         answer = ''
 
         # for message api
+        sys_msg = {"role": "system", "content": SYSTEM_ROLE_PROMPT } if SYSTEM_ROLE_PROMPT else None
+        msg_list = [sys_msg, *chat_history_msgs] if sys_msg else [*chat_history_msgs]
         msg = format_to_message(query=origin_query, image_base64_list=images_base64)
-        msg_list = [*chat_history_msgs, msg]
+        msg_list.append(msg)
 
         # for prompt api
         prompt_template = create_chat_prompt_templete(llm_model_name=llm_model_name)
         prompt = prompt_template.format(question=origin_query,role_bot=B_Role,chat_history=chat_history)
+
 
         ai_reply = invoke_model(llm=llm, prompt=prompt, messages=msg_list)
 
@@ -1354,8 +1357,10 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
             # ##最终的prompt日志
             
             # for message api
+            sys_msg = {"role": "system", "content": SYSTEM_ROLE_PROMPT } if SYSTEM_ROLE_PROMPT else None
+            msg_list = [sys_msg, *chat_history_msgs] if sys_msg else [*chat_history_msgs]
             msg = format_to_message(query=origin_query, image_base64_list=images_base64)
-            msg_list = [*chat_history_msgs, msg]
+            msg_list.append(msg)
 
             # for prompt api
             prompt_template = create_chat_prompt_templete(llm_model_name=llm_model_name)
@@ -1380,8 +1385,16 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
             try:
                 chat_history = '' ##QA 场景下先不使用history
                 prompt = prompt_template.format(question=query_input,role_bot=B_Role,context=context,chat_history=chat_history,ask_user_prompt=ask_user_prompts_str)
-                msg = format_to_message(query=prompt, image_base64_list=images_base64)
-                ai_reply = invoke_model(llm=llm, prompt=prompt, messages=[msg])
+                
+                sys_msg = {"role": "system", "content": SYSTEM_ROLE_PROMPT } if SYSTEM_ROLE_PROMPT else None
+                msg_list = [sys_msg, *chat_history_msgs] if sys_msg else [*chat_history_msgs]
+                msg = format_to_message(query=origin_query, image_base64_list=images_base64)
+                msg_list.append(msg)
+                logger.info("----msg_list-----")
+                logger.info(msg_list)
+                logger.info("----msg_list-----")
+
+                ai_reply = invoke_model(llm=llm, prompt=prompt, messages=msg_list)
                 final_prompt = json.dumps(msg_list)
                 answer = ai_reply.content
             except Exception as e:
@@ -1532,6 +1545,10 @@ def lambda_handler(event, context):
             bucket,imgobj = imgurl.split('/',1)
             # image_path = generate_s3_image_url(bucket,imgobj)
             image_base64 = get_s3_image_base64(bucket,imgobj)
+            logger.info("---image_base64----")
+            logger.info(type(image_base64))
+            logger.info(image_base64)
+            logger.info("---image_base64----")
             images_base64.append(image_base64)
 
     ## 用于trulength接口，只返回recall 知识

@@ -23,6 +23,8 @@ logger.setLevel(logging.INFO)
 bedrock_llms = get_all_bedrock_llm()
 private_llm = get_all_private_llm()
 
+STOP=["user:", "用户：", "用户:", '</response>']
+
 class StreamScanner:    
     def __init__(self):
         self.buff = io.BytesIO()
@@ -63,17 +65,24 @@ class SagemakerStreamContentHandler(LLMContentHandler):
         scanner = StreamScanner()
         text = ''
         for event in event_stream:
+            logger.info(f'for event in event_stream:')
             scanner.write(event['PayloadPart']['Bytes'])
             for line in scanner.readlines():
+                logger.info(f'for {line} in scanner.readlines():')
                 try:
                     resp = json.loads(line)
                     token = resp.get("outputs")['outputs']
                     text += token
+                    logger.info(f"token: {token}")
+                    logger.info(f"text: {text}")
+                    self.callbacks.on_llm_new_token(token)
                     for stop in STOP: ##如果碰到STOP截断
                         if text.endswith(stop):
                             self.callbacks.on_llm_end(None)
                             text = text.rstrip(stop)
                             return text
+
+                    logger.info(f'self.callbacks.on_llm_new_token({token})')
                     self.callbacks.on_llm_new_token(token)
                     # print(token, end='')
                 except Exception as e:
