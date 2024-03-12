@@ -1610,8 +1610,9 @@ def lambda_handler(event, context):
     imgurls = event.get('imgurl')
     image_path = ''
     images_base64 = []
-    if imgurls:
-        logger.info(f"imgurls:{imgurls}")
+    logger.info(f"imgurls:{imgurls}")
+    if imgurls and model_name.startswith('claude-v3'):
+        
         for imgurl in imgurls:
             bucket,imgobj = imgurl.split('/',1)
             # image_path = generate_s3_image_url(bucket,imgobj)
