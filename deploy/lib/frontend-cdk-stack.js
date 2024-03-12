@@ -1,6 +1,6 @@
 import { Stack, Duration, RemovalPolicy, CfnOutput } from "aws-cdk-lib";
 import { AttributeType, Table } from "aws-cdk-lib/aws-dynamodb";
-import { LambdaStack } from "./lambda_stack.js";
+import { LambdaStack } from "./frontend-lambda-stack.js";
 import * as dotenv from "dotenv";
 
 dotenv.config();

@@ -17,7 +17,6 @@ import { join } from "path";
 import * as dotenv from "dotenv";
 import { WebSocketLambdaIntegration } from "@aws-cdk/aws-apigatewayv2-integrations-alpha";
 import * as apigwv2 from "@aws-cdk/aws-apigatewayv2-alpha";
-import * as ecr from "aws-cdk-lib/aws-ecr";
 
 
 dotenv.config();
