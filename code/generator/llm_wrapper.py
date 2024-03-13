@@ -177,9 +177,10 @@ def get_langchain_llm_from_sagemaker_endpoint(llm_model_endpoint, params, region
             callbacks=llm_callbacks[0]
             )
 
-        llm = SagemakerStreamEndpoint(
+        llm = SagemakerEndpoint(
                 endpoint_name=llm_model_endpoint, 
                 region_name=region, 
+                streaming=True,
                 model_kwargs={'parameters': params},
                 content_handler=llmcontent_handler,
                 endpoint_kwargs={'CustomAttributes':'accept_eula=true'} ##for llama2

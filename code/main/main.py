@@ -10,6 +10,7 @@ import boto3
 import time
 import hashlib
 import uuid
+import base64
 # from transformers import AutoTokenizer
 from enum import Enum
 from opensearchpy import OpenSearch, RequestsHttpConnection
@@ -1390,9 +1391,6 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
                 msg_list = [sys_msg, *chat_history_msgs] if sys_msg else [*chat_history_msgs]
                 msg = format_to_message(query=origin_query, image_base64_list=images_base64)
                 msg_list.append(msg)
-                logger.info("----msg_list-----")
-                logger.info(msg_list)
-                logger.info("----msg_list-----")
 
                 ai_reply = invoke_model(llm=llm, prompt=prompt, messages=msg_list)
                 final_prompt = json.dumps(msg_list)
@@ -1545,10 +1543,6 @@ def lambda_handler(event, context):
             bucket,imgobj = imgurl.split('/',1)
             # image_path = generate_s3_image_url(bucket,imgobj)
             image_base64 = get_s3_image_base64(bucket,imgobj)
-            logger.info("---image_base64----")
-            logger.info(type(image_base64))
-            logger.info(image_base64)
-            logger.info("---image_base64----")
             images_base64.append(image_base64)
 
     ## 用于trulength接口，只返回recall 知识
