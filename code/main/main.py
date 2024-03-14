@@ -10,6 +10,7 @@ import boto3
 import time
 import hashlib
 import uuid
+import base64
 # from transformers import AutoTokenizer
 from enum import Enum
 from opensearchpy import OpenSearch, RequestsHttpConnection
@@ -40,7 +41,7 @@ from boto3 import client as boto3_client
 from utils.web_search import web_search,add_webpage_content
 from utils.management import management_api,get_template
 from utils.utils import add_reference, render_answer_with_ref
-from generator.llm_wrapper import get_langchain_llm_model
+from generator.llm_wrapper import get_langchain_llm_model, invoke_model, format_to_message
 
 lambda_client= boto3.client('lambda')
 dynamodb_client = boto3.resource('dynamodb')
@@ -943,6 +944,13 @@ def get_chat_history(inputs) -> str:
         res.append(f"{A_Role}:{human}\n{B_Role}:{ai}")
     return "\n".join(res)
 
+def history_to_messages(inputs) -> str:
+    res = []
+    for human, ai in inputs:
+        res.append({ "role" : "user", "content" : human})
+        res.append({ "role" : "assistant", "content" : ai})
+    return res
+
 def create_qa_prompt_templete(prompt_template):
     if prompt_template == '':
         prompt_template_zh = \
@@ -1091,7 +1099,7 @@ def get_reply_stratgy(recall_knowledge,refuse_strategy:str):
             
             
 def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:str, embedding_model_endpoint:str, llm_model_endpoint:str, llm_model_name:str, aos_endpoint:str, aos_index:str, aos_knn_field:str, aos_result_num:int, kendra_index_id:str, 
-                   kendra_result_num:int,use_qa:bool,wsclient=None,msgid:str='',max_tokens:int = 2048,temperature:float = 0.1,template:str = '',imgurl:str = None,multi_rounds:bool = False, hide_ref:bool = False,use_stream:bool=False,example_index:str='chatbot-example-index',use_search:bool=True,refuse_strategy:str = 'LLM_ONLY',refuse_answer:str = ''):
+                   kendra_result_num:int,use_qa:bool,wsclient=None,msgid:str='',max_tokens:int = 2048,temperature:float = 0.1,template:str = '',images_base64:List[str] = None,multi_rounds:bool = False, hide_ref:bool = False,use_stream:bool=False,example_index:str='chatbot-example-index',use_search:bool=True,refuse_strategy:str = 'LLM_ONLY',refuse_answer:str = ''):
     """
     Entry point for the Lambda function.
 
@@ -1176,13 +1184,16 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
         query_input = rewrite_query(origin_query, session_history, round_cnt=3)
         elpase_time_rewrite = time.time() - before_rewrite
 
-        chat_history=''
+        chat_history_msgs=[]
         TRACE_LOGGER.trace(f'**Rewrite: {origin_query} => {query_input}, elpase_time:{elpase_time_rewrite}**')
         logger.info(f'Rewrite: {origin_query} => {query_input}')
         #add history parameter
+
         chat_history= get_chat_history(chat_coversions[-2:])
+        chat_history_msgs= history_to_messages(chat_coversions[-2:])
     else:
-        chat_history=''
+        chat_history = ''
+        chat_history_msgs= []
 
 
     
@@ -1255,10 +1266,21 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
         prompt_template = None
         answer = ''
 
+        # for message api
+        sys_msg = {"role": "system", "content": SYSTEM_ROLE_PROMPT } if SYSTEM_ROLE_PROMPT else None
+        msg_list = [sys_msg, *chat_history_msgs] if sys_msg else [*chat_history_msgs]
+        msg = format_to_message(query=origin_query, image_base64_list=images_base64)
+        msg_list.append(msg)
+
+        # for prompt api
         prompt_template = create_chat_prompt_templete(llm_model_name=llm_model_name)
-        llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
-        answer = llmchain.run({'question':origin_query,'chat_history':chat_history,'role_bot':B_Role})
-        final_prompt = prompt_template.format(question=origin_query,role_bot=B_Role,chat_history=chat_history)
+        prompt = prompt_template.format(question=origin_query,role_bot=B_Role,chat_history=chat_history)
+
+
+        ai_reply = invoke_model(llm=llm, prompt=prompt, messages=msg_list)
+
+        final_prompt = json.dumps(msg_list)
+        answer = ai_reply.content
         
         recall_knowledge,opensearch_knn_respose,opensearch_query_response = [],[],[]
 
@@ -1328,14 +1350,27 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
                 TRACE_LOGGER.postMessage(answer)
                 
         elif reply_stratgy == ReplyStratgy.LLM_ONLY: ##走LLM默认知识
-            prompt_template = create_chat_prompt_templete()
-            hide_ref= True ## 隐藏ref doc
-            llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
-            ##最终的answer
-            answer = llmchain.run({'question':query_input,'chat_history':chat_history,'role_bot':B_Role})
-            ##最终的prompt日志
-            final_prompt = prompt_template.format(question=query_input,role_bot=B_Role,chat_history=chat_history)    
-            recall_knowledge = []
+            # prompt_template = create_chat_prompt_templete()
+            # hide_ref= True ## 隐藏ref doc
+            # llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
+            # ##最终的answer
+            # answer = llmchain.run({'question':query_input,'chat_history':chat_history,'role_bot':B_Role})
+            # ##最终的prompt日志
+            
+            # for message api
+            sys_msg = {"role": "system", "content": SYSTEM_ROLE_PROMPT } if SYSTEM_ROLE_PROMPT else None
+            msg_list = [sys_msg, *chat_history_msgs] if sys_msg else [*chat_history_msgs]
+            msg = format_to_message(query=origin_query, image_base64_list=images_base64)
+            msg_list.append(msg)
+
+            # for prompt api
+            prompt_template = create_chat_prompt_templete(llm_model_name=llm_model_name)
+            prompt = prompt_template.format(question=origin_query,role_bot=B_Role,chat_history=chat_history)
+
+            ai_reply = invoke_model(llm=llm, prompt=prompt, messages=msg_list)
+
+            final_prompt = json.dumps(msg_list)
+            answer = ai_reply.content
             
         else:      
             prompt_template = create_qa_prompt_templete(template)
@@ -1348,15 +1383,20 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
             if len(ask_user_prompts_str) > 0:
                 ask_user_prompts_str = f"\n{ask_user_prompts_str}\n"
 
-            chat_history = '' ##QA 场景下先不使用history
-            ##最终的answer
             try:
-                answer = llmchain.run({'question':query_input,'context':context,'chat_history':chat_history,'role_bot':B_Role, 'ask_user_prompt':ask_user_prompts_str })
+                chat_history = '' ##QA 场景下先不使用history
+                prompt = prompt_template.format(question=query_input,role_bot=B_Role,context=context,chat_history=chat_history,ask_user_prompt=ask_user_prompts_str)
+                
+                sys_msg = {"role": "system", "content": SYSTEM_ROLE_PROMPT } if SYSTEM_ROLE_PROMPT else None
+                msg_list = [sys_msg, *chat_history_msgs] if sys_msg else [*chat_history_msgs]
+                msg = format_to_message(query=origin_query, image_base64_list=images_base64)
+                msg_list.append(msg)
+
+                ai_reply = invoke_model(llm=llm, prompt=prompt, messages=msg_list)
+                final_prompt = json.dumps(msg_list)
+                answer = ai_reply.content
             except Exception as e:
                 answer = str(e)
-            ##最终的prompt日志
-            final_prompt = prompt_template.format(question=query_input,role_bot=B_Role,context=context,chat_history=chat_history,ask_user_prompt=ask_user_prompts_str)
-            # print(final_prompt)
     else:
         #call agent for other intentions
         TRACE_LOGGER.trace('**Using Agent...**')
@@ -1413,7 +1453,19 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
     logger.info(f'running time of all  : {elpase_time1}s seconds')
     return answer,ref_text,use_stream,query_input,opensearch_query_response,opensearch_knn_respose,recall_knowledge
 
-
+def get_s3_image_base64(bucket_name, key):
+    # Create an S3 client
+    s3 = boto3.client('s3')
+    # Get the object from S3
+    try:
+        response = s3.get_object(Bucket=bucket_name, Key=key)
+        image_data = response['Body'].read()
+        # Encode the image data as base64
+        base64_image = base64.b64encode(image_data).decode('utf-8')
+        return base64_image
+    except Exception as e:
+        print(f"Error getting object from S3: {e}")
+        return None
 
 def generate_s3_image_url(bucket_name, key, expiration=3600):
     s3_client = boto3.client('s3')
@@ -1482,15 +1534,16 @@ def lambda_handler(event, context):
     refuse_answer = event.get('refuse_answer','对不起，我不太清楚这个问题，请问问人工吧')
         
     
-    imgurl = event.get('imgurl')
+    imgurls = event.get('imgurl')
     image_path = ''
-    if imgurl:
-        if imgurl.startswith('https://'):
-            image_path = imgurl
-        else:
+    images_base64 = []
+    if imgurls:
+        logger.info(f"imgurls:{imgurls}")
+        for imgurl in imgurls:
             bucket,imgobj = imgurl.split('/',1)
-            image_path = generate_s3_image_url(bucket,imgobj)
-        logger.info(f"image_path:{image_path}")
+            # image_path = generate_s3_image_url(bucket,imgobj)
+            image_base64 = get_s3_image_base64(bucket,imgobj)
+            images_base64.append(image_base64)
 
     ## 用于trulength接口，只返回recall 知识
     if retrieve_only:
@@ -1567,10 +1620,9 @@ def lambda_handler(event, context):
         
     global TRACE_LOGGER
     TRACE_LOGGER = TraceLogger(wsclient=wsclient,msgid=msgid,connectionId=wsconnection_id,stream=use_stream,use_trace=use_trace,hide_ref=hide_ref)
-
     main_entry_start = time.time()  # 或者使用 time.time_ns() 获取纳秒级别的时间戳
     answer,ref_text,use_stream,query_input,opensearch_query_response,opensearch_knn_respose,recall_knowledge = main_entry_new(user_id,wsconnection_id,session_id, question, embedding_endpoint, llm_endpoint, model_name, aos_endpoint, aos_index, aos_knn_field, aos_result_num,
-                       Kendra_index_id, Kendra_result_num,use_qa,wsclient,msgid,max_tokens,temperature,prompt_template,image_path,multi_rounds,hide_ref,use_stream,example_index,use_search,refuse_strategy,refuse_answer)
+                       Kendra_index_id, Kendra_result_num,use_qa,wsclient,msgid,max_tokens,temperature,prompt_template,images_base64,multi_rounds,hide_ref,use_stream,example_index,use_search,refuse_strategy,refuse_answer)
     main_entry_elpase = time.time() - main_entry_start  # 或者使用 time.time_ns() 获取纳秒级别的时间戳
     logger.info(f'running time of main_entry : {main_entry_elpase}s seconds')
     if use_stream: ##只有当stream输出时，把这条trace放到最后一个chunk

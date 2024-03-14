@@ -3,23 +3,27 @@ import json
 from typing import Any, Dict, List, Optional, Mapping
 import logging
 import copy
+import io
 from langchain.pydantic_v1 import Extra, root_validator
 from langchain.chains import LLMChain
 from langchain.llms.base import LLM
 from langchain.callbacks.base import BaseCallbackHandler
 from langchain.callbacks.manager import CallbackManagerForLLMRun
-# from langchain.llms.bedrock import Bedrock
-from .langchain_bedrock import Bedrock
+from langchain.llms.bedrock import Bedrock
+from langchain_community.chat_models import BedrockChat
 from langchain.llms.sagemaker_endpoint import LLMContentHandler, SagemakerEndpoint
-# from langchain.llms import SagemakerEndpoint
 from langchain.prompts import PromptTemplate
+from langchain_core.prompts import ChatPromptTemplate
 from .llm_manager import get_all_private_llm, get_all_bedrock_llm
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 bedrock_llms = get_all_bedrock_llm()
 private_llm = get_all_private_llm()
+
+STOP=["user:", "用户：", "用户:", '</response>']
 
 class StreamScanner:    
     def __init__(self):
@@ -61,17 +65,24 @@ class SagemakerStreamContentHandler(LLMContentHandler):
         scanner = StreamScanner()
         text = ''
         for event in event_stream:
+            logger.info(f'for event in event_stream:')
             scanner.write(event['PayloadPart']['Bytes'])
             for line in scanner.readlines():
+                logger.info(f'for {line} in scanner.readlines():')
                 try:
                     resp = json.loads(line)
                     token = resp.get("outputs")['outputs']
                     text += token
+                    logger.info(f"token: {token}")
+                    logger.info(f"text: {text}")
+                    self.callbacks.on_llm_new_token(token)
                     for stop in STOP: ##如果碰到STOP截断
                         if text.endswith(stop):
                             self.callbacks.on_llm_end(None)
                             text = text.rstrip(stop)
                             return text
+
+                    logger.info(f'self.callbacks.on_llm_new_token({token})')
                     self.callbacks.on_llm_new_token(token)
                     # print(token, end='')
                 except Exception as e:
@@ -128,7 +139,7 @@ class SagemakerStreamEndpoint(LLM):
     def _llm_type(self) -> str:
         """Return type of llm."""
         return "sagemaker_stream_endpoint"
-    
+
     def _call(
         self,
         prompt: str,
@@ -166,9 +177,10 @@ def get_langchain_llm_from_sagemaker_endpoint(llm_model_endpoint, params, region
             callbacks=llm_callbacks[0]
             )
 
-        llm = SagemakerStreamEndpoint(
+        llm = SagemakerEndpoint(
                 endpoint_name=llm_model_endpoint, 
                 region_name=region, 
+                streaming=True,
                 model_kwargs={'parameters': params},
                 content_handler=llmcontent_handler,
                 endpoint_kwargs={'CustomAttributes':'accept_eula=true'} ##for llama2
@@ -202,8 +214,9 @@ def get_langchain_llm_model(llm_model_id, params, region, llm_stream=False, llm_
             parameters = {'temperature':0.1, 'max_tokens': 256, 'top_p': 0.8}
 
         adapt_parameters = copy.deepcopy(parameters)
-        
+
         if llm_model_id.startswith('anthropic'):
+
             for key, value in parameters.items():
                 if key in ['temperature', 'max_tokens', 'top_p', 'top_k', 'stop']:
                     if key == 'stop':
@@ -212,75 +225,92 @@ def get_langchain_llm_model(llm_model_id, params, region, llm_stream=False, llm_
                         adapt_parameters[key] = value
                 else:
                     adapt_parameters.pop(key, None)
-        elif llm_model_id.startswith('mistral'):
-            for key, value in parameters.items():
-                if key in ['temperature', 'max_tokens', 'top_p', 'top_k', 'stop']:
-                    adapt_parameters[key] = value
-                else:
-                    adapt_parameters.pop(key, None)
-        elif llm_model_id.startswith('meta'):
-            for key, value in parameters.items():
-                if key in ['max_tokens', 'temperature', 'top_p']:
-                    if key == 'max_tokens':
-                        adapt_parameters['max_gen_len'] = adapt_parameters.pop("max_tokens", None)
-                    else:
+            logger.info("--------adapt_parameters------")
+            logger.info(adapt_parameters)
+            logger.info("--------adapt_parameters------")
+            llm = BedrockChat(model_id=llm_model_id, 
+                client=boto3_bedrock, 
+                streaming=llm_stream, 
+                callbacks=llm_callbacks,
+                model_kwargs=adapt_parameters) 
+        else:
+            if llm_model_id.startswith('mistral'):
+                for key, value in parameters.items():
+                    if key in ['temperature', 'max_tokens', 'top_p', 'top_k', 'stop']:
                         adapt_parameters[key] = value
-                else:
-                    adapt_parameters.pop(key, None)
-        elif llm_model_id.startswith('ai21'):
-            for key, value in parameters.items():
-                if key in ['max_tokens', 'temperature', 'top_p', 'stop']:
-                    if key == 'max_tokens':
-                        adapt_parameters['maxTokens'] = adapt_parameters.pop("max_tokens", None)
-                    elif key == 'top_p':
-                        adapt_parameters['topP'] = adapt_parameters.pop("top_p", None)
-                    elif key == 'stop':
-                        adapt_parameters['stopSequences'] = adapt_parameters.pop("stop", None)
                     else:
-                        adapt_parameters[key] = value
-                else:
-                    adapt_parameters.pop(key, None)
-        elif llm_model_id.startswith('cohere'):
-            for key, value in parameters.items():
-                if key in ['temperature', 'max_tokens', 'top_p', 'top_k', 'stop']:
-                    if key == 'top_p':
-                        adapt_parameters['p'] = adapt_parameters.pop("top_p", None)
-                    elif key == 'top_k':
-                        adapt_parameters['k'] = adapt_parameters.pop("top_k", None)
-                    elif key == 'stop':
-                        adapt_parameters['stop_sequences'] = adapt_parameters.pop("stop", None)
+                        adapt_parameters.pop(key, None)
+            elif llm_model_id.startswith('meta'):
+                for key, value in parameters.items():
+                    if key in ['max_tokens', 'temperature', 'top_p']:
+                        if key == 'max_tokens':
+                            adapt_parameters['max_gen_len'] = adapt_parameters.pop("max_tokens", None)
+                        else:
+                            adapt_parameters[key] = value
                     else:
-                        adapt_parameters[key] = value
-                else:
-                    adapt_parameters.pop(key, None)
-        elif llm_model_id.startswith('amazon'):
-            for key, value in parameters.items():
-                if key in ['temperature', 'max_tokens', 'top_p']:
-                    if key == 'top_p':
-                        adapt_parameters['topP'] = adapt_parameters.pop("top_p", None)
-                    elif key == 'max_tokens':
-                        adapt_parameters['maxTokenCount'] = adapt_parameters.pop("max_tokens", None)
-                    elif key == 'stop':
-                        adapt_parameters['stopSequences'] = adapt_parameters.pop("stop", None)
+                        adapt_parameters.pop(key, None)
+            elif llm_model_id.startswith('ai21'):
+                for key, value in parameters.items():
+                    if key in ['max_tokens', 'temperature', 'top_p', 'stop']:
+                        if key == 'max_tokens':
+                            adapt_parameters['maxTokens'] = adapt_parameters.pop("max_tokens", None)
+                        elif key == 'top_p':
+                            adapt_parameters['topP'] = adapt_parameters.pop("top_p", None)
+                        elif key == 'stop':
+                            adapt_parameters['stopSequences'] = adapt_parameters.pop("stop", None)
+                        else:
+                            adapt_parameters[key] = value
                     else:
+                        adapt_parameters.pop(key, None)
+            elif llm_model_id.startswith('cohere'):
+                for key, value in parameters.items():
+                    if key in ['temperature', 'max_tokens', 'top_p', 'top_k', 'stop']:
+                        if key == 'top_p':
+                            adapt_parameters['p'] = adapt_parameters.pop("top_p", None)
+                        elif key == 'top_k':
+                            adapt_parameters['k'] = adapt_parameters.pop("top_k", None)
+                        elif key == 'stop':
+                            adapt_parameters['stop_sequences'] = adapt_parameters.pop("stop", None)
+                        else:
+                            adapt_parameters[key] = value
+                    else:
+                        adapt_parameters.pop(key, None)
+            elif llm_model_id.startswith('amazon'):
+                for key, value in parameters.items():
+                    if key in ['temperature', 'max_tokens', 'top_p']:
+                        if key == 'top_p':
+                            adapt_parameters['topP'] = adapt_parameters.pop("top_p", None)
+                        elif key == 'max_tokens':
+                            adapt_parameters['maxTokenCount'] = adapt_parameters.pop("max_tokens", None)
+                        elif key == 'stop':
+                            adapt_parameters['stopSequences'] = adapt_parameters.pop("stop", None)
+                        else:
+                            adapt_parameters[key] = value
+                    else:
+                        adapt_parameters.pop(key, None)
+            elif llm_model_id.startswith('mistral'):
+                for key, value in parameters.items():
+                    if key in ['temperature', 'max_tokens', 'top_p', 'top_k', 'stop']:
                         adapt_parameters[key] = value
-                else:
-                    adapt_parameters.pop(key, None)
-            
-        logger.info("--------adapt_parameters------")
-        logger.info(adapt_parameters)
-        logger.info("--------adapt_parameters------")
-        llm = Bedrock(model_id=llm_model_id, 
-            client=boto3_bedrock, 
-            streaming=llm_stream, 
-            callbacks=llm_callbacks,
-            model_kwargs=adapt_parameters)                       
+                    else:
+                        adapt_parameters.pop(key, None)
+            else:
+                raise RuntimeError(f"unsupported llm : {llm_model_id}")
+
+            logger.info("--------adapt_parameters------")
+            logger.info(adapt_parameters)
+            logger.info("--------adapt_parameters------")
+            llm = Bedrock(model_id=llm_model_id, 
+                client=boto3_bedrock, 
+                streaming=llm_stream, 
+                callbacks=llm_callbacks,
+                model_kwargs=adapt_parameters)                       
 
     elif llm_model_id in list(private_llm.keys()):
         llm_model_endpoint = private_llm[llm_model_id]
         llm = get_langchain_llm_from_sagemaker_endpoint(llm_model_endpoint, parameters, region, llm_stream, llm_callbacks)
     # it means that llm_model_id is sagemaker endpoint actually
-    elif llm_model_id.endswith('endpoint'): 
+    elif llm_model_id.endswith('endpoint'):
         llm_model_endpoint = llm_model_id
         llm = get_langchain_llm_from_sagemaker_endpoint(llm_model_endpoint, parameters, region, llm_stream, llm_callbacks)
     else:
@@ -288,78 +318,113 @@ def get_langchain_llm_model(llm_model_id, params, region, llm_stream=False, llm_
 
     return llm
 
+def format_to_message(query:str, image_base64_list:List[str]=None, role:str = "user"):
+    '''
+    history format:
+    "history": [
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "image/jpeg",
+                        "data": "iVBORw..."
+                    }
+                },
+                {
+                    "type": "text",
+                    "text": "What's in these images?"
+                }
+            ]
+        }
+    ]
+    '''
+    if image_base64_list:
+        content = [{ "type": "image", "source": { "type": "base64", "media_type": "image/jpeg", "data": image_base64 }} for image_base64 in image_base64_list ]
+        content.append({ "type": "text", "text": query })
+        return { "role": role, "content": content }
+
+    return {"role": role, "content": query }
+
+def invoke_model(llm, prompt:str=None, messages:List[Dict]=[]) -> AIMessage:
+    logger.info(f'invoke_model with input [prompt=>{prompt}; messages=>{json.dumps(messages)}]')
+    ai_reply = None
+    if isinstance(llm, BedrockChat):
+        if messages:
+            ai_reply = llm.invoke(input=messages)
+        else:
+            raise RuntimeError("No valid input for BedrockChat")
+    elif isinstance(llm, Bedrock) or isinstance(llm, SagemakerEndpoint) or isinstance(llm, SagemakerStreamEndpoint):
+        if prompt:
+            answer = llm.invoke(input=prompt)
+            logger.info(f'The result of invoke_model=> {answer}')
+            ai_reply = AIMessage(answer)
+        else:
+            raise RuntimeError("No valid input for Bedrock/SagemakerEndpoint/SagemakerStreamEndpoint")
+    else:
+        raise RuntimeError("unsupported LLM type.")
+
+    logger.info(f'[2]The result of invoke_model=> {ai_reply.content}')
+    return ai_reply
+
 if __name__ == "__main__":
-    
-    params = {}
+
+    params = {'temperature':0.1, 'max_tokens':1024, 'top_p':0.8, 'top_k':10}
     REGION='us-west-2'
     # print(get_all_private_llm())
     # llm_endpoint_regist('baichuan_13B_INT4', 'baichuan-13b-gptq2-2024-01-24-10-15-10-154-endpoint')
     # print(get_all_private_llm())
     # print(get_all_model_ids())
 
-    def create_detect_prompt_templete():
-        prompt_template = "你好啊，今天怎么样"
-        PROMPT = PromptTemplate(
-            template=prompt_template, 
-            input_variables=[]
-        )
-        return PROMPT
-
-    prompt_templ = create_detect_prompt_templete()
-
     INVOKE_MODEL_ID = 'anthropic.claude-3-sonnet-20240229-v1:0'
     llm2 = get_langchain_llm_model(INVOKE_MODEL_ID, params, REGION)
-    llmchain = LLMChain(llm=llm2, verbose=False, prompt=prompt_templ)
-    answer = llmchain.run({})
-    print("claude3:" + answer)
-    
-    INVOKE_MODEL_ID = 'cohere.command-text-v14'
-    llm = get_langchain_llm_model(INVOKE_MODEL_ID, params, REGION)
-    llmchain = LLMChain(llm=llm, verbose=False, prompt=prompt_templ)
-    answer = llmchain.run({})
-    print("cohere:" + answer)
+    msg = format_to_message(query="你好啊，今天怎么样")
+    ai_msg = invoke_model(llm2, messages=[msg])
+    print("claude3:" + ai_msg.content)
+    answer = llm2.invoke(input=[msg])
+    print("claude3:" + answer.content)
 
-    INVOKE_MODEL_ID = 'anthropic.claude-v2'
+    # INVOKE_MODEL_ID = 'anthropic.claude-v2'
+    # llm2 = get_langchain_llm_model(INVOKE_MODEL_ID, params, REGION)
+    # msg = format_to_message(query="你好啊，今天怎么样")
+    # answer = llm2.invoke(input=[msg])
+    # print("claude2:" + answer.content)
+
+    INVOKE_MODEL_ID = 'cohere.command-text-v14'
     llm2 = get_langchain_llm_model(INVOKE_MODEL_ID, params, REGION)
-    llmchain = LLMChain(llm=llm2, verbose=False, prompt=prompt_templ)
-    answer = llmchain.run({})
-    print("claude2:" + answer)
+    ai_msg = invoke_model(llm2, prompt="你好啊，今天怎么样")
+    print("claude3:" + ai_msg.content)
+    answer = llm2.invoke(input="你好啊，今天怎么样")
+    print("cohere:" + str(answer))
 
     INVOKE_MODEL_ID = 'meta.llama2-13b-chat-v1'
-    llm3 = get_langchain_llm_model(INVOKE_MODEL_ID, params, REGION)
-    llmchain = LLMChain(llm=llm3, verbose=False, prompt=prompt_templ)
-    answer = llmchain.run({})
-    print("llama:" + answer)
+    llm2 = get_langchain_llm_model(INVOKE_MODEL_ID, params, REGION)
+    answer = llm2.invoke(input="你好啊，今天怎么样")
+    print("llama:" + str(answer))
 
     INVOKE_MODEL_ID = 'amazon.titan-text-express-v1'
-    llm5 = get_langchain_llm_model(INVOKE_MODEL_ID, params, REGION)
-    llmchain = LLMChain(llm=llm5, verbose=False, prompt=prompt_templ)
-    answer = llmchain.run({})
-    print("amazon:" + answer)
+    llm2 = get_langchain_llm_model(INVOKE_MODEL_ID, params, REGION)
+    answer = llm2.invoke(input="你好啊，今天怎么样")
+    print("amazon:" + str(answer))
 
     INVOKE_MODEL_ID = 'ai21.j2-mid-v1'
-    prompt_templ = create_detect_prompt_templete()
-    llm6 = get_langchain_llm_model(INVOKE_MODEL_ID, params, REGION)
-    llmchain = LLMChain(llm=llm6, verbose=False, prompt=prompt_templ)
-    answer = llmchain.run({})
-    print("ai21:" + answer)
+    llm2 = get_langchain_llm_model(INVOKE_MODEL_ID, params, REGION)
+    answer = llm2.invoke(input="你好啊，今天怎么样")
+    print("ai21:" + str(answer))
 
     INVOKE_MODEL_ID = 'qwen1.5_14B_GPTQ_INT4'
-    prompt_templ = create_detect_prompt_templete()
-    llm7 = get_langchain_llm_model(INVOKE_MODEL_ID, params, REGION)
-    llmchain = LLMChain(llm=llm7, verbose=False, prompt=prompt_templ)
-    answer = llmchain.run({})
-    print("qwen1.5:" + answer)
+    llm2 = get_langchain_llm_model(INVOKE_MODEL_ID, params, REGION)
+    answer = llm2.invoke(input="你好啊，今天怎么样")
+    print("qwen1.5:" + str(answer))
 
     INVOKE_MODEL_ID = 'qwen15-14B-int4-2024-03-02-09-10-08-595-endpoint'
-    prompt_templ = create_detect_prompt_templete()
-    llm8 = get_langchain_llm_model(INVOKE_MODEL_ID, params, REGION)
-    llmchain = LLMChain(llm=llm8, verbose=False, prompt=prompt_templ)
-    answer = llmchain.run({})
-    print("qwen1.5_endpoint:" + answer)
-    
+    llm2 = get_langchain_llm_model(INVOKE_MODEL_ID, params, REGION)
+    answer = llm2.invoke(input="你好啊，今天怎么样")
+    print("qwen1.5_endpoint:" + str(answer))
+
     # INVOKE_MODEL_ID = 'mistral.mistral-7b-instruct-v0:2'
-    # llm4 = get_langchain_llm_model(INVOKE_MODEL_ID, params, REGION)
-    # llmchain = LLMChain(llm=llm4, verbose=False, prompt=prompt_templ)
-    # answer = llmchain.run({})
-    # print("mistral:" + answer)
+    # llm2 = get_langchain_llm_model(INVOKE_MODEL_ID, params, REGION)
+    # answer = llm2.invoke(input="你好啊，今天怎么样")
+    # print("mistral:" + str(answer))
