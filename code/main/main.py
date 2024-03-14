@@ -31,6 +31,7 @@ from langchain.pydantic_v1 import Extra, root_validator
 import openai
 from langchain.callbacks.base import BaseCallbackHandler
 from langchain.callbacks.manager import CallbackManagerForLLMRun
+from langchain_core.outputs import ChatGenerationChunk, GenerationChunk, LLMResult
 from typing import Any, Dict, List, Union,Mapping, Optional, TypeVar, Union
 from langchain.schema import LLMResult
 from langchain.llms.base import LLM
@@ -181,7 +182,7 @@ class CustomStreamingOutCallbackHandler(BaseCallbackHandler):
     def on_llm_new_token(self, token: str, **kwargs: Any) -> None:
         """Run on new LLM token. Only available when streaming is enabled."""
         data = json.dumps({ 'msgid':self.msgid, 'role': "AI", 'text': {'content':token},'connectionId':self.connectionId})
-        # print(f"on_llm_new_token: {token}")
+        print(f"on_llm_new_token: {token}")
         self.postMessage(data)
 
     def on_llm_end(self, response: LLMResult, **kwargs: Any) -> None:
@@ -190,8 +191,6 @@ class CustomStreamingOutCallbackHandler(BaseCallbackHandler):
             text = format_reference(self.recall_knowledge)
             data = json.dumps({ 'msgid':self.msgid, 'role': "AI", 'text': {'content':f'{text}'},'connectionId':self.connectionId })
             self.postMessage(data)
-
-        
 
     def on_chain_error(
         self, error: Union[Exception, KeyboardInterrupt], **kwargs: Any
@@ -1147,6 +1146,8 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
     
     logger.info("llm_model_name : {} ,use_stream :{}".format(llm_model_name,use_stream))
     llm = None
+
+
     stream_callback = CustomStreamingOutCallbackHandler(wsclient,msgid, wsconnection_id,llm_model_name,hide_ref,use_stream)
 
     params = {
@@ -1160,7 +1161,7 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
     else:
         model_id = llm_model_endpoint
 
-    llm = get_langchain_llm_model(model_id, params, region, llm_stream=use_stream, llm_callbacks=[stream_callback])
+    llm = get_langchain_llm_model(model_id, params, region, llm_stream=use_stream, llm_callbacks=[])
     
     # 1. get_session
     start1 = time.time()
@@ -1277,8 +1278,7 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
         prompt_template = create_chat_prompt_templete(llm_model_name=llm_model_name)
         prompt = prompt_template.format(question=origin_query,role_bot=B_Role,chat_history=chat_history)
 
-
-        ai_reply = invoke_model(llm=llm, prompt=prompt, messages=msg_list)
+        ai_reply = invoke_model(llm=llm, prompt=prompt, messages=msg_list, callbacks=[stream_callback])
 
         final_prompt = json.dumps(msg_list)
         answer = ai_reply.content
@@ -1368,7 +1368,7 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
             prompt_template = create_chat_prompt_templete(llm_model_name=llm_model_name)
             prompt = prompt_template.format(question=origin_query,role_bot=B_Role,chat_history=chat_history)
 
-            ai_reply = invoke_model(llm=llm, prompt=prompt, messages=msg_list)
+            ai_reply = invoke_model(llm=llm, prompt=prompt, messages=msg_list, callbacks=[stream_callback])
 
             final_prompt = json.dumps(msg_list)
             answer = ai_reply.content
@@ -1393,7 +1393,7 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
                 msg = format_to_message(query=origin_query, image_base64_list=images_base64)
                 msg_list.append(msg)
 
-                ai_reply = invoke_model(llm=llm, prompt=prompt, messages=msg_list)
+                ai_reply = invoke_model(llm=llm, prompt=prompt, messages=msg_list, callbacks=[stream_callback])
                 final_prompt = json.dumps(msg_list)
                 answer = ai_reply.content
             except Exception as e:
