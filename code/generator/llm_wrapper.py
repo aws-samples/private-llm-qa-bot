@@ -158,30 +158,42 @@ class SagemakerStreamEndpoint(LLM):
         text = self.content_handler.transform_output(response["Body"])
         return text
 
-def get_langchain_llm_from_sagemaker_endpoint(llm_model_endpoint, params, region, llm_stream, llm_callbacks):
-    llm = None
-    if llm_stream:
-        # stream_callback should be the 1th of llm_callbacks
-        llmcontent_handler = SagemakerStreamContentHandler(
-            callbacks=llm_callbacks[0]
-            )
+# def get_langchain_llm_from_sagemaker_endpoint(llm_model_endpoint, params, region, llm_stream, llm_callbacks):
+#     llm = None
+#     if llm_stream:
+#         # stream_callback should be the 1th of llm_callbacks
+#         llmcontent_handler = SagemakerStreamContentHandler(
+#             callbacks=llm_callbacks[0]
+#             )
 
-        llm = SagemakerStreamEndpoint(
-                endpoint_name=llm_model_endpoint, 
-                region_name=region, 
-                model_kwargs={'parameters': params},
-                content_handler=llmcontent_handler,
-                endpoint_kwargs={'CustomAttributes':'accept_eula=true'} ##for llama2
-                )
-    else:
-        llmcontent_handler = llmContentHandler()
-        llm = SagemakerEndpoint(
-                endpoint_name=llm_model_endpoint, 
-                region_name=region, 
-                model_kwargs={'parameters': params},
-                content_handler=llmcontent_handler,
-                endpoint_kwargs={'CustomAttributes':'accept_eula=true'} ##for llama2
-            )
+#         llm = SagemakerStreamEndpoint(
+#                 endpoint_name=llm_model_endpoint, 
+#                 region_name=region, 
+#                 model_kwargs={'parameters': params},
+#                 content_handler=llmcontent_handler,
+#                 endpoint_kwargs={'CustomAttributes':'accept_eula=true'} ##for llama2
+#                 )
+#     else:
+#         llmcontent_handler = llmContentHandler()
+#         llm = SagemakerEndpoint(
+#                 endpoint_name=llm_model_endpoint, 
+#                 region_name=region, 
+#                 model_kwargs={'parameters': params},
+#                 content_handler=llmcontent_handler,
+#                 endpoint_kwargs={'CustomAttributes':'accept_eula=true'} ##for llama2
+#             )
+#     return llm
+
+def get_langchain_llm_from_sagemaker_endpoint(llm_model_endpoint, params, region, llm_stream, llm_callbacks):
+    llm = SagemakerEndpoint(
+            endpoint_name=llm_model_endpoint, 
+            region_name=region, 
+            streaming=llm_stream,
+            model_kwargs={'parameters': params},
+            callbacks=llm_callbacks,
+            content_handler=llmContentHandler(),
+            endpoint_kwargs={'CustomAttributes':'accept_eula=true'} ##for llama2
+        )
     return llm
 
 def get_langchain_llm_model(llm_model_id, params, region, llm_stream=False, llm_callbacks=[]):

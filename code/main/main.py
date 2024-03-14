@@ -96,6 +96,7 @@ KNOWLEDGE_BASE_ID = os.environ.get('knowledge_base_id',None)
 BEDROCK_EMBEDDING_MODELID_LIST = ["cohere.embed-multilingual-v3","cohere.embed-english-v3","amazon.titan-embed-text-v1"]
 BEDROCK_LLM_MODELID_LIST = {'claude-instant':'anthropic.claude-instant-v1',
                             'claude-v2':'anthropic.claude-v2',
+                            'claude-v3-haiku':'anthropic.claude-3-haiku-20240307-v1:0',
                             'claude-v3-sonnet': 'anthropic.claude-3-sonnet-20240229-v1:0'}
 
 boto3_bedrock = boto3.client(
@@ -1452,7 +1453,7 @@ def generate_s3_image_url(bucket_name, key, expiration=3600):
     )
     return url
 
-def pehub_chat(query_input:str,system_prompt:str,model_kargs:Dict[str,Any],user_id:str,wsclient:str,wsconnection_id:str,msgid:str,session_id:str,llm_model_endpoint:str, llm_model_name:str, use_stream:bool,multi_rounds:bool,images_base64:List[str]):
+def pehub_chat(query_input:str,system_prompt:str,model_kargs:Dict[str,Any],user_id:str,wsclient:str,wsconnection_id:str,msgid:str,session_id:str,llm_model_endpoint:str, llm_model_name:str, use_stream:bool,multi_rounds:bool,images_base64:List[str],history_messages:List[Dict[str,Any]]):
     
     json_obj = {
         "query": query_input,
@@ -1515,29 +1516,40 @@ def pehub_chat(query_input:str,system_prompt:str,model_kargs:Dict[str,Any],user_
         start1 = time.time()
         session_history = get_session(session_id=session_id,user_id=user_id)
         chat_conversions = []
-        if multi_rounds:
+        ## 如果没有获取到session，则使用从前端传入的history message
+        if not session_history and history_messages:
+            for item in history_messages:
+                msg = None 
+                if item['role'] == 'user' :
+                    msg = HumanMessage(content=item['content'])     
+                elif item['role'] == 'assistant' :
+                    msg = AIMessage(content=item['content'])   
+                    
+                # system message 从单独的字段获取
+                # elif   item['role'] == 'system' :
+                #     msg = SystemMessage(content=system_prompt)
+                if msg:
+                    chat_conversions.append(msg)
+        
+        elif multi_rounds and session_history:
             for item in session_history:
                 chat_conversions.append(HumanMessage(content=item[0]))
                 chat_conversions.append(AIMessage(content = item[1]))
 
         elpase_time = time.time() - start1
         logger.info(f'running time of get_session : {elpase_time}s seconds')
-    
-        # output_parser = StrOutputParser()
-        # prompt = ChatPromptTemplate.from_messages(
-        #     [
-        #         MessagesPlaceholder(variable_name="history"),
-        #         ("human", "{query_input}"),
-        #     ]
-        # )       
-        # chain = prompt | llm | output_parser
-        # answer = chain.invoke({'history':chat_conversions,'query_input':query_input})
         
         ##alway put system message in the first slot
         system_message = [SystemMessage(content=system_prompt)]
         messages = system_message+ chat_conversions+prompt_func({'query_input':query_input,'images':images_base64})
-        response = llm.invoke(messages)
-        answer = response.content
+        logger.info('-------------------invoke:messages-------------------')
+        print(messages)
+        try:
+            response = llm.invoke(messages)
+            answer = response.content
+        except Exception as e:
+            answer = str(e)
+            TRACE_LOGGER.postMessage(answer)
         
         if session_id != 'OnlyForDEBUG':
             update_session(session_id=session_id,user_id=user_id, question=query_input, answer=answer, intention='chat', msgid=msgid)
@@ -1606,6 +1618,7 @@ def lambda_handler(event, context):
     refuse_strategy = event.get('refuse_strategy','')
     refuse_answer = event.get('refuse_answer','对不起，我不太清楚这个问题，请问问人工吧')
     stop_sequences = event.get('stop_sequences',['\n\nHuman:'])
+    history_messages = event.get('history_messages',[])
     
     imgurls = event.get('imgurl')
     image_path = ''
@@ -1615,7 +1628,6 @@ def lambda_handler(event, context):
         
         for imgurl in imgurls:
             bucket,imgobj = imgurl.split('/',1)
-            # image_path = generate_s3_image_url(bucket,imgobj)
             image_base64 = get_s3_image_base64(bucket,imgobj)
             images_base64.append(image_base64)
 
@@ -1646,7 +1658,6 @@ def lambda_handler(event, context):
     # 获取当前时间戳
     request_timestamp = time.time()  # 或者使用 time.time_ns() 获取纳秒级别的时间戳
     logger.info(f'request_timestamp :{request_timestamp}')
-    logger.info(f"event:{event}")
     # logger.info(f"context:{context}")
 
     # 接收触发AWS Lambda函数的事件
@@ -1690,6 +1701,7 @@ def lambda_handler(event, context):
     logger.info(f'refuse_strategy: {refuse_strategy}')
     logger.info(f'refuse_answer: {refuse_answer}')
     logger.info(f'stop_sequences: {stop_sequences}')
+    logger.info(f'history_messages: {history_messages}')
 
     
     ##if aos and bedrock kb are null then set use_qa = false
@@ -1719,8 +1731,8 @@ def lambda_handler(event, context):
                                                                                                                 llm_model_name=model_name,
                                                                                                                 use_stream=use_stream ,
                                                                                                                 multi_rounds =multi_rounds,
-                                                                                                                images_base64 =images_base64                                                                                           
-                                                                                                                              )
+                                                                                                                images_base64 =images_base64,
+                                                                                                                history_messages = history_messages)
         query_input = question
     else:
         answer,ref_text,use_stream,query_input,opensearch_query_response,opensearch_knn_respose,recall_knowledge = main_entry_new(user_id,wsconnection_id,session_id, question, embedding_endpoint, llm_endpoint, model_name, aos_endpoint, aos_index, aos_knn_field, aos_result_num,
