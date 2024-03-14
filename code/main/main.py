@@ -89,7 +89,8 @@ KNOWLEDGE_BASE_ID = os.environ.get('knowledge_base_id',None)
 BEDROCK_EMBEDDING_MODELID_LIST = ["cohere.embed-multilingual-v3","cohere.embed-english-v3","amazon.titan-embed-text-v1"]
 BEDROCK_LLM_MODELID_LIST = {'claude-instant':'anthropic.claude-instant-v1',
                             'claude-v2':'anthropic.claude-v2',
-                            'claude-v3-sonnet': 'anthropic.claude-3-sonnet-20240229-v1:0'}
+                            'claude-v3-sonnet': 'anthropic.claude-3-sonnet-20240229-v1:0',
+                            'claude-v3-haiku' : 'anthropic.claude-3-haiku-20240307-v1:0'}
 
 boto3_bedrock = boto3.client(
     service_name="bedrock-runtime",
