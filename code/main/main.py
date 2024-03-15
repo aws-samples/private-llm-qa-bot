@@ -1328,7 +1328,9 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
             TRACE_LOGGER.trace(f"{item['doc']}")
             TRACE_LOGGER.add_ref(f"**[{sn+1}] [{item['doc_title']}] [{item['doc_classify']}] [{item['score']:.3f}] [{item['rank_score']:.3f}] author:[ {item['doc_author']} ]**")
             #doc 太长之后进行截断
-            TRACE_LOGGER.add_ref(f"{item['doc'][:500]}{'...' if len(item['doc'])>500 else ''}") 
+            # TRACE_LOGGER.add_ref(f"{item['doc'][:500]}{'...' if len(item['doc'])>500 else ''}") 
+            ref_doc_no_md = item['doc'].replace('#', '<')
+            TRACE_LOGGER.add_ref(ref_doc_no_md)
         TRACE_LOGGER.trace('**Answer:**')
 
         if exactly_match_result and recall_knowledge:
