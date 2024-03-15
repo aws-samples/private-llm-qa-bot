@@ -25,53 +25,6 @@ private_llm = get_all_private_llm()
 
 STOP=["user:", "用户：", "用户:", '</response>']
 
-# class SagemakerStreamContentHandler(LLMContentHandler):
-    # content_type: Optional[str] = "application/json"
-    # accepts: Optional[str] = "application/json"
-    # callbacks:BaseCallbackHandler
-    # class Config:
-    #     """Configuration for this pydantic object."""
-    #     extra = Extra.forbid
-    
-    # def __init__(self,callbacks:BaseCallbackHandler,**kwargs) -> None:
-    #     super().__init__(**kwargs)
-    #     self.callbacks = callbacks
- 
-    # def transform_input(self, prompt: str, model_kwargs: Dict) -> bytes:
-    #     input_str = json.dumps({'inputs': prompt,**model_kwargs})
-    #     # logger.info(f'transform_input:{input_str}')
-    #     return input_str.encode('utf-8')
-    
-    # def transform_output(self, event_stream: Any) -> str:
-    #     scanner = StreamScanner()
-    #     text = ''
-    #     for event in event_stream:
-    #         logger.info(f'for event in event_stream:')
-    #         scanner.write(event['PayloadPart']['Bytes'])
-    #         for line in scanner.readlines():
-    #             logger.info(f'for {line} in scanner.readlines():')
-    #             try:
-    #                 resp = json.loads(line)
-    #                 token = resp.get("outputs")['outputs']
-    #                 text += token
-    #                 logger.info(f"token: {token}")
-    #                 logger.info(f"text: {text}")
-    #                 self.callbacks.on_llm_new_token(token)
-    #                 for stop in STOP: ##如果碰到STOP截断
-    #                     if text.endswith(stop):
-    #                         self.callbacks.on_llm_end(None)
-    #                         text = text.rstrip(stop)
-    #                         return text
-
-    #                 logger.info(f'self.callbacks.on_llm_new_token({token})')
-    #                 self.callbacks.on_llm_new_token(token)
-    #                 # print(token, end='')
-    #             except Exception as e:
-    #                 # print(line)
-    #                 continue
-    #     self.callbacks.on_llm_end(None)
-    #     return text
-
 class SageMakerContentHandler(LLMContentHandler):
     content_type = "application/json"
     accepts = "application/json"
@@ -83,75 +36,6 @@ class SageMakerContentHandler(LLMContentHandler):
     def transform_output(self, output: bytes) -> str:
         response_json = json.loads(output.read().decode("utf-8"))
         return response_json["outputs"]
-
-# class SagemakerStreamEndpoint(LLM):
-#     endpoint_name: str = ""
-#     region_name: str = ""
-#     content_handler: LLMContentHandler
-#     model_kwargs: Optional[Dict] = None
-#     endpoint_kwargs: Optional[Dict] = None
-#     class Config:
-#         """Configuration for this pydantic object."""
-#         extra = Extra.forbid
-    
-#     @root_validator()
-#     def validate_environment(cls, values: Dict) -> Dict:
-#         """Validate that AWS credentials to and python package exists in environment."""
-#         try:
-#             session = boto3.Session()
-#             values["client"] = session.client(
-#                 "sagemaker-runtime", region_name=values["region_name"]
-#             )
-#         except Exception as e:
-#             raise ValueError(
-#                 "Could not load credentials to authenticate with AWS client. "
-#                 "Please check that credentials in the specified "
-#                 "profile name are valid."
-#             ) from e
-#         return values
-    
-#     @property
-#     def _identifying_params(self) -> Mapping[str, Any]:
-#         """Get the identifying parameters."""
-#         _model_kwargs = self.model_kwargs or {}
-#         return {
-#             **{"endpoint_name": self.endpoint_name},
-#             **{"model_kwargs": _model_kwargs},
-#         }
-
-#     @property
-#     def _llm_type(self) -> str:
-#         """Return type of llm."""
-#         return "sagemaker_stream_endpoint"
-
-#     def _call(
-#         self,
-#         prompt: str,
-#         stop: Optional[List[str]] = None,
-#         run_manager: Optional[CallbackManagerForLLMRun] = None,
-#         **kwargs: Any,
-#     ) -> str:
-#         _model_kwargs = self.model_kwargs or {}
-#         _model_kwargs = {**_model_kwargs, **kwargs}
-#         _endpoint_kwargs = self.endpoint_kwargs or {}
-
-#         body = self.content_handler.transform_input(prompt, _model_kwargs)
-#         content_type = self.content_handler.content_type
-#         accepts = self.content_handler.accepts
-
-#         # send request
-#         try:
-#             response = self.client.invoke_endpoint_with_response_stream(
-#                 EndpointName=self.endpoint_name,
-#                 Body=body,
-#                 ContentType=content_type,
-#                 Accept=accepts,
-#                 **_endpoint_kwargs,
-#             )
-#         except Exception as e:
-#             raise ValueError(f"Error raised by inference endpoint: {e}")
-#         text = self.content_handler.transform_output(response["Body"])
-#         return text
 
 def get_langchain_llm_from_sagemaker_endpoint(llm_model_endpoint, params, region, llm_stream, llm_callbacks):
     llm = None
@@ -171,7 +55,6 @@ def get_langchain_llm_from_sagemaker_endpoint(llm_model_endpoint, params, region
             )
 
     return llm
-
 
 def get_langchain_llm_model(llm_model_id, params, region, llm_stream=False, llm_callbacks=[]):
     '''
@@ -286,7 +169,6 @@ def get_langchain_llm_model(llm_model_id, params, region, llm_stream=False, llm_
     elif llm_model_id in list(private_llm.keys()):
         llm_model_endpoint = private_llm[llm_model_id]
         llm = get_langchain_llm_from_sagemaker_endpoint(llm_model_endpoint, parameters, region, llm_stream, llm_callbacks)
-    # it means that llm_model_id is sagemaker endpoint actually
     elif llm_model_id.endswith('endpoint'):
         llm_model_endpoint = llm_model_id
         llm = get_langchain_llm_from_sagemaker_endpoint(llm_model_endpoint, parameters, region, llm_stream, llm_callbacks)
@@ -326,27 +208,24 @@ def format_to_message(query:str, image_base64_list:List[str]=None, role:str = "u
     return {"role": role, "content": query }
 
 def invoke_model(llm, prompt:str=None, messages:List[Dict]=[], callbacks=[]) -> AIMessage:
-    logger.info(f'invoke_model with input [prompt=>{prompt}; messages=>{json.dumps(messages)}]')
     ai_reply = None
     if isinstance(llm, BedrockChat):
         if messages:
             ai_reply = llm.invoke(input=messages, stop=STOP, config={'callbacks': callbacks})
         else:
             raise RuntimeError("No valid input for BedrockChat")
-    elif isinstance(llm, Bedrock) or isinstance(llm, SagemakerEndpoint) or isinstance(llm, SagemakerStreamEndpoint):
+    elif isinstance(llm, Bedrock) or isinstance(llm, SagemakerEndpoint):
         if prompt:
             if llm.streaming:
                 answer = llm.invoke(input=prompt, stop=STOP, config={'callbacks': callbacks})
-                logger.info(f'The result of invoke_model=> {answer}')
             else:
                 answer = llm.invoke(input=prompt, stop=STOP, config={'callbacks': callbacks})
             ai_reply = AIMessage(answer)
         else:
-            raise RuntimeError("No valid input for Bedrock/SagemakerEndpoint/SagemakerStreamEndpoint")
+            raise RuntimeError("No valid input for Bedrock/SagemakerEndpoint")
     else:
         raise RuntimeError("unsupported LLM type.")
 
-    logger.info(f'[2]The result of invoke_model=> {ai_reply.content}')
     return ai_reply
 
 if __name__ == "__main__":
