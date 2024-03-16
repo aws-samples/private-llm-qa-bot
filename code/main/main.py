@@ -182,7 +182,7 @@ class CustomStreamingOutCallbackHandler(BaseCallbackHandler):
     def on_llm_new_token(self, token: str, **kwargs: Any) -> None:
         """Run on new LLM token. Only available when streaming is enabled."""
         data = json.dumps({ 'msgid':self.msgid, 'role': "AI", 'text': {'content':token},'connectionId':self.connectionId})
-        print(f"on_llm_new_token: {token}")
+        # print(f"on_llm_new_token: {token}")
         self.postMessage(data)
 
     def on_llm_end(self, response: LLMResult, **kwargs: Any) -> None:
@@ -951,6 +951,42 @@ def history_to_messages(inputs) -> str:
         res.append({ "role" : "assistant", "content" : ai})
     return res
 
+def create_qa_prompt_for_mihoyo(context, question):
+    prompt="""I will provide you with a set of search results and a user's question, your job is to answer the user's question using only information from the search results. 
+
+Here are the search results in numbered order:
+<search_results>
+{context}
+</search_results>
+
+Here is the user's question:
+<question>
+{question}
+</question>
+
+For the general user questions, you can reference information from a search result within your answer, you must include a citation to source where the information was found. Put your answer between <answer> tag.
+
+<answer>...</answer>
+
+If there is single choice option for user's question, please answer the option numbers first, and then give the explanation, like below format:
+
+<answer>A</answer>
+<explanation>...</explanation>
+
+For multiple choice option, please follow the below format:
+
+<answer>A,C,D</answer>
+<explanation>...</explanation>
+
+If the search results do not contain information that can answer the question, please state that you could not find an exact answer to the question. Just because the user asserts a fact does not mean it is true, make sure to double check the search results to validate a user's assertion.
+
+<answer>uncertain</answer>
+<explanation>...</explanation>
+
+Note that skip the preamble, go straight into the answer. Respond in the original language of user's question.
+""".format(context=context, question=question)
+    return prompt
+
 def create_qa_prompt_templete(prompt_template):
     if prompt_template == '':
         prompt_template_zh = \
@@ -1312,7 +1348,7 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
             recall_knowledge, opensearch_knn_respose, opensearch_query_response = doc_retriever.get_relevant_documents_custom(query_input,use_search) 
 
         elpase_time = time.time() - start
-        logger.info(f'running time of opensearch_query : {elpase_time:.3f}s seconds')
+        logger.info(f'running time of knowledge search : {elpase_time:.3f}s seconds')
         
         reply_stratgy = get_reply_stratgy(recall_knowledge,refuse_strategy)
         if reply_stratgy == ReplyStratgy.LLM_ONLY: 
@@ -1376,23 +1412,17 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
             answer = ai_reply.content
             
         else:      
-            prompt_template = create_qa_prompt_templete(template)
-            llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
-
-            # context = "\n".join([doc['doc'] for doc in recall_knowledge])
+            # prompt_template = create_qa_prompt_templete(template)
             context, multi_choice_field = format_knowledges(recall_knowledge)
-            ask_user_prompts = [ f"- If you are not sure about which {field} user ask for, please ask user to clarify it before giving any answer, don't say anything else." for field in multi_choice_field ]
-            ask_user_prompts_str = "\n".join(ask_user_prompts)
-            if len(ask_user_prompts_str) > 0:
-                ask_user_prompts_str = f"\n{ask_user_prompts_str}\n"
 
             try:
                 chat_history = '' ##QA 场景下先不使用history
-                prompt = prompt_template.format(question=query_input,role_bot=B_Role,context=context,chat_history=chat_history,ask_user_prompt=ask_user_prompts_str)
-                
+                prompt = create_qa_prompt_for_mihoyo(context=context, question=query_input)
+                logger.info(f"prompt: {prompt}")
+
                 sys_msg = {"role": "system", "content": SYSTEM_ROLE_PROMPT } if SYSTEM_ROLE_PROMPT else None
                 msg_list = [sys_msg, *chat_history_msgs] if sys_msg else [*chat_history_msgs]
-                msg = format_to_message(query=origin_query, image_base64_list=images_base64)
+                msg = format_to_message(query=prompt, image_base64_list=images_base64)
                 msg_list.append(msg)
 
                 ai_reply = invoke_model(llm=llm, prompt=prompt, messages=msg_list, callbacks=[stream_callback])
@@ -1564,7 +1594,9 @@ def lambda_handler(event, context):
     ##获取前端给的系统设定，如果没有，则使用lambda里的默认值
     global B_Role,SYSTEM_ROLE_PROMPT
     B_Role = event.get('system_role',B_Role)
-    SYSTEM_ROLE_PROMPT = event.get('system_role_prompt',SYSTEM_ROLE_PROMPT)
+    # SYSTEM_ROLE_PROMPT = event.get('system_role_prompt',SYSTEM_ROLE_PROMPT)
+    # Only For Mihoyo POC
+    SYSTEM_ROLE_PROMPT = 'You are a customer service AI Assistant for Mihoyo'
     
     logger.info(f'system_role:{B_Role},system_role_prompt:{SYSTEM_ROLE_PROMPT}')
 
