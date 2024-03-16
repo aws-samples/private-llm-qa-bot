@@ -242,6 +242,8 @@ export class LambdaStack extends NestedStack {
     // doc_index_table.grantReadWriteData(this.lambda_list_idx )
     const bucket = s3.Bucket.fromBucketName(this, 'DocUploadBucket',process.env.UPLOAD_BUCKET);
     bucket.grantReadWrite(this.lambda_handle_upload);
+    bucket.grantReadWrite(this.lambda_prompt_hub);
+
 
     const main_fn = lambda.Function.fromFunctionArn(this,'main func',process.env.MAIN_FUN_ARN);
     main_fn.grantInvoke(this.lambda_chat_py);

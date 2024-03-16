@@ -86,7 +86,7 @@ RERANK_THRESHOLD = float(os.environ.get('rerank_threshold_soft',-2))
 WEBSEARCH_THRESHOLD = float(os.environ.get('websearch_threshold_soft',1))
 CROSS_MODEL_ENDPOINT = os.environ.get('cross_model_endpoint',None)
 KNN_QUICK_PEFETCH_THRESHOLD = float(os.environ.get('knn_quick_prefetch_threshold',0.95))
-
+MAX_CONVERSATION = int(os.environ.get('max_conversation',10))
 INTENTION_LIST = os.environ.get('intention_list', "")
 
 TOP_K = int(os.environ.get('TOP_K',4))
@@ -881,11 +881,10 @@ def update_session(session_id,user_id,msgid, question, answer, intention):
     timestamp_str = str(datetime.now())
     expire_at = int(time.time())+3600*24*SESSION_EXPIRES_DAYS #session expires in 1 days 
     
-    chat_history = [item for item in chat_history if len(item) >=6 and item[5] < int(time.time())]
+    chat_history = [item for item in chat_history if len(item) >=6 and item[5] > int(time.time())]
     
     chat_history.append([question, answer, intention,msgid,timestamp_str,expire_at])
     content = json.dumps(chat_history,ensure_ascii=False)
-
     # inserting values into table
     response = table.put_item(
         Item={
@@ -1516,15 +1515,25 @@ def pehub_chat(query_input:str,system_prompt:str,model_kargs:Dict[str,Any],user_
         start1 = time.time()
         session_history = get_session(session_id=session_id,user_id=user_id)
         chat_conversions = []
-        ## 如果没有获取到session，则使用从前端传入的history message
+        ## 如果没有获取到session，则使用从前端传入的history message，并存入session ddb中
         if not session_history and history_messages:
+            session_dict = {}
             for item in history_messages:
                 msg = None 
                 if item['role'] == 'user' :
-                    msg = HumanMessage(content=item['content'])     
+                    msg = HumanMessage(content=item['content'])  
+                    session_dict['user'] =  item['content']
                 elif item['role'] == 'assistant' :
                     msg = AIMessage(content=item['content'])   
+                    session_dict['assistant'] =  item['content']
                     
+                ##存入session ddb中供下次使用
+                if len(list(session_dict.keys())) == 2:
+                    #generate a new random message id:
+                    new_msgid = str(uuid.uuid4())
+                    # print(session_dict)
+                    res = update_session(session_id=session_id, user_id=user_id, question=session_dict['user'], answer=session_dict['assistant'], intention='chat', msgid=new_msgid)
+                    session_dict = {}
                 # system message 从单独的字段获取
                 # elif   item['role'] == 'system' :
                 #     msg = SystemMessage(content=system_prompt)
@@ -1532,7 +1541,7 @@ def pehub_chat(query_input:str,system_prompt:str,model_kargs:Dict[str,Any],user_
                     chat_conversions.append(msg)
         
         elif multi_rounds and session_history:
-            for item in session_history:
+            for item in session_history[:MAX_CONVERSATION]:
                 chat_conversions.append(HumanMessage(content=item[0]))
                 chat_conversions.append(AIMessage(content = item[1]))
 
