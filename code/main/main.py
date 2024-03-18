@@ -1186,7 +1186,7 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
         elpase_time_rewrite = time.time() - before_rewrite
 
         chat_history_msgs=[]
-        TRACE_LOGGER.trace(f'**Rewrite: {origin_query} => {query_input}, elpase_time:{elpase_time_rewrite}**')
+        TRACE_LOGGER.trace(f'**Rewrite: {origin_query} => {query_input}, elpase_time:{elpase_time_rewrite:.3f}**')
         logger.info(f'Rewrite: {origin_query} => {query_input}')
         #add history parameter
 
@@ -1279,7 +1279,7 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
 
         ai_reply = invoke_model(llm=llm, prompt=prompt, messages=msg_list, callbacks=[stream_callback])
 
-        final_prompt = json.dumps(msg_list)
+        final_prompt = json.dumps(msg_list,ensure_ascii=False)
         answer = ai_reply.content
         
         recall_knowledge,opensearch_knn_respose,opensearch_query_response = [],[],[]
@@ -1369,7 +1369,7 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
 
             ai_reply = invoke_model(llm=llm, prompt=prompt, messages=msg_list, callbacks=[stream_callback])
 
-            final_prompt = json.dumps(msg_list)
+            final_prompt = json.dumps(msg_list,ensure_ascii=False)
             answer = ai_reply.content
             
         else:      
@@ -1393,7 +1393,7 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
                 msg_list.append(msg)
 
                 ai_reply = invoke_model(llm=llm, prompt=prompt, messages=msg_list, callbacks=[stream_callback])
-                final_prompt = json.dumps(msg_list)
+                final_prompt = json.dumps(msg_list,ensure_ascii=False)
                 answer = ai_reply.content
             except Exception as e:
                 answer = str(e)

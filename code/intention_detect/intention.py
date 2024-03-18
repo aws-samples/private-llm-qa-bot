@@ -289,8 +289,8 @@ def lambda_handler(event, context):
         "top_p":0.95
     }
     
-    if llm_model_endpoint.startswith('claude'):
-        model_id = BEDROCK_LLM_MODELID_LIST.get(llm_model_endpoint, 'anthropic.claude-v2')
+    if llm_model_endpoint.startswith('claude') or llm_model_endpoint.startswith('anthropic'):
+        model_id = BEDROCK_LLM_MODELID_LIST.get(llm_model_endpoint, BEDROCK_LLM_MODELID_LIST["claude-v3-sonnet"])
     else:
         model_id = llm_model_endpoint
 
@@ -303,7 +303,7 @@ def lambda_handler(event, context):
     msg = format_to_message(query=prompt)
     msg_list = [msg]
     ai_reply = invoke_model(llm=llm, prompt=prompt, messages=msg_list)
-    final_prompt = json.dumps(msg_list)
+    final_prompt = json.dumps(msg_list,ensure_ascii=False)
     answer = ai_reply.content
     # llmchain = LLMChain(llm=llm, verbose=False, prompt=prompt_template)
     # answer = llmchain.run({"api_schemas":api_schema_str, "examples": example_list_str, "query":query, "prefix" : prefix})
