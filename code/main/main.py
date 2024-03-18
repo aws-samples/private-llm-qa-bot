@@ -867,7 +867,7 @@ def update_session(session_id,user_id,msgid, question, answer, intention):
     timestamp_str = str(datetime.now())
     expire_at = int(time.time())+3600*24*SESSION_EXPIRES_DAYS #session expires in 1 days 
     
-    chat_history = [item for item in chat_history if len(item) >=6 and item[5] < int(time.time())]
+    chat_history = [item for item in chat_history if len(item) >=6 and item[5] > int(time.time())]
     
     chat_history.append([question, answer, intention,msgid,timestamp_str,expire_at])
     content = json.dumps(chat_history,ensure_ascii=False)
@@ -1156,7 +1156,7 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
     }
 
     if llm_model_name.startswith('claude'):
-        model_id = BEDROCK_LLM_MODELID_LIST.get(llm_model_name, 'anthropic.claude-v2')
+        model_id = BEDROCK_LLM_MODELID_LIST.get(llm_model_name, BEDROCK_LLM_MODELID_LIST['claude-v3-sonnet'])
     else:
         model_id = llm_model_endpoint
 
@@ -1374,7 +1374,7 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
             
         else:      
             prompt_template = create_qa_prompt_templete(template)
-            llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
+            # llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
 
             # context = "\n".join([doc['doc'] for doc in recall_knowledge])
             context, multi_choice_field = format_knowledges(recall_knowledge)
@@ -1389,7 +1389,7 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
                 
                 sys_msg = {"role": "system", "content": SYSTEM_ROLE_PROMPT } if SYSTEM_ROLE_PROMPT else None
                 msg_list = [sys_msg, *chat_history_msgs] if sys_msg else [*chat_history_msgs]
-                msg = format_to_message(query=origin_query, image_base64_list=images_base64)
+                msg = format_to_message(query=prompt, image_base64_list=images_base64)
                 msg_list.append(msg)
 
                 ai_reply = invoke_model(llm=llm, prompt=prompt, messages=msg_list, callbacks=[stream_callback])

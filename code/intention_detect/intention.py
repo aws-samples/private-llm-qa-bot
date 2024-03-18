@@ -1,20 +1,22 @@
 import json
 import os
 import logging
-from collections import Counter
+# from collections import Counter
 
 from langchain.embeddings import SagemakerEndpointEmbeddings
 from langchain.embeddings.sagemaker_endpoint import EmbeddingsContentHandler
 from langchain.vectorstores import OpenSearchVectorSearch
 from langchain.llms.sagemaker_endpoint import LLMContentHandler
 from langchain.prompts import PromptTemplate
-from langchain.llms import SagemakerEndpoint
+# from langchain.llms import SagemakerEndpoint
 from typing import Any, Dict, List, Union,Mapping, Optional, TypeVar, Union
-from langchain.chains import LLMChain
-from langchain.llms.bedrock import Bedrock
-from botocore.exceptions import ClientError
+# from langchain.chains import LLMChain
+# from langchain.llms.bedrock import Bedrock
+# from botocore.exceptions import ClientError
 from opensearchpy import OpenSearch, RequestsHttpConnection, AWSV4SignerAuth, helpers
 import boto3
+from generator.llm_wrapper import get_langchain_llm_model, invoke_model, format_to_message
+
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -22,7 +24,9 @@ logger.setLevel(logging.INFO)
 credentials = boto3.Session().get_credentials()
 BEDROCK_EMBEDDING_MODELID_LIST = ["cohere.embed-multilingual-v3","cohere.embed-english-v3","amazon.titan-embed-text-v1"]
 BEDROCK_LLM_MODELID_LIST = {'claude-instant':'anthropic.claude-instant-v1',
-                            'claude-v2':'anthropic.claude-v2:1'}
+                            'claude-v2':'anthropic.claude-v2',
+                            'claude-v3-sonnet': 'anthropic.claude-3-sonnet-20240229-v1:0',
+                            'claude-v3-haiku' : 'anthropic.claude-3-haiku-20240307-v1:0'}
 
 SIMS_THRESHOLD= float(os.environ.get('intent_detection_threshold',0.7))
 
@@ -184,7 +188,7 @@ def lambda_handler(event, context):
     query = event.get('query')
     index_name = event.get('example_index')
     fewshot_cnt = event.get('fewshot_cnt')
-    llm_model_endpoint = os.environ.get('llm_model_endpoint', BEDROCK_LLM_MODELID_LIST["claude-v2"])
+    llm_model_endpoint = os.environ.get('llm_model_endpoint', BEDROCK_LLM_MODELID_LIST["claude-v3-sonnet"])
     
     logger.info("embedding_endpoint: {}".format(embedding_endpoint))
     logger.info("region:{}".format(region))
@@ -254,41 +258,59 @@ def lambda_handler(event, context):
         "temperature": 0.01,
     }
 
-    llm = None
-    if llm_model_endpoint not in list(BEDROCK_LLM_MODELID_LIST.values()):
-        llmcontent_handler = llmContentHandler()
-        llm=SagemakerEndpoint(
-                endpoint_name=llm_model_endpoint, 
-                region_name=region, 
-                model_kwargs={'parameters':parameters},
-                content_handler=llmcontent_handler
-            )
-    else:
-        boto3_bedrock = boto3.client(
-            service_name="bedrock-runtime",
-            region_name=region
-        )
+    # llm = None
+    # if llm_model_endpoint not in list(BEDROCK_LLM_MODELID_LIST.values()):
+    #     llmcontent_handler = llmContentHandler()
+    #     llm=SagemakerEndpoint(
+    #             endpoint_name=llm_model_endpoint, 
+    #             region_name=region, 
+    #             model_kwargs={'parameters':parameters},
+    #             content_handler=llmcontent_handler
+    #         )
+    # else:
+    #     boto3_bedrock = boto3.client(
+    #         service_name="bedrock-runtime",
+    #         region_name=region
+    #     )
     
-        parameters = {
-            "max_tokens_to_sample": 50,
-            "stop_sequences": ["</output>"],
-            "temperature":0.01,
-            "top_p":1
-        }
+    #     parameters = {
+    #         "max_tokens_to_sample": 50,
+    #         "stop_sequences": ["</output>"],
+    #         "temperature":0.01,
+    #         "top_p":1
+    #     }
         
-        llm = Bedrock(model_id=llm_model_endpoint, client=boto3_bedrock, model_kwargs=parameters)
+    #     llm = Bedrock(model_id=llm_model_endpoint, client=boto3_bedrock, model_kwargs=parameters)
+    
+    parameters = {
+        "max_tokens_to_sample": 50,
+        "stop_sequences": ["</output>"],
+        "temperature":0.0,
+        "top_p":0.95
+    }
+    
+    if llm_model_endpoint.startswith('claude'):
+        model_id = BEDROCK_LLM_MODELID_LIST.get(llm_model_endpoint, 'anthropic.claude-v2')
+    else:
+        model_id = llm_model_endpoint
 
+    llm = get_langchain_llm_model(model_id, parameters, region, llm_stream=False)
+    
     prompt_template = create_detect_prompt_templete()
     prefix = """{"func":"""
 
     prompt = prompt_template.format(api_schemas=api_schema_str, examples=example_list_str, query=query, prefix=prefix)
-
-    llmchain = LLMChain(llm=llm, verbose=False, prompt=prompt_template)
-    answer = llmchain.run({"api_schemas":api_schema_str, "examples": example_list_str, "query":query, "prefix" : prefix})
+    msg = format_to_message(query=prompt)
+    msg_list = [msg]
+    ai_reply = invoke_model(llm=llm, prompt=prompt, messages=msg_list)
+    final_prompt = json.dumps(msg_list)
+    answer = ai_reply.content
+    # llmchain = LLMChain(llm=llm, verbose=False, prompt=prompt_template)
+    # answer = llmchain.run({"api_schemas":api_schema_str, "examples": example_list_str, "query":query, "prefix" : prefix})
     answer = prefix + answer.strip()
     answer = answer.replace('</output>', '')
 
-    log_dict = { "prompt" : prompt, "answer" : answer , "examples": docs_simple }
+    log_dict = { "prompt" : final_prompt, "answer" : answer , "examples": docs_simple }
     log_dict_str = json.dumps(log_dict, ensure_ascii=False)
     logger.info(log_dict_str)
 

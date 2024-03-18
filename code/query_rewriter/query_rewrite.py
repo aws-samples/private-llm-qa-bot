@@ -5,13 +5,17 @@ import logging
 from langchain.llms.sagemaker_endpoint import LLMContentHandler
 from langchain import PromptTemplate, SagemakerEndpoint
 from typing import Any, Dict, List, Union,Mapping, Optional, TypeVar, Union
-from langchain.chains import LLMChain
-from langchain.llms.bedrock import Bedrock
+# from langchain.chains import LLMChain
+# from langchain.llms.bedrock import Bedrock
 from botocore.exceptions import ClientError
 import boto3
 import re
+from generator.llm_wrapper import get_langchain_llm_model, invoke_model, format_to_message
+
 BEDROCK_LLM_MODELID_LIST = {'claude-instant':'anthropic.claude-instant-v1',
-                            'claude-v2':'anthropic.claude-v2:1'}
+                            'claude-v2':'anthropic.claude-v2:1',
+                            'claude-v3-sonnet': 'anthropic.claude-3-sonnet-20240229-v1:0',
+                            'claude-v3-haiku' : 'anthropic.claude-3-haiku-20240307-v1:0'}
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
@@ -136,44 +140,55 @@ def lambda_handler(event, context):
     history_str = "\n".join(history_with_role)
     # history_str += f'\n{role_a}: {query}'
 
-    parameters = {
-        "temperature": 0.01,
-    }
-
-    llm = None
-    if not use_bedrock:
-        llmcontent_handler = llmContentHandler()
-        llm=SagemakerEndpoint(
-                endpoint_name=llm_model_endpoint, 
-                region_name=region, 
-                model_kwargs={'parameters':parameters},
-                content_handler=llmcontent_handler
-            )
-    else:
-        boto3_bedrock = boto3.client(
-            service_name="bedrock-runtime",
-            region_name=region
-        )
+    # llm = None
+    # if not use_bedrock:
+    #     llmcontent_handler = llmContentHandler()
+    #     llm=SagemakerEndpoint(
+    #             endpoint_name=llm_model_endpoint, 
+    #             region_name=region, 
+    #             model_kwargs={'parameters':parameters},
+    #             content_handler=llmcontent_handler
+    #         )
+    # else:
+    #     boto3_bedrock = boto3.client(
+    #         service_name="bedrock-runtime",
+    #         region_name=region
+    #     )
     
-        parameters = {
-            "max_tokens_to_sample": 100,
-            "stop_sequences": ["\n\n", '</standalone_question>'],
-            "temperature":0.01,
-            "top_p":1
-        }
+    #     parameters = {
+    #         "max_tokens_to_sample": 100,
+    #         "stop_sequences": ["\n\n", '</standalone_question>'],
+    #         "temperature":0.01,
+    #         "top_p":1
+    #     }
 
-        model_id = BEDROCK_LLM_MODELID_LIST.get(llm_model_endpoint, llm_model_endpoint)
-        llm = Bedrock(model_id=model_id, client=boto3_bedrock, model_kwargs=parameters)
+    #     model_id = BEDROCK_LLM_MODELID_LIST.get(llm_model_endpoint, llm_model_endpoint)
+    #     llm = Bedrock(model_id=model_id, client=boto3_bedrock, model_kwargs=parameters)
+    parameters = {
+        "temperature":0.0,
+        "top_p":0.95
+    }
+    
+    if llm_model_endpoint.startswith('claude') or llm_model_endpoint.startswith('anthropic'):
+        model_id = BEDROCK_LLM_MODELID_LIST.get(llm_model_endpoint, BEDROCK_LLM_MODELID_LIST["claude-v3-sonnet"])
+    else:
+        model_id = llm_model_endpoint
+
+    llm = get_langchain_llm_model(model_id, parameters, region, llm_stream=False)
 
     prompt_template = create_rewrite_prompt_templete()
     prompt = prompt_template.format(history=history_str, cur_query=query,role_a=role_a)
-    
-    llmchain = LLMChain(llm=llm, verbose=False, prompt=prompt_template)
-    answer = llmchain.run({'history':history_str,  "cur_query":query,"role_a":role_a})
+    msg = format_to_message(query=prompt)
+    msg_list = [msg]
+    ai_reply = invoke_model(llm=llm, prompt=prompt, messages=msg_list)
+    final_prompt = json.dumps(msg_list)
+    answer = ai_reply.content
+    # llmchain = LLMChain(llm=llm, verbose=False, prompt=prompt_template)
+    # answer = llmchain.run({'history':history_str,  "cur_query":query,"role_a":role_a})
     answer = answer.strip()
     answer = answer.replace('</standalone_question>','')
 
-    log_dict = { "history" : history, "answer" : answer , "cur_query": query, "prompt":prompt, "model_id" : llm_model_endpoint }
+    log_dict = { "history" : history, "answer" : answer , "cur_query": query, "prompt":final_prompt, "model_id" : llm_model_endpoint }
     log_dict_str = json.dumps(log_dict, ensure_ascii=False)
     logger.info(log_dict_str)
         

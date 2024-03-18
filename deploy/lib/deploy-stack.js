@@ -240,7 +240,7 @@ export class DeployStack extends Stack {
         index_name:"chatbot-example-index" ,
         aos_knn_field:process.env.aos_knn_field,
         embedding_endpoint:process.env.embedding_endpoint,
-        llm_model_endpoint:"anthropic.claude-instant-v1",
+        llm_model_endpoint:"claude-v3-sonnet",
         intent_detection_threshold:"0.7",
         region:region
       },
@@ -276,7 +276,7 @@ export class DeployStack extends Stack {
       securityGroups:securityGroups,
       architecture: Architecture.X86_64,
       environment: {
-        llm_model_endpoint:'anthropic.claude-v2',
+        llm_model_endpoint:'"claude-v3-sonnet"',
         region:region
       },
     });
@@ -311,7 +311,7 @@ export class DeployStack extends Stack {
       securityGroups:securityGroups,
       architecture: Architecture.X86_64,
       environment: {
-        llm_model_endpoint:"anthropic.claude-v2",
+        llm_model_endpoint:"claude-v3-sonnet",
         region:region
       },
     });
