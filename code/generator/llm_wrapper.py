@@ -61,7 +61,7 @@ def get_langchain_llm_model(llm_model_id, params, region, llm_stream=False, llm_
         params keys should be in [temperature, max_tokens, top_p, top_k, stop]
     '''
     llm = None
-    parameters = { item[0]:item[1] for item in params.items() if item[0] in ['temperature', 'max_tokens', 'top_p', 'top_k', 'stop']}
+    parameters = { item[0]:item[1] for item in params.items() if item[0] in ['temperature','max_tokens', 'top_p', 'top_k', 'stop']}
 
     if llm_model_id in bedrock_llms:
         boto3_bedrock = boto3.client(

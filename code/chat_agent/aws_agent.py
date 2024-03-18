@@ -336,7 +336,7 @@ def lambda_handler(event, context):
 
     parameters = {
         "temperature": 0.01,
-         "stop_sequences": ["</response>"],
+         "stop": ["</response>"],
     }
 
     # llm = None

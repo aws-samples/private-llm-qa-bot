@@ -165,7 +165,7 @@ def lambda_handler(event, context):
     parameters = {
         "temperature":0.0,
         "top_p":0.95,
-        "stop_sequences": ["\n\n", '</standalone_question>']
+        "stop": ["\n\n", '</standalone_question>']
     }
     
     if llm_model_endpoint.startswith('claude') or llm_model_endpoint.startswith('anthropic'):

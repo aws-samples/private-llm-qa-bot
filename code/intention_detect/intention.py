@@ -285,7 +285,7 @@ def lambda_handler(event, context):
     
     parameters = {
         "max_tokens_to_sample": 50,
-        "stop_sequences": ["</output>"],
+        "stop": ["</output>"],
         "temperature":0.0,
         "top_p":0.95
     }
