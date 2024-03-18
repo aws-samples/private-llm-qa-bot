@@ -170,7 +170,7 @@ class llmContentHandler(LLMContentHandler):
 #     return PROMPT
 
 def create_detect_prompt_templete():
-    prompt_template = """Human:Here is a list of aimed functions:\n\n<api_schemas>{api_schemas}</api_schemas>\n\nYou should follow below examples to choose the corresponding function and params according to user's query\n\n<examples>{examples}</examples>\n\nAssistant:<query>{query}</query>\n<output>{prefix}"""
+    prompt_template = """Here is a list of aimed functions:\n\n<api_schemas>{api_schemas}</api_schemas>\n\nYou should follow below examples to choose the corresponding function and params according to user's query\n\n<examples>{examples}</examples>\n\nAssistant:<query>{query}</query>\n<output>{prefix}"""
 
     PROMPT = PromptTemplate(
         template=prompt_template, 
@@ -256,6 +256,7 @@ def lambda_handler(event, context):
     
     parameters = {
         "temperature": 0.01,
+         "stop_sequences": ["</output>"],
     }
 
     # llm = None
@@ -308,7 +309,7 @@ def lambda_handler(event, context):
     # llmchain = LLMChain(llm=llm, verbose=False, prompt=prompt_template)
     # answer = llmchain.run({"api_schemas":api_schema_str, "examples": example_list_str, "query":query, "prefix" : prefix})
     answer = prefix + answer.strip()
-    answer = answer.replace('</output>', '')
+    answer = answer.replace('<output>', '')
 
     log_dict = { "prompt" : final_prompt, "answer" : answer , "examples": docs_simple }
     log_dict_str = json.dumps(log_dict, ensure_ascii=False)
