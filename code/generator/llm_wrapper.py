@@ -217,9 +217,9 @@ def invoke_model(llm, prompt:str=None, messages:List[Dict]=[], callbacks=[]) -> 
     elif isinstance(llm, Bedrock) or isinstance(llm, SagemakerEndpoint):
         if prompt:
             if llm.streaming:
-                answer = llm.invoke(input=prompt, stop=STOP, config={'callbacks': callbacks})
+                answer = llm.invoke(input=prompt, stop=None, config={'callbacks': callbacks})
             else:
-                answer = llm.invoke(input=prompt, stop=STOP, config={'callbacks': callbacks})
+                answer = llm.invoke(input=prompt, stop=None, config={'callbacks': callbacks})
             ai_reply = AIMessage(answer)
         else:
             raise RuntimeError("No valid input for Bedrock/SagemakerEndpoint")

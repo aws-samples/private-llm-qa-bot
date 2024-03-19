@@ -179,7 +179,7 @@ def lambda_handler(event, context):
     prompt = prompt_template.format(history=history_str, cur_query=query,role_a=role_a)
     msg = format_to_message(query=prompt)
     msg_list = [msg]
-    ai_reply = invoke_model(llm=llm, prompt=prompt, messages=msg_list, stop=['</standalone_question>'])
+    ai_reply = invoke_model(llm=llm, prompt=prompt, messages=msg_list)
     final_prompt = json.dumps(msg_list,ensure_ascii=False)
     answer = ai_reply.content
     # llmchain = LLMChain(llm=llm, verbose=False, prompt=prompt_template)
