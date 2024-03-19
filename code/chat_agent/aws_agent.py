@@ -5,16 +5,18 @@ import re
 import argparse
 from langchain.llms.sagemaker_endpoint import LLMContentHandler
 from langchain.prompts import PromptTemplate
-from langchain.llms import SagemakerEndpoint
+# from langchain.llms import SagemakerEndpoint
 from typing import Any, Dict, List, Union,Mapping, Optional, TypeVar, Union
-from langchain.chains import LLMChain
-from langchain.llms.bedrock import Bedrock
-from botocore.exceptions import ClientError
+# from langchain.chains import LLMChain
+# from langchain.llms.bedrock import Bedrock
+# from botocore.exceptions import ClientError
 import boto3
 import requests
 from pydantic import BaseModel
 from tools.get_price import query_ec2_price
 from tools.service_org_demo import service_org
+from generator.llm_wrapper import get_langchain_llm_model, invoke_model, format_to_message
+
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -23,7 +25,9 @@ credentials = boto3.Session().get_credentials()
 lambda_client= boto3.client('lambda')
 BEDROCK_REGION = None
 BEDROCK_LLM_MODELID_LIST = {'claude-instant':'anthropic.claude-instant-v1',
-                            'claude-v2':'anthropic.claude-v2:1'}
+                            'claude-v2':'anthropic.claude-v2:1',
+                            'claude-v3-sonnet': 'anthropic.claude-3-sonnet-20240229-v1:0',
+                            'claude-v3-haiku' : 'anthropic.claude-3-haiku-20240307-v1:0'}
 REFUSE_ANSWER = '对不起, 根据{func_name}({args}),没有查询到您想要的信息，请您更具体的描述下您的要求.'
 
 ERROR_ANSWER = """
@@ -186,12 +190,17 @@ class AgentTools(BaseModel):
 
     def dispatch_function_call(cls,query:str):
         ##parse the args
-        prompt = PromptTemplate(
+        prompt_template = PromptTemplate(
                 template=FUNCTION_CALL_TEMPLATE,
                 input_variables=["functions",'task']
             )
-        llmchain = LLMChain(llm=cls.llm,verbose=False,prompt = prompt)
-        answer = llmchain.run({'functions':cls.api_schema, "task": query})
+        
+        prompt = prompt_template.format(functions=json.dumps(cls.api_schema, ensure_ascii=False), task=query)
+        msg_list = [format_to_message(query=prompt)]
+        ai_reply = invoke_model(llm=cls.llm, prompt=prompt, messages=msg_list)
+        answer = ai_reply.content
+        # llmchain = LLMChain(llm=cls.llm,verbose=False,prompt = prompt)
+        # answer = llmchain.run({'functions':cls.api_schema, "task": query})
         function_call = AgentTools.extract_function_call(answer)
         print(f"****use function_call****:{function_call}")
         if not function_call:
@@ -207,26 +216,33 @@ class AgentTools(BaseModel):
             return None,function_call['name'],args,str(e)
 
     def _add_error_answer(cls,query,func_name,args,error) ->str:
-        prompt = PromptTemplate(
+        prompt_template = PromptTemplate(
                 template=ERROR_ANSWER,
                 input_variables=["func_name",'args','error','query']
             )
-        llmchain = LLMChain(llm=cls.llm,verbose=False,prompt = prompt)
-        answer = llmchain.run({'func_name':func_name, "args": args,"error":error,"query":query})
+        prompt = prompt_template.format(func_name=func_name, args=args, error=error, query=query)
+        msg_list = [format_to_message(query=prompt)]
+        ai_reply = invoke_model(llm=cls.llm, prompt=prompt, messages=msg_list)
+        answer = ai_reply.content
+        # llmchain = LLMChain(llm=cls.llm,verbose=False,prompt = prompt)
+        # answer = llmchain.run({'func_name':func_name, "args": args,"error":error,"query":query})
         answer = answer.strip()
         return answer
 
     def _add_context_answer(cls,query,context) ->str:
         if not context:
             return None 
-        prompt = PromptTemplate(
+        prompt_template = PromptTemplate(
                 template=Enhanced_TEMPLATE,
                 input_variables=["context",'question']
             )
-        llmchain = LLMChain(llm=cls.llm,verbose=False,prompt = prompt)
-
-        logger.info(f'llm input:{Enhanced_TEMPLATE.format(context=context,question=query)}')
-        answer = llmchain.run({'context':context, "question": query})
+        prompt = prompt_template.format(context=context, question=query)
+        # llmchain = LLMChain(llm=cls.llm,verbose=False,prompt = prompt)
+        msg_list = [format_to_message(query=prompt)]
+        ai_reply = invoke_model(llm=cls.llm, prompt=prompt, messages=msg_list)
+        answer = ai_reply.content
+        logger.info(f'llm input:{prompt}')
+        # answer = llmchain.run({'context':context, "question": query})
         # answer = answer.replace('</answer>','').strip()
         return answer
 
@@ -320,33 +336,46 @@ def lambda_handler(event, context):
 
     parameters = {
         "temperature": 0.01,
+         "stop": ["</response>"],
     }
 
-    llm = None
-    if not use_bedrock:
-        logger.info(f'not use bedrock, use {llm_model_endpoint}')
-        llmcontent_handler = llmContentHandler()
-        llm=SagemakerEndpoint(
-                endpoint_name=llm_model_endpoint, 
-                region_name=region, 
-                model_kwargs={'parameters':parameters},
-                content_handler=llmcontent_handler
-            )
-    else:
-        boto3_bedrock = boto3.client(
-            service_name="bedrock-runtime",
-            region_name=region
-        )
+    # llm = None
+    # if not use_bedrock:
+    #     logger.info(f'not use bedrock, use {llm_model_endpoint}')
+    #     llmcontent_handler = llmContentHandler()
+    #     llm=SagemakerEndpoint(
+    #             endpoint_name=llm_model_endpoint, 
+    #             region_name=region, 
+    #             model_kwargs={'parameters':parameters},
+    #             content_handler=llmcontent_handler
+    #         )
+    # else:
+    #     boto3_bedrock = boto3.client(
+    #         service_name="bedrock-runtime",
+    #         region_name=region
+    #     )
     
-        parameters = {
-            "max_tokens_to_sample": 8096,
-            "stop_sequences": ["</response>"],
-            "temperature":0.01,
-            "top_p":0.85
-        }
+    #     parameters = {
+    #         "max_tokens_to_sample": 8096,
+    #         "stop_sequences": ["</response>"],
+    #         "temperature":0.01,
+    #         "top_p":0.85
+    #     }
         
-        model_id = "anthropic.claude-v2"
-        llm = Bedrock(model_id=model_id, client=boto3_bedrock, model_kwargs=parameters)
+    #     model_id = "anthropic.claude-v2"
+    #     llm = Bedrock(model_id=model_id, client=boto3_bedrock, model_kwargs=parameters)
+    
+    parameters = {
+        "temperature":0.0,
+        "top_p":0.95
+    }
+    
+    if llm_model_endpoint.startswith('claude') or llm_model_endpoint.startswith('anthropic'):
+        model_id = BEDROCK_LLM_MODELID_LIST.get(llm_model_endpoint, BEDROCK_LLM_MODELID_LIST["claude-v3-sonnet"])
+    else:
+        model_id = llm_model_endpoint
+
+    llm = get_langchain_llm_model(model_id, parameters, region, llm_stream=False)
 
     agent_tools = AgentTools(api_schema=API_SCHEMA,llm=llm)
     agent_tools.register_tool(name='ec2_price',func=query_ec2_price)

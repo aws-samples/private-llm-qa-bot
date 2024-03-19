@@ -61,7 +61,7 @@ def get_langchain_llm_model(llm_model_id, params, region, llm_stream=False, llm_
         params keys should be in [temperature, max_tokens, top_p, top_k, stop]
     '''
     llm = None
-    parameters = { item[0]:item[1] for item in params.items() if item[0] in ['temperature', 'max_tokens', 'top_p', 'top_k', 'stop']}
+    parameters = { item[0]:item[1] for item in params.items() if item[0] in ['temperature','max_tokens', 'top_p', 'top_k', 'stop']}
 
     if llm_model_id in bedrock_llms:
         boto3_bedrock = boto3.client(
@@ -211,15 +211,15 @@ def invoke_model(llm, prompt:str=None, messages:List[Dict]=[], callbacks=[]) -> 
     ai_reply = None
     if isinstance(llm, BedrockChat):
         if messages:
-            ai_reply = llm.invoke(input=messages, stop=STOP, config={'callbacks': callbacks})
+            ai_reply = llm.invoke(input=messages, stop=None, config={'callbacks': callbacks})
         else:
             raise RuntimeError("No valid input for BedrockChat")
     elif isinstance(llm, Bedrock) or isinstance(llm, SagemakerEndpoint):
         if prompt:
             if llm.streaming:
-                answer = llm.invoke(input=prompt, stop=STOP, config={'callbacks': callbacks})
+                answer = llm.invoke(input=prompt, stop=None, config={'callbacks': callbacks})
             else:
-                answer = llm.invoke(input=prompt, stop=STOP, config={'callbacks': callbacks})
+                answer = llm.invoke(input=prompt, stop=None, config={'callbacks': callbacks})
             ai_reply = AIMessage(answer)
         else:
             raise RuntimeError("No valid input for Bedrock/SagemakerEndpoint")
