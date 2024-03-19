@@ -303,7 +303,7 @@ def lambda_handler(event, context):
     prompt = prompt_template.format(api_schemas=api_schema_str, examples=example_list_str, query=query, prefix=prefix)
     msg = format_to_message(query=prompt)
     msg_list = [msg]
-    ai_reply = invoke_model(llm=llm, prompt=prompt, messages=msg_list)
+    ai_reply = invoke_model(llm=llm, prompt=prompt, messages=msg_list,stop = ["</output>"])
     final_prompt = json.dumps(msg_list,ensure_ascii=False)
     answer = ai_reply.content
     # llmchain = LLMChain(llm=llm, verbose=False, prompt=prompt_template)
