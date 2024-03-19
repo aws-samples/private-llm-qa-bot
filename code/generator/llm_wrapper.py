@@ -211,7 +211,7 @@ def invoke_model(llm, prompt:str=None, messages:List[Dict]=[], callbacks=[]) -> 
     ai_reply = None
     if isinstance(llm, BedrockChat):
         if messages:
-            ai_reply = llm.invoke(input=messages, stop=STOP, config={'callbacks': callbacks})
+            ai_reply = llm.invoke(input=messages, stop=None, config={'callbacks': callbacks})
         else:
             raise RuntimeError("No valid input for BedrockChat")
     elif isinstance(llm, Bedrock) or isinstance(llm, SagemakerEndpoint):
