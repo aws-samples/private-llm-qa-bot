@@ -32,18 +32,19 @@ def list_s3_objects(s3_client,bucket_name, prefix=''):
             page_iterator = paginator.paginate(Bucket=bucket_name, Prefix=prefix,
                                                 ContinuationToken=page['NextContinuationToken'])
 
-def start_job(glue_client, job_name, key_path, aos_endpoint, emb_model_endpoint, bucket, region_name, publish_date):
+def start_job(glue_client, job_name, key_path, aos_endpoint, emb_model_endpoint, bucket, region_name, publish_date, company):
     print('start job for {} at {}'.format(key_path, str(publish_date)))   
     response = glue.start_job_run(
         JobName=job_name,
         Arguments={
-            '--additional-python-modules': 'pdfminer.six==20221105,gremlinpython==3.6.3,langchain==0.0.162,beautifulsoup4==4.12.2',
+            '--additional-python-modules': 'pdfminer.six==20221105,gremlinpython==3.6.3,langchain==0.0.162,beautifulsoup4==4.12.2,boto3>=1.28.52,botocore>=1.31.52,,anthropic_bedrock,python-docx',
             '--object_key': key_path,
             '--REGION': region_name,
             '--AOS_ENDPOINT': aos_endpoint,
             '--bucket' : bucket,
             '--EMB_MODEL_ENDPOINT': emb_model_endpoint,
-            '--PUBLISH_DATE': publish_date
+            '--PUBLISH_DATE': publish_date,
+            '--company' : company
             })  
     return response['JobRunId']
 
@@ -64,6 +65,7 @@ if __name__ == '__main__':
     parser.add_argument('--path_prefix', type=str, default='ai-content/batch/', help='file path prefix')
     parser.add_argument('--concurrent_runs_quota', type=int, default=50, help='quota of concurrent job runs')
     parser.add_argument('--job_name', type=str, default='chatbotfroms3toaosF98BA633-QxSQwoaGE1K9', help='job name')
+    parser.add_argument('--company', type=str, default='default', help='tenant name')
     args = parser.parse_args()
     
     region = args.region
@@ -73,6 +75,7 @@ if __name__ == '__main__':
     path_prefix = args.path_prefix
     concurrent_runs_quota = args.concurrent_runs_quota
     job_name = args.job_name
+    company = args.company
     
     running_job_id_set = set()
     
@@ -89,7 +92,7 @@ if __name__ == '__main__':
             running_job_id_set = update_running_job_set(job_name, running_job_id_set)
             print('concurrent_running: {}'.format(running_job_id_set))
             
-        running_job_id=start_job(glue, job_name, key_list_str, aos_endpoint, emb_model_endpoint, bucket, region, publish_date)
+        running_job_id=start_job(glue, job_name, key_list_str, aos_endpoint, emb_model_endpoint, bucket, region, publish_date, company)
         running_job_id_set.add(running_job_id)
         # sleep_seconds = len(running_job_id_set) * 2
         print("[{}] running job count: {}".format(idx, len(running_job_id_set)))
