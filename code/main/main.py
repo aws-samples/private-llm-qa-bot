@@ -947,7 +947,7 @@ answer=>**uncertain**\n
 
 explanation: ...
 
-Note that skip the preamble, go straight into the answer. Respond in the original language of user's question.
+Note that don't include any French words in your reply, skip the preamble, go straight into the answer. Respond in the original language of user's question.
 """.format(context=context, question=question)
     return prompt
 
