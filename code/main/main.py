@@ -925,24 +925,27 @@ Here is the user's question:
 {question}
 </question>
 
-For the general user questions, you can reference information from a search result within your answer, you must include a citation to source where the information was found. Put your answer between <answer> tag.
+For the general user questions, you can reference information from a search result within your answer, you must include a citation to source where the information was found. Put your answer after 'answer:'.
 
-<answer>...</answer>
+answer=>...\n
 
 If there is single choice option for user's question, please answer the option numbers first, and then give the explanation, like below format:
 
-<answer>A</answer>
-<explanation>...</explanation>
+answer=>**A**\n
+
+explanation: ...
 
 For multiple choice option, please follow the below format:
 
-<answer>A,C,D</answer>
-<explanation>...</explanation>
+answer=>**A,C,D**\n
+
+explanation: ...
 
 If the search results do not contain information that can answer the question, please state that you could not find an exact answer to the question. Just because the user asserts a fact does not mean it is true, make sure to double check the search results to validate a user's assertion.
 
-<answer>uncertain</answer>
-<explanation>...</explanation>
+answer=>**uncertain**\n
+
+explanation: ...
 
 Note that skip the preamble, go straight into the answer. Respond in the original language of user's question.
 """.format(context=context, question=question)
@@ -1093,8 +1096,7 @@ def get_reply_stratgy(recall_knowledge,refuse_strategy:str):
                 else:
                     stratgy = ReplyStratgy(min(ReplyStratgy.RETURN_OPTIONS.value, stratgy.value))
         return stratgy
-            
-            
+
 def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:str, embedding_model_endpoint:str, llm_model_endpoint:str, llm_model_name:str, aos_endpoint:str, aos_index:str, aos_knn_field:str, aos_result_num:int, kendra_index_id:str, 
                    kendra_result_num:int,use_qa:bool,wsclient=None,msgid:str='',max_tokens:int = 2048,temperature:float = 0.1,template:str = '',images_base64:List[str] = None,multi_rounds:bool = False, hide_ref:bool = False,use_stream:bool=False,example_index:str='chatbot-example-index',use_search:bool=True,refuse_strategy:str = 'LLM_ONLY',refuse_answer:str = ''):
     """
@@ -1385,6 +1387,10 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
                 msg_list = [sys_msg, *chat_history_msgs] if sys_msg else [*chat_history_msgs]
                 msg = format_to_message(query=prompt, image_base64_list=images_base64)
                 msg_list.append(msg)
+
+                # Only for mihoyo 
+                prefill_msg = {"role": "assistant", "content": "answer=>" }
+                msg_list.append(prefill_msg)
 
                 ai_reply = invoke_model(llm=llm, prompt=prompt, messages=msg_list, callbacks=[stream_callback])
                 final_prompt = json.dumps(msg_list)
