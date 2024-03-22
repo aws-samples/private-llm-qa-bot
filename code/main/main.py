@@ -912,6 +912,33 @@ def history_to_messages(inputs) -> str:
         res.append({ "role" : "assistant", "content" : ai})
     return res
 
+def create_email_reply_prompt_for_mihoyo(context, question):
+    prompt="""I will provide you with a set of search results and a user's question, your job is to write email to reply user's question based on the principle and reference information in search results. 
+
+Here are the search results in numbered order:
+<search_results>
+{context}
+</search_results>
+
+Here is the user's question:
+<question>
+{question}
+</question>
+
+Note that don't include any French words in your email, skip the preamble, go straight into the email. Use the original language of user's question.
+""".format(context=context, question=question)
+    return prompt
+
+def mitigate_email_prompt_for_mihoyo(email_content):
+    prompt = """Please rephrase the email to player between <email> and </email>, to remove any content about requiring player to be polite.
+
+    <email>
+    {email}
+    </email>
+
+    skip the preamble, go straight into the content.""".format(email=email_content)
+    return prompt
+
 def create_qa_prompt_for_mihoyo(context, question):
     prompt="""I will provide you with a set of search results and a user's question, your job is to answer the user's question using only information from the search results. 
 
@@ -1098,7 +1125,7 @@ def get_reply_stratgy(recall_knowledge,refuse_strategy:str):
         return stratgy
 
 def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:str, embedding_model_endpoint:str, llm_model_endpoint:str, llm_model_name:str, aos_endpoint:str, aos_index:str, aos_knn_field:str, aos_result_num:int, kendra_index_id:str, 
-                   kendra_result_num:int,use_qa:bool,wsclient=None,msgid:str='',max_tokens:int = 2048,temperature:float = 0.1,template:str = '',images_base64:List[str] = None,multi_rounds:bool = False, hide_ref:bool = False,use_stream:bool=False,example_index:str='chatbot-example-index',use_search:bool=True,refuse_strategy:str = 'LLM_ONLY',refuse_answer:str = ''):
+                   kendra_result_num:int,use_qa:bool,wsclient=None,msgid:str='',max_tokens:int = 2048,temperature:float = 0.1,template:str = '',images_base64:List[str] = None,multi_rounds:bool = False, hide_ref:bool = False,use_stream:bool=False,example_index:str='chatbot-example-index',use_search:bool=True,refuse_strategy:str = 'LLM_ONLY',refuse_answer:str = '', email_reply_mode=False):
     """
     Entry point for the Lambda function.
 
@@ -1237,6 +1264,9 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
         TRACE_LOGGER.trace(f'**Running time of detecting: {elpase_time_detect:.3f}s**')
         TRACE_LOGGER.trace(f'**Detected intention: {intention}**')
     
+    if email_reply_mode:
+        intention = 'email_reply'
+
     if not use_qa:
         intention = 'chat'
 
@@ -1284,7 +1314,7 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
         
         recall_knowledge,opensearch_knn_respose,opensearch_query_response = [],[],[]
 
-    elif intention == 'QA': ##如果使用QA
+    elif intention in ['QA', 'email_reply']: ##如果使用QA
         # 2. aos retriever
         TRACE_LOGGER.trace('**Using RAG Chat...**')
         
@@ -1371,7 +1401,7 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
 
             ai_reply = invoke_model(llm=llm, prompt=prompt, messages=msg_list, callbacks=[stream_callback])
 
-            final_prompt = json.dumps(msg_list)
+            final_prompt = { "single_round_prompt" :prompt, "multi_round_prompt" : msg_list }
             answer = ai_reply.content
             
         else:      
@@ -1380,23 +1410,40 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
 
             try:
                 chat_history = '' ##QA 场景下先不使用history
-                prompt = create_qa_prompt_for_mihoyo(context=context, question=query_input)
-                logger.info(f"prompt: {prompt}")
 
                 sys_msg = {"role": "system", "content": SYSTEM_ROLE_PROMPT } if SYSTEM_ROLE_PROMPT else None
                 msg_list = [sys_msg, *chat_history_msgs] if sys_msg else [*chat_history_msgs]
-                msg = format_to_message(query=prompt, image_base64_list=images_base64)
-                msg_list.append(msg)
+                prompt = None
+                if intention == 'QA':
+                    prompt = create_qa_prompt_for_mihoyo(context=context, question=query_input)
+                    msg = format_to_message(query=prompt, image_base64_list=images_base64)
+                    msg_list.append(msg)
+                    prefill_msg = {"role": "assistant", "content": "answer=>" } # Only for mihoyo QA
+                    msg_list.append(prefill_msg)
+                    ai_reply = invoke_model(llm=llm, prompt=prompt, messages=msg_list, callbacks=[stream_callback])
 
-                # Only for mihoyo 
-                prefill_msg = {"role": "assistant", "content": "answer=>" }
-                msg_list.append(prefill_msg)
-
-                ai_reply = invoke_model(llm=llm, prompt=prompt, messages=msg_list, callbacks=[stream_callback])
-                final_prompt = json.dumps(msg_list)
+                elif intention == 'email_reply':
+                    prompt = create_email_reply_prompt_for_mihoyo(context=context, question=query_input)
+                    msg = format_to_message(query=prompt, image_base64_list=images_base64)
+                    msg_list.append(msg)
+                    ai_reply = invoke_model(llm=llm, prompt=prompt, messages=msg_list)
+                else:
+                    raise RuntimeError("intention invalid...")
+                
                 answer = ai_reply.content
+                final_prompt = { "single_round_prompt" :prompt, "multi_round_prompt" : msg_list }
+
+                if intention == 'email_reply':
+                    mitigate_prompt = mitigate_email_prompt_for_mihoyo(email_content=answer)
+                    msg = format_to_message(query=mitigate_prompt, image_base64_list=images_base64)
+                    prefill_msg = {"role": "assistant", "content": "<email>" } # Only for mihoyo QA
+                    mitigate_reply = invoke_model(llm=llm, prompt=mitigate_prompt, messages=[sys_msg, msg, prefill_msg], callbacks=[stream_callback])
+                    answer = mitigate_reply.content
+                    final_prompt['mitigate_prompt'] = mitigate_prompt
+
             except Exception as e:
                 answer = str(e)
+
     else:
         #call agent for other intentions
         TRACE_LOGGER.trace('**Using Agent...**')
@@ -1525,7 +1572,7 @@ def lambda_handler(event, context):
     msgid = event.get('msgid')
     max_tokens = event.get('max_tokens',2048)
     temperature =  event.get('temperature',0.1)
-    aos_index = os.environ.get("aos_index", "")
+    # aos_index = os.environ.get("aos_index", "")
     company = event.get("company",'default')
     example_index = "chatbot-example-index"
     aos_index = f'chatbot-index-{company}'
@@ -1597,7 +1644,13 @@ def lambda_handler(event, context):
         prompt_template = '' if prompt_template is None else prompt_template['template']['S']
     
     use_search = False if feature_config == 'search_disabled' else True
+
+    #For mihoyo (workround)
+    email_reply_mode = use_search
+    use_search = False
+
     logger.info(f'use_search : {use_search}')
+    logger.info(f'email_reply_mode : {email_reply_mode}')
     logger.info(f'user_id : {user_id}')
     logger.info(f'prompt_template_id : {template_id}')
     logger.info(f'prompt_template : {prompt_template}')
@@ -1624,7 +1677,7 @@ def lambda_handler(event, context):
     TRACE_LOGGER = TraceLogger(wsclient=wsclient,msgid=msgid,connectionId=wsconnection_id,stream=use_stream,use_trace=use_trace,hide_ref=hide_ref)
     main_entry_start = time.time()  # 或者使用 time.time_ns() 获取纳秒级别的时间戳
     answer,ref_text,use_stream,query_input,opensearch_query_response,opensearch_knn_respose,recall_knowledge = main_entry_new(user_id,wsconnection_id,session_id, question, embedding_endpoint, llm_endpoint, model_name, aos_endpoint, aos_index, aos_knn_field, aos_result_num,
-                       Kendra_index_id, Kendra_result_num,use_qa,wsclient,msgid,max_tokens,temperature,prompt_template,images_base64,multi_rounds,hide_ref,use_stream,example_index,use_search,refuse_strategy,refuse_answer)
+                       Kendra_index_id, Kendra_result_num,use_qa,wsclient,msgid,max_tokens,temperature,prompt_template,images_base64,multi_rounds,hide_ref,use_stream,example_index,use_search,refuse_strategy,refuse_answer, email_reply_mode)
     main_entry_elpase = time.time() - main_entry_start  # 或者使用 time.time_ns() 获取纳秒级别的时间戳
     logger.info(f'running time of main_entry : {main_entry_elpase}s seconds')
     if use_stream: ##只有当stream输出时，把这条trace放到最后一个chunk

@@ -23,7 +23,7 @@ logger.setLevel(logging.INFO)
 bedrock_llms = get_all_bedrock_llm()
 private_llm = get_all_private_llm()
 
-STOP=["user:", "用户：", "用户:", '</response>']
+STOP=["user:", "用户：", "用户:", '</response>', '</answer>', '</email>']
 
 class SageMakerContentHandler(LLMContentHandler):
     content_type = "application/json"
