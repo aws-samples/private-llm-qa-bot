@@ -64,6 +64,7 @@
 - 基于Claude3的视觉能力方法 (英文文档友好)
   需要配置好aws的aksk，具备bedrock的执行权限
   ```
+  pip install pdf2image -U
   python pdf2markdown.py --input_path "./PDF"  --output_path "./output" --region_name "us-west-2"
   ```
 - 基于其他方案的识别方法 (中文文档相对友好)
