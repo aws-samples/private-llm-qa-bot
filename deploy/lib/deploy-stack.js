@@ -17,6 +17,7 @@ import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as s3n from 'aws-cdk-lib/aws-s3-notifications';
 import * as dotenv from "dotenv";
 import { addAutoScalingDDb } from "./autoscalling.js";
+import {OpenSearchServerlessStack} from "./opensearch-serverless-stack.js";
 
 dotenv.config();
 
@@ -50,21 +51,29 @@ export class DeployStack extends Stack {
 
     const cn_region = ["cn-north-1","cn-northwest-1"];
 
-    const ec2stack = new Ec2Stack(this,'Ec2Stack',{vpc:vpc,securityGroup:securityGroups[0]});
-    new CfnOutput(this, 'OpenSearch EC2 Proxy Address', { value: `http://${ec2stack.publicIP}/_dashboards/`});
-    ec2stack.addDependency(vpcStack);
-
       // Create open search if the aos endpoint not provided
     let opensearch_endpoint=aos_existing_endpoint;
-    let opensearchStack;
-    if (!aos_existing_endpoint || aos_existing_endpoint === 'optional'){
-         opensearchStack = new OpenSearchStack(this,'os-chat-dev',
-              {vpc:vpc,subnets:subnets,securityGroup:securityGroups[0]});
-        opensearch_endpoint = opensearchStack.domainEndpoint;
-        opensearchStack.addDependency(vpcStack);
+    if (process.env.aos_required!=='false'){
+      let opensearchStack;
+      const ec2stack = new Ec2Stack(this,'Ec2Stack',{vpc:vpc,securityGroup:securityGroups[0]});
+      new CfnOutput(this, 'OpenSearch EC2 Proxy Address', { value: `http://${ec2stack.publicIP}/_dashboards/`});
+      ec2stack.addDependency(vpcStack);
+      if (!aos_existing_endpoint || aos_existing_endpoint === 'optional'){
+        opensearchStack = new OpenSearchStack(this,'os-chat-dev',
+             {vpc:vpc,subnets:subnets,securityGroup:securityGroups[0]});
+       opensearch_endpoint = opensearchStack.domainEndpoint;
+       opensearchStack.addDependency(vpcStack);
+      // if (!aos_existing_endpoint || aos_existing_endpoint === 'optional'){
+      //   opensearchStack = new OpenSearchServerlessStack(this,'os-chat-serverless',
+      //        {vpc:vpc,subnets:subnets,securityGroup:securityGroups[0]});
+      //  opensearch_endpoint = opensearchStack.domainEndpoint;
+      //  opensearchStack.addDependency(vpcStack);
+      // }
+       new CfnOutput(this,'opensearch endpoint',{value:opensearch_endpoint});
+   }
     }
+
     new CfnOutput(this,'VPC',{value:vpc.vpcId});
-    new CfnOutput(this,'opensearch endpoint',{value:opensearch_endpoint});
     new CfnOutput(this,'region',{value:process.env.CDK_DEFAULT_REGION});
     new CfnOutput(this,'UPLOAD_BUCKET',{value:process.env.UPLOAD_BUCKET});
     new CfnOutput(this,'llm_model_endpoint',{value:process.env.llm_model_endpoint});
@@ -191,7 +200,8 @@ export class DeployStack extends Stack {
         neighbors:process.env.neighbors,
         TOP_K:process.env.TOP_K,
         GOOGLE_API_KEY:process.env.GOOGLE_API_KEY,
-        GOOGLE_CSE_ID:process.env.GOOGLE_CSE_ID
+        GOOGLE_CSE_ID:process.env.GOOGLE_CSE_ID,
+        aos_required:process.env.aos_required
       },
     });
 
@@ -230,7 +240,7 @@ export class DeployStack extends Stack {
         index_name:"chatbot-example-index" ,
         aos_knn_field:process.env.aos_knn_field,
         embedding_endpoint:process.env.embedding_endpoint,
-        llm_model_endpoint:"anthropic.claude-instant-v1",
+        llm_model_endpoint:"claude-v3-sonnet",
         intent_detection_threshold:"0.7",
         region:region
       },
@@ -266,7 +276,7 @@ export class DeployStack extends Stack {
       securityGroups:securityGroups,
       architecture: Architecture.X86_64,
       environment: {
-        llm_model_endpoint:'anthropic.claude-v2',
+        llm_model_endpoint:"claude-v3-sonnet",
         region:region
       },
     });
@@ -301,7 +311,7 @@ export class DeployStack extends Stack {
       securityGroups:securityGroups,
       architecture: Architecture.X86_64,
       environment: {
-        llm_model_endpoint:"anthropic.claude-v2",
+        llm_model_endpoint:"claude-v3-sonnet",
         region:region
       },
     });
@@ -449,7 +459,7 @@ export class DeployStack extends Stack {
 
 
        //create REST api
-    const restapi = new ApiGatewayStack(this,'ChatBotRestApi',{lambda_fn:lambda_main_brain})
+    const restapi = new ApiGatewayStack(this,'ChatBotRestApi',{lambda_fn:lambda_main_brain,name:"chatbot_entry"})
     new CfnOutput(this, `API gateway endpoint url`,{value:`${restapi.endpoint}`});
 
     const role = new iam.Role(this, 'chatbot-kinesis-firehose', {

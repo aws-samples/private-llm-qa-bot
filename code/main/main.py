@@ -10,6 +10,7 @@ import boto3
 import time
 import hashlib
 import uuid
+import base64
 # from transformers import AutoTokenizer
 from enum import Enum
 from opensearchpy import OpenSearch, RequestsHttpConnection
@@ -30,6 +31,7 @@ from langchain.pydantic_v1 import Extra, root_validator
 import openai
 from langchain.callbacks.base import BaseCallbackHandler
 from langchain.callbacks.manager import CallbackManagerForLLMRun
+from langchain_core.outputs import ChatGenerationChunk, GenerationChunk, LLMResult
 from typing import Any, Dict, List, Union,Mapping, Optional, TypeVar, Union
 from langchain.schema import LLMResult
 from langchain.llms.base import LLM
@@ -40,6 +42,7 @@ from boto3 import client as boto3_client
 from utils.web_search import web_search,add_webpage_content
 from utils.management import management_api,get_template
 from utils.utils import add_reference, render_answer_with_ref
+from generator.llm_wrapper import get_langchain_llm_model, invoke_model, format_to_message
 
 lambda_client= boto3.client('lambda')
 dynamodb_client = boto3.resource('dynamodb')
@@ -86,7 +89,9 @@ KNOWLEDGE_BASE_ID = os.environ.get('knowledge_base_id',None)
 
 BEDROCK_EMBEDDING_MODELID_LIST = ["cohere.embed-multilingual-v3","cohere.embed-english-v3","amazon.titan-embed-text-v1"]
 BEDROCK_LLM_MODELID_LIST = {'claude-instant':'anthropic.claude-instant-v1',
-                            'claude-v2':'anthropic.claude-v2'}
+                            'claude-v2':'anthropic.claude-v2',
+                            'claude-v3-sonnet': 'anthropic.claude-3-sonnet-20240229-v1:0',
+                            'claude-v3-haiku' : 'anthropic.claude-3-haiku-20240307-v1:0'}
 
 boto3_bedrock = boto3.client(
     service_name="bedrock-runtime",
@@ -137,25 +142,6 @@ class TraceLogger(BaseModel):
     
 TRACE_LOGGER = None
 
-class StreamScanner:    
-    def __init__(self):
-        self.buff = io.BytesIO()
-        self.read_pos = 0
-        
-    def write(self, content):
-        self.buff.seek(0, io.SEEK_END)
-        self.buff.write(content)
-        
-    def readlines(self):
-        self.buff.seek(self.read_pos)
-        for line in self.buff.readlines():
-            if line[-1] != b'\n':
-                self.read_pos += len(line)
-                yield line[:-1]
-                
-    def reset(self):
-        self.read_pos = 0
-
 class CustomStreamingOutCallbackHandler(BaseCallbackHandler):
     """Callback handler for streaming. Only works with LLMs that support streaming."""
     def __init__(self,wsclient:str,msgid:str,connectionId:str ,model_name:str,hide_ref:bool,use_stream:bool, **kwargs: Any) -> None:
@@ -205,123 +191,12 @@ class CustomStreamingOutCallbackHandler(BaseCallbackHandler):
             data = json.dumps({ 'msgid':self.msgid, 'role': "AI", 'text': {'content':f'{text}'},'connectionId':self.connectionId })
             self.postMessage(data)
 
-        
-
     def on_chain_error(
         self, error: Union[Exception, KeyboardInterrupt], **kwargs: Any
     ) -> None:
         data = json.dumps({ 'msgid':self.msgid, 'role': "AI", 'text': {'content':str(error[0])+'[DONE]'},'connectionId':self.connectionId})
         self.postMessage(data)
 
-class SagemakerStreamContentHandler(LLMContentHandler):
-    content_type: Optional[str] = "application/json"
-    accepts: Optional[str] = "application/json"
-    callbacks:BaseCallbackHandler
-    class Config:
-        """Configuration for this pydantic object."""
-        extra = Extra.forbid
-    
-    def __init__(self,callbacks:BaseCallbackHandler,**kwargs) -> None:
-        super().__init__(**kwargs)
-        self.callbacks = callbacks
- 
-    def transform_input(self, prompt: str, model_kwargs: Dict) -> bytes:
-        input_str = json.dumps({'inputs': prompt,**model_kwargs})
-        # logger.info(f'transform_input:{input_str}')
-        return input_str.encode('utf-8')
-    
-    def transform_output(self, event_stream: Any) -> str:
-        scanner = StreamScanner()
-        text = ''
-        for event in event_stream:
-            scanner.write(event['PayloadPart']['Bytes'])
-            for line in scanner.readlines():
-                try:
-                    resp = json.loads(line)
-                    token = resp.get("outputs")['outputs']
-                    text += token
-                    for stop in STOP: ##如果碰到STOP截断
-                        if text.endswith(stop):
-                            self.callbacks.on_llm_end(None)
-                            text = text.rstrip(stop)
-                            return text
-                    self.callbacks.on_llm_new_token(token)
-                    # print(token, end='')
-                except Exception as e:
-                    # print(line)
-                    continue
-        self.callbacks.on_llm_end(None)
-        return text
-    
-class SagemakerStreamEndpoint(LLM):
-    endpoint_name: str = ""
-    region_name: str = ""
-    content_handler: LLMContentHandler
-    model_kwargs: Optional[Dict] = None
-    endpoint_kwargs: Optional[Dict] = None
-    class Config:
-        """Configuration for this pydantic object."""
-        extra = Extra.forbid
-    
-    @root_validator()
-    def validate_environment(cls, values: Dict) -> Dict:
-        """Validate that AWS credentials to and python package exists in environment."""
-        try:
-            session = boto3.Session()
-            values["client"] = session.client(
-                "sagemaker-runtime", region_name=values["region_name"]
-            )
-        except Exception as e:
-            raise ValueError(
-                "Could not load credentials to authenticate with AWS client. "
-                "Please check that credentials in the specified "
-                "profile name are valid."
-            ) from e
-        return values
-    
-    @property
-    def _identifying_params(self) -> Mapping[str, Any]:
-        """Get the identifying parameters."""
-        _model_kwargs = self.model_kwargs or {}
-        return {
-            **{"endpoint_name": self.endpoint_name},
-            **{"model_kwargs": _model_kwargs},
-        }
-
-    @property
-    def _llm_type(self) -> str:
-        """Return type of llm."""
-        return "sagemaker_stream_endpoint"
-    
-    def _call(
-        self,
-        prompt: str,
-        stop: Optional[List[str]] = None,
-        run_manager: Optional[CallbackManagerForLLMRun] = None,
-        **kwargs: Any,
-    ) -> str:
-        _model_kwargs = self.model_kwargs or {}
-        _model_kwargs = {**_model_kwargs, **kwargs}
-        _endpoint_kwargs = self.endpoint_kwargs or {}
-
-        body = self.content_handler.transform_input(prompt, _model_kwargs)
-        content_type = self.content_handler.content_type
-        accepts = self.content_handler.accepts
-
-        # send request
-        try:
-            response = self.client.invoke_endpoint_with_response_stream(
-                EndpointName=self.endpoint_name,
-                Body=body,
-                ContentType=content_type,
-                Accept=accepts,
-                **_endpoint_kwargs,
-            )
-        except Exception as e:
-            raise ValueError(f"Error raised by inference endpoint: {e}")
-        text = self.content_handler.transform_output(response["Body"])
-        return text
-       
 class ContentHandler(EmbeddingsContentHandler):
     parameters = {
         "max_new_tokens": 50,
@@ -336,15 +211,6 @@ class ContentHandler(EmbeddingsContentHandler):
     def transform_output(self, output: bytes) -> List[List[float]]:
         response_json = json.loads(output.read().decode("utf-8"))
         return response_json["sentence_embeddings"]
-
-class llmContentHandler(LLMContentHandler):
-    def transform_input(self, prompt: str, model_kwargs: Dict) -> bytes:
-        input_str = json.dumps({'inputs': prompt,**model_kwargs})
-        return input_str.encode('utf-8')
-    
-    def transform_output(self, output: bytes) -> str:
-        response_json = json.loads(output.read().decode("utf-8"))
-        return response_json["outputs"]
 
 class CustomDocRetriever(BaseRetriever):
     embedding_model_endpoint :str
@@ -493,14 +359,16 @@ class CustomDocRetriever(BaseRetriever):
         return nodup
 
     def get_relevant_documents_from_bedrock(self, knowledge_base_id:str, query_input:str):
+        BEDROCK_RETRIEVE_LIMIT=1000
         response = knowledgebase_client.retrieve(
             knowledgeBaseId=knowledge_base_id,
             retrievalQuery={
-                'text': query_input
+                'text': query_input[:BEDROCK_RETRIEVE_LIMIT]
             },
             retrievalConfiguration={
                 'vectorSearchConfiguration': {
-                    'numberOfResults': TOP_K 
+                    'numberOfResults': TOP_K,
+                    'overrideSearchType': 'HYBRID',
                 }
             },
         )
@@ -508,9 +376,17 @@ class CustomDocRetriever(BaseRetriever):
         def remove_s3_prefix(s3_path):
             return '/'.join(s3_path.split('/', 3)[3:])
 
-        ret = [ {'idx': 1, 'rank_score':0, 'doc_classify':'-', 'doc_author':'-', 'doc_category': '-', 'doc_type':'Paragraph', 'doc':item['content']['text'],'score':item['score'], 'doc_title': remove_s3_prefix(item['location']['s3Location']['uri']) } for item in response['retrievalResults']]
-
-        return ret
+        all_docs = [ {'idx': 1, 'rank_score':0, 'doc_classify':'-', 'doc_author':'-', 'doc_category': '-', 'doc_type':'Paragraph', 'doc':item['content']['text'],'score':item['score'], 'doc_title': remove_s3_prefix(item['location']['s3Location']['uri']) } for item in response['retrievalResults']]
+        cross_model_endpoint = CROSS_MODEL_ENDPOINT
+        if cross_model_endpoint:
+            if all_docs:
+                scores = self.rerank(query_input, all_docs, sm_client, cross_model_endpoint)
+                sorted_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=False)
+                recall_knowledge = [{**all_docs[idx],'rank_score':scores[idx] } for idx in sorted_indices[-TOP_K:] ]
+                recall_knowledge = [item for item in recall_knowledge if item['rank_score'] >= RERANK_THRESHOLD]
+                return recall_knowledge
+        
+        return all_docs
     
     def get_websearch_documents(self, query_input: str) -> list:
         # 使用agent方式速度比较慢，直接改成调用search api
@@ -991,7 +867,7 @@ def update_session(session_id,user_id,msgid, question, answer, intention):
     timestamp_str = str(datetime.now())
     expire_at = int(time.time())+3600*24*SESSION_EXPIRES_DAYS #session expires in 1 days 
     
-    chat_history = [item for item in chat_history if len(item) >=6 and item[5] < int(time.time())]
+    chat_history = [item for item in chat_history if len(item) >=6 and item[5] > int(time.time())]
     
     chat_history.append([question, answer, intention,msgid,timestamp_str,expire_at])
     content = json.dumps(chat_history,ensure_ascii=False)
@@ -1067,6 +943,13 @@ def get_chat_history(inputs) -> str:
         res.append(f"{A_Role}:{human}\n{B_Role}:{ai}")
     return "\n".join(res)
 
+def history_to_messages(inputs) -> str:
+    res = []
+    for human, ai in inputs:
+        res.append({ "role" : "user", "content" : human})
+        res.append({ "role" : "assistant", "content" : ai})
+    return res
+
 def create_qa_prompt_templete(prompt_template):
     if prompt_template == '':
         prompt_template_zh = \
@@ -1088,14 +971,14 @@ Once again, the user's query is:
 {question}
 </query>
 
-Please put your answer between <response> tags and follow below requirements:{ask_user_prompt}
+Please follow below requirements:{ask_user_prompt}
 - Respond in the original language of the question.
 - Please try you best to leverage the image and hyperlink provided in <information>, you need to keep them in Markdown format.
 - Do not directly reference the content of <information> in your answer.
 - Skip the preamble, go straight into the answer. The answers will strictly be based on relevant knowledge in <information>.
 - if the information is empty or not relevant to user's query, then reponse don't know.
 
-Assistant: <response>"""
+Assistant:"""
     else:
         prompt_template_zh = prompt_template + '{ask_user_prompt}'
     PROMPT = PromptTemplate(
@@ -1137,8 +1020,8 @@ def create_chat_prompt_templete(prompt_template='', llm_model_name='claude'):
 <history> {chat_history} </history>
 Here is the user’s question: <question> {question} </question>
 How do you respond to the user’s question?
-Think about your answer first before you respond. Put your response in <response></response> tags.
-Assistant: <response>"""
+Think about your answer first before you respond.
+Assistant:"""
         PROMPT = PromptTemplate(
             template=prompt_template_zh, 
             partial_variables={'system_role_prompt':SYSTEM_ROLE_PROMPT},
@@ -1215,7 +1098,7 @@ def get_reply_stratgy(recall_knowledge,refuse_strategy:str):
             
             
 def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:str, embedding_model_endpoint:str, llm_model_endpoint:str, llm_model_name:str, aos_endpoint:str, aos_index:str, aos_knn_field:str, aos_result_num:int, kendra_index_id:str, 
-                   kendra_result_num:int,use_qa:bool,wsclient=None,msgid:str='',max_tokens:int = 2048,temperature:float = 0.1,template:str = '',imgurl:str = None,multi_rounds:bool = False, hide_ref:bool = False,use_stream:bool=False,example_index:str='chatbot-example-index',use_search:bool=True,refuse_strategy:str = 'LLM_ONLY',refuse_answer:str = ''):
+                   kendra_result_num:int,use_qa:bool,wsclient=None,msgid:str='',max_tokens:int = 2048,temperature:float = 0.1,template:str = '',images_base64:List[str] = None,multi_rounds:bool = False, hide_ref:bool = False,use_stream:bool=False,example_index:str='chatbot-example-index',use_search:bool=True,refuse_strategy:str = 'LLM_ONLY',refuse_answer:str = ''):
     """
     Entry point for the Lambda function.
 
@@ -1262,69 +1145,22 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
     
     logger.info("llm_model_name : {} ,use_stream :{}".format(llm_model_name,use_stream))
     llm = None
+
+
     stream_callback = CustomStreamingOutCallbackHandler(wsclient,msgid, wsconnection_id,llm_model_name,hide_ref,use_stream)
+
+    params = {
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+        "top_p":0.95
+    }
+
     if llm_model_name.startswith('claude'):
-        # ACCESS_KEY, SECRET_KEY=get_bedrock_aksk()
-
-        parameters = {
-            "max_tokens_to_sample": max_tokens,
-            "stop_sequences":STOP,
-            "temperature":temperature,
-            "top_p":0.95
-        }
-
-        model_id = BEDROCK_LLM_MODELID_LIST[llm_model_name] if llm_model_name == 'claude-instant' else BEDROCK_LLM_MODELID_LIST['claude-v2']
-
-        llm = Bedrock(model_id=model_id, 
-                      client=boto3_bedrock,
-                      streaming=use_stream,
-                      callbacks=[stream_callback],
-                        model_kwargs=parameters)
-
-    elif llm_model_name.startswith('gpt-3.5-turbo'):
-        global openai_api_key
-        llm=ChatOpenAI(model = llm_model_name,
-                       openai_api_key = openai_api_key,
-                       streaming = use_stream,
-                       callbacks=[stream_callback],
-                       temperature = temperature)
-        
-    elif use_stream:
-        parameters = {
-                "max_length": max_tokens,
-                "temperature": temperature,
-                "top_p":0.95
-                }
-        llmcontent_handler = SagemakerStreamContentHandler(
-            callbacks=stream_callback
-            )
-
-        model_kwargs={'parameters':parameters,'history':[],'image':imgurl,'stream':use_stream}
-        logging.info(f"model_kwargs:{model_kwargs}")
-        llm = SagemakerStreamEndpoint(endpoint_name=llm_model_endpoint, 
-                region_name=region, 
-                model_kwargs=model_kwargs,
-                content_handler=llmcontent_handler,
-                endpoint_kwargs={'CustomAttributes':'accept_eula=true'} ##for llama2
-                )
+        model_id = BEDROCK_LLM_MODELID_LIST.get(llm_model_name, BEDROCK_LLM_MODELID_LIST['claude-v3-sonnet'])
     else:
-        parameters = {
-            "max_length": max_tokens,
-            "temperature": temperature,
-            "top_p":0.95
-        }
+        model_id = llm_model_endpoint
 
-        model_kwargs={'parameters':parameters,'history':[],'image':imgurl}
-        logging.info(f"model_kwargs:{model_kwargs}")
-        llmcontent_handler = llmContentHandler()
-        llm=SagemakerEndpoint(
-                endpoint_name=llm_model_endpoint, 
-                region_name=region, 
-                model_kwargs=model_kwargs,
-                content_handler=llmcontent_handler,
-                endpoint_kwargs={'CustomAttributes':'accept_eula=true'} ##for llama2
-            )
-    
+    llm = get_langchain_llm_model(model_id, params, region, llm_stream=use_stream, llm_callbacks=[])
     
     # 1. get_session
     start1 = time.time()
@@ -1349,17 +1185,16 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
         query_input = rewrite_query(origin_query, session_history, round_cnt=3)
         elpase_time_rewrite = time.time() - before_rewrite
 
-        chat_history=''
-        TRACE_LOGGER.trace(f'**Rewrite: {origin_query} => {query_input}, elpase_time:{elpase_time_rewrite}**')
+        chat_history_msgs=[]
+        TRACE_LOGGER.trace(f'**Rewrite: {origin_query} => {query_input}, elpase_time:{elpase_time_rewrite:.3f}**')
         logger.info(f'Rewrite: {origin_query} => {query_input}')
         #add history parameter
-        if isinstance(llm,SagemakerStreamEndpoint) or isinstance(llm,SagemakerEndpoint):
-            chat_history=''
-            llm.model_kwargs['history'] = chat_coversions[-2:]
-        else:
-            chat_history= get_chat_history(chat_coversions[-2:])
+
+        chat_history= get_chat_history(chat_coversions[-2:])
+        chat_history_msgs= history_to_messages(chat_coversions[-2:])
     else:
-        chat_history=''
+        chat_history = ''
+        chat_history_msgs= []
 
 
     
@@ -1432,10 +1267,20 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
         prompt_template = None
         answer = ''
 
+        # for message api
+        sys_msg = {"role": "system", "content": SYSTEM_ROLE_PROMPT } if SYSTEM_ROLE_PROMPT else None
+        msg_list = [sys_msg, *chat_history_msgs] if sys_msg else [*chat_history_msgs]
+        msg = format_to_message(query=origin_query, image_base64_list=images_base64)
+        msg_list.append(msg)
+
+        # for prompt api
         prompt_template = create_chat_prompt_templete(llm_model_name=llm_model_name)
-        llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
-        answer = llmchain.run({'question':origin_query,'chat_history':chat_history,'role_bot':B_Role})
-        final_prompt = prompt_template.format(question=origin_query,role_bot=B_Role,chat_history=chat_history)
+        prompt = prompt_template.format(question=origin_query,role_bot=B_Role,chat_history=chat_history)
+
+        ai_reply = invoke_model(llm=llm, prompt=prompt, messages=msg_list, callbacks=[stream_callback])
+
+        final_prompt = json.dumps(msg_list,ensure_ascii=False)
+        answer = ai_reply.content
         
         recall_knowledge,opensearch_knn_respose,opensearch_query_response = [],[],[]
 
@@ -1505,18 +1350,31 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
                 TRACE_LOGGER.postMessage(answer)
                 
         elif reply_stratgy == ReplyStratgy.LLM_ONLY: ##走LLM默认知识
-            prompt_template = create_chat_prompt_templete()
-            hide_ref= True ## 隐藏ref doc
-            llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
-            ##最终的answer
-            answer = llmchain.run({'question':query_input,'chat_history':chat_history,'role_bot':B_Role})
-            ##最终的prompt日志
-            final_prompt = prompt_template.format(question=query_input,role_bot=B_Role,chat_history=chat_history)    
-            recall_knowledge = []
+            # prompt_template = create_chat_prompt_templete()
+            # hide_ref= True ## 隐藏ref doc
+            # llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
+            # ##最终的answer
+            # answer = llmchain.run({'question':query_input,'chat_history':chat_history,'role_bot':B_Role})
+            # ##最终的prompt日志
+            
+            # for message api
+            sys_msg = {"role": "system", "content": SYSTEM_ROLE_PROMPT } if SYSTEM_ROLE_PROMPT else None
+            msg_list = [sys_msg, *chat_history_msgs] if sys_msg else [*chat_history_msgs]
+            msg = format_to_message(query=origin_query, image_base64_list=images_base64)
+            msg_list.append(msg)
+
+            # for prompt api
+            prompt_template = create_chat_prompt_templete(llm_model_name=llm_model_name)
+            prompt = prompt_template.format(question=origin_query,role_bot=B_Role,chat_history=chat_history)
+
+            ai_reply = invoke_model(llm=llm, prompt=prompt, messages=msg_list, callbacks=[stream_callback])
+
+            final_prompt = json.dumps(msg_list,ensure_ascii=False)
+            answer = ai_reply.content
             
         else:      
             prompt_template = create_qa_prompt_templete(template)
-            llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
+            # llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
 
             # context = "\n".join([doc['doc'] for doc in recall_knowledge])
             context, multi_choice_field = format_knowledges(recall_knowledge)
@@ -1525,15 +1383,20 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
             if len(ask_user_prompts_str) > 0:
                 ask_user_prompts_str = f"\n{ask_user_prompts_str}\n"
 
-            chat_history = '' ##QA 场景下先不使用history
-            ##最终的answer
             try:
-                answer = llmchain.run({'question':query_input,'context':context,'chat_history':chat_history,'role_bot':B_Role, 'ask_user_prompt':ask_user_prompts_str })
+                chat_history = '' ##QA 场景下先不使用history
+                prompt = prompt_template.format(question=query_input,role_bot=B_Role,context=context,chat_history=chat_history,ask_user_prompt=ask_user_prompts_str)
+                
+                sys_msg = {"role": "system", "content": SYSTEM_ROLE_PROMPT } if SYSTEM_ROLE_PROMPT else None
+                msg_list = [sys_msg, *chat_history_msgs] if sys_msg else [*chat_history_msgs]
+                msg = format_to_message(query=prompt, image_base64_list=images_base64)
+                msg_list.append(msg)
+
+                ai_reply = invoke_model(llm=llm, prompt=prompt, messages=msg_list, callbacks=[stream_callback])
+                final_prompt = json.dumps(msg_list,ensure_ascii=False)
+                answer = ai_reply.content
             except Exception as e:
                 answer = str(e)
-            ##最终的prompt日志
-            final_prompt = prompt_template.format(question=query_input,role_bot=B_Role,context=context,chat_history=chat_history,ask_user_prompt=ask_user_prompts_str)
-            # print(final_prompt)
     else:
         #call agent for other intentions
         TRACE_LOGGER.trace('**Using Agent...**')
@@ -1590,7 +1453,19 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
     logger.info(f'running time of all  : {elpase_time1}s seconds')
     return answer,ref_text,use_stream,query_input,opensearch_query_response,opensearch_knn_respose,recall_knowledge
 
-
+def get_s3_image_base64(bucket_name, key):
+    # Create an S3 client
+    s3 = boto3.client('s3')
+    # Get the object from S3
+    try:
+        response = s3.get_object(Bucket=bucket_name, Key=key)
+        image_data = response['Body'].read()
+        # Encode the image data as base64
+        base64_image = base64.b64encode(image_data).decode('utf-8')
+        return base64_image
+    except Exception as e:
+        print(f"Error getting object from S3: {e}")
+        return None
 
 def generate_s3_image_url(bucket_name, key, expiration=3600):
     s3_client = boto3.client('s3')
@@ -1659,15 +1534,16 @@ def lambda_handler(event, context):
     refuse_answer = event.get('refuse_answer','对不起，我不太清楚这个问题，请问问人工吧')
         
     
-    imgurl = event.get('imgurl')
+    imgurls = event.get('imgurl')
     image_path = ''
-    if imgurl:
-        if imgurl.startswith('https://'):
-            image_path = imgurl
-        else:
+    images_base64 = []
+    if imgurls:
+        logger.info(f"imgurls:{imgurls}")
+        for imgurl in imgurls:
             bucket,imgobj = imgurl.split('/',1)
-            image_path = generate_s3_image_url(bucket,imgobj)
-        logger.info(f"image_path:{image_path}")
+            # image_path = generate_s3_image_url(bucket,imgobj)
+            image_base64 = get_s3_image_base64(bucket,imgobj)
+            images_base64.append(image_base64)
 
     ## 用于trulength接口，只返回recall 知识
     if retrieve_only:
@@ -1736,12 +1612,17 @@ def lambda_handler(event, context):
     logger.info(f'intention list: {INTENTION_LIST}')
     logger.info(f'refuse_strategy: {refuse_strategy}')
     logger.info(f'refuse_answer: {refuse_answer}')
+    
+    ##if aos and bedrock kb are null then set use_qa = false
+    if not aos_endpoint and not KNOWLEDGE_BASE_ID:
+        use_qa = False
+        logger.info(f'force set use_qa: {use_qa}')
+        
     global TRACE_LOGGER
     TRACE_LOGGER = TraceLogger(wsclient=wsclient,msgid=msgid,connectionId=wsconnection_id,stream=use_stream,use_trace=use_trace,hide_ref=hide_ref)
-
     main_entry_start = time.time()  # 或者使用 time.time_ns() 获取纳秒级别的时间戳
     answer,ref_text,use_stream,query_input,opensearch_query_response,opensearch_knn_respose,recall_knowledge = main_entry_new(user_id,wsconnection_id,session_id, question, embedding_endpoint, llm_endpoint, model_name, aos_endpoint, aos_index, aos_knn_field, aos_result_num,
-                       Kendra_index_id, Kendra_result_num,use_qa,wsclient,msgid,max_tokens,temperature,prompt_template,image_path,multi_rounds,hide_ref,use_stream,example_index,use_search,refuse_strategy,refuse_answer)
+                       Kendra_index_id, Kendra_result_num,use_qa,wsclient,msgid,max_tokens,temperature,prompt_template,images_base64,multi_rounds,hide_ref,use_stream,example_index,use_search,refuse_strategy,refuse_answer)
     main_entry_elpase = time.time() - main_entry_start  # 或者使用 time.time_ns() 获取纳秒级别的时间戳
     logger.info(f'running time of main_entry : {main_entry_elpase}s seconds')
     if use_stream: ##只有当stream输出时，把这条trace放到最后一个chunk
