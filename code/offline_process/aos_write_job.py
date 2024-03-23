@@ -251,7 +251,7 @@ def iterate_QA(file_content, object_key,doc_classify,smr_client, index_name, end
         answers = [ item['Answer'] for item in batch ]
         doc_type_list = [ item.get('doc_type', None) for item in batch ]
         meta = [ { k:item[k] for k in item.keys() if k not in ['Question', 'Answer', 'Author'] } for item in batch ]
-        docs = [ item['Answer'] if item['doc_type'].startswith('Nochunk') else doc_template.format(item['Question'], item['Answer']) for item in batch ]
+        docs = [ item['Answer'] if item.get('doc_type', None) and item['doc_type'].startswith('Nochunk') else doc_template.format(item['Question'], item['Answer']) for item in batch ]
         authors = [item.get('Author')  for item in batch ]
         embeddings_q = get_embedding(smr_client, questions, endpoint_name)
         embeddings_a = get_embedding(smr_client, answers, endpoint_name)

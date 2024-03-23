@@ -17,9 +17,10 @@ def lambda_handler(event, context):
     
     print("**** in lambda bucket: " + bucket)
     print("**** in lambda object_key: " + object_key)
-    print("**** in lambda publish_date: " + object_key)
+    print("**** in lambda publish_date: " + publish_date)
+    print("**** in lambda company: " + company)
 
-    glue.start_job_run(JobName=JOBNAME, Arguments={"--bucket": bucket, "--object_key": object_key, "--EMB_MODEL_ENDPOINT": embedding_endpoint, "--PUBLISH_DATE": publish_date, "--COMPANY" : company})
+    glue.start_job_run(JobName=JOBNAME, Arguments={"--bucket": bucket, "--object_key": object_key, "--EMB_MODEL_ENDPOINT": embedding_endpoint, "--PUBLISH_DATE": publish_date, "--company" : company})
 
     return {
         'statusCode': 200,
