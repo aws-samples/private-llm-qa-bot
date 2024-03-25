@@ -1610,7 +1610,7 @@ def lambda_handler(event, context):
     B_Role = event.get('system_role',B_Role)
     # SYSTEM_ROLE_PROMPT = event.get('system_role_prompt',SYSTEM_ROLE_PROMPT)
     # Only For Mihoyo POC
-    SYSTEM_ROLE_PROMPT = 'You are a customer service AI Assistant for Mihoyo'
+    SYSTEM_ROLE_PROMPT = 'You are a customer service AI Assistant for HoYoverse'
     
     logger.info(f'system_role:{B_Role},system_role_prompt:{SYSTEM_ROLE_PROMPT}')
 
