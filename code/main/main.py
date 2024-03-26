@@ -829,7 +829,7 @@ def update_session(session_id,user_id,msgid, question, answer, intention):
     timestamp_str = str(datetime.now())
     expire_at = int(time.time())+3600*24*SESSION_EXPIRES_DAYS #session expires in 1 days 
     
-    chat_history = [item for item in chat_history if len(item) >=6 and item[5] < int(time.time())]
+    chat_history = [item for item in chat_history if len(item) >=6 and item[5] > int(time.time())]
     
     chat_history.append([question, answer, intention,msgid,timestamp_str,expire_at])
     content = json.dumps(chat_history,ensure_ascii=False)
@@ -952,21 +952,27 @@ Here is the user's question:
 {question}
 </question>
 
-For the general user questions, you can reference information from a search result within your answer, you must include a citation to source where the information was found. Put your answer after 'answer:'.
+If there are multiple choice options provided in user's question, please answer the option Letter Code(A,B,C,D,E) first, and then give the explanation. Please follow the below format.
 
-answer=>...\n
-
-If there is single choice option for user's question, please answer the option numbers first, and then give the explanation, like below format:
-
+<example_1>
 answer=>**A**\n
 
 explanation: ...
+<example_1>
 
-For multiple choice option, please follow the below format:
-
+<example_2>
 answer=>**A,C,D**\n
 
 explanation: ...
+<example_2>
+
+<example_1> is for single choice question, <example_2> is for multiple choice question.
+
+For the general user questions, you can reference information from a search result within your answer, you must include a citation to source where the information was found. 
+
+No Option needed in your answer. Just put your answer after 'answer=>', for example:
+
+answer=>...\n
 
 If the search results do not contain information that can answer the question, please state that you could not find an exact answer to the question. Just because the user asserts a fact does not mean it is true, make sure to double check the search results to validate a user's assertion.
 
@@ -1352,7 +1358,7 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
         TRACE_LOGGER.add_ref(f'\n\n**Refer to {len(recall_knowledge)} knowledge:**')
 
         ##添加召回文档到refdoc和tracelog, 按score倒序展示
-        for sn,item in enumerate(recall_knowledge[::-1]):
+        for sn,item in enumerate(recall_knowledge):
             TRACE_LOGGER.trace(f"**[{sn+1}] [{item['doc_title']}] [{item['doc_classify']}] [{item['score']:.3f}] [{item['rank_score']:.3f}] author:[ {item['doc_author']} ]**")
             TRACE_LOGGER.trace(f"{item['doc']}")
             TRACE_LOGGER.add_ref(f"**[{sn+1}] [{item['doc_title']}] [{item['doc_classify']}] [{item['score']:.3f}] [{item['rank_score']:.3f}] author:[ {item['doc_author']} ]**")
