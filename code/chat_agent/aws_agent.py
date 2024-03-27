@@ -141,7 +141,7 @@ Please put your answer between <response> tags and follow below requirements:
 2. If there is no relevant information in message, you should reply user that you can't find any information by his original question, don't say anything else.
 3. if suggestion is provided and is not empty, you should suggest user to ask by referring suggestion. If no suggestion is empty, don't say anything else.
 4. Do not begin with phrases like "API", skip the preamble, go straight into the answer. 
-Assistant: <response>"""
+"""
 
 class AgentTools(BaseModel):
     function_map: dict = {}
@@ -238,12 +238,12 @@ class AgentTools(BaseModel):
             )
         prompt = prompt_template.format(context=context, question=query)
         # llmchain = LLMChain(llm=cls.llm,verbose=False,prompt = prompt)
-        msg_list = [format_to_message(query=prompt)]
+        msg_list = [ format_to_message(query=prompt), {"role":"assistant", "content": "<response>"}]
         ai_reply = invoke_model(llm=cls.llm, prompt=prompt, messages=msg_list)
         answer = ai_reply.content
         logger.info(f'llm input:{prompt}')
         # answer = llmchain.run({'context':context, "question": query})
-        # answer = answer.replace('</answer>','').strip()
+        answer = answer.replace('</response>','').strip()
         return answer
 
     def run(cls,query) ->Dict[str,str]:
@@ -334,11 +334,6 @@ def lambda_handler(event, context):
     logger.info("params:{}".format(params))
     logger.info("llm_model_endpoint:{}".format(llm_model_endpoint))
 
-    parameters = {
-        "temperature": 0.01,
-         "stop": ["</response>"],
-    }
-
     # llm = None
     # if not use_bedrock:
     #     logger.info(f'not use bedrock, use {llm_model_endpoint}')
@@ -366,8 +361,9 @@ def lambda_handler(event, context):
     #     llm = Bedrock(model_id=model_id, client=boto3_bedrock, model_kwargs=parameters)
     
     parameters = {
-        "temperature":0.0,
-        "top_p":0.95
+        "temperature":0.01,
+        "top_p":0.95,
+        "stop": ["</response>"],
     }
     
     if llm_model_endpoint.startswith('claude') or llm_model_endpoint.startswith('anthropic'):

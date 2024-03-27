@@ -170,11 +170,11 @@ class llmContentHandler(LLMContentHandler):
 #     return PROMPT
 
 def create_detect_prompt_templete():
-    prompt_template = """Here is a list of aimed functions:\n\n<api_schemas>{api_schemas}</api_schemas>\n\nYou should follow below examples to choose the corresponding function and params according to user's query\n\n<examples>{examples}</examples>\n\nAssistant:<query>{query}</query>\n<output>{prefix}"""
+    prompt_template = """Here is a list of aimed functions:\n\n<api_schemas>{api_schemas}</api_schemas>\n\nYou should follow below examples to choose the corresponding function and params according to user's query\n\n<examples>{examples}</examples>\n\n"""
 
     PROMPT = PromptTemplate(
         template=prompt_template, 
-        input_variables=['api_schemas','examples', 'query', 'prefix']
+        input_variables=['api_schemas','examples']
     )
     return PROMPT
 
@@ -284,9 +284,9 @@ def lambda_handler(event, context):
     #     llm = Bedrock(model_id=llm_model_endpoint, client=boto3_bedrock, model_kwargs=parameters)
     
     parameters = {
-        "max_tokens_to_sample": 50,
+        "max_tokens": 50,
         "stop": ["</output>"],
-        "temperature":0.0,
+        "temperature":0.01,
         "top_p":0.95
     }
     
@@ -299,10 +299,11 @@ def lambda_handler(event, context):
     
     prompt_template = create_detect_prompt_templete()
     prefix = """{"func":"""
+    prefill = """<query>{query}</query>\n<output>{prefix}""".format(query=query, prefix=prefix)
 
-    prompt = prompt_template.format(api_schemas=api_schema_str, examples=example_list_str, query=query, prefix=prefix)
+    prompt = prompt_template.format(api_schemas=api_schema_str, examples=example_list_str)
     msg = format_to_message(query=prompt)
-    msg_list = [msg]
+    msg_list = [msg, {"role":"assistant", "content": prefill}]
     ai_reply = invoke_model(llm=llm, prompt=prompt, messages=msg_list)
     final_prompt = json.dumps(msg_list,ensure_ascii=False)
     answer = ai_reply.content

@@ -148,33 +148,33 @@ def iterate_paragraph(file_content, object_key, doc_classify,smr_client, index_n
         chunk_overlap  = CHUNK_OVERLAP,
         length_function = len,
     )
-    def chunk_generator(json_arr):
-        for idx, json_item in enumerate(json_arr):
-            header = ""
-            if len(json_item['heading']) > 0:
-                header = json_item['heading'][0]['heading']
-
-            paragraph_content = json_item['content']
-            if len(paragraph_content) > 1024 or len(paragraph_content) < Sentence_Len_Threshold:
-                continue
-
-            yield (idx, paragraph_content, 'Paragraph', paragraph_content)
-
-            sentences = re.split('[。？?.！!]', paragraph_content)
-            for sent in (sent for sent in sentences if len(sent) > Sentence_Len_Threshold): 
-                yield (idx, sent, 'Sentence', paragraph_content)
-
     # def chunk_generator(json_arr):
-    #     idx = 0
-    #     texts = []
-    #     for json_item in json_arr:
+    #     for idx, json_item in enumerate(json_arr):
     #         header = ""
     #         if len(json_item['heading']) > 0:
     #             header = json_item['heading'][0]['heading']
-    #         texts += text_splitter.split_text(f"{header}-{json_item['content']}")
-    #         for paragraph_content in texts:
-    #             idx += 1
-    #             yield (idx, paragraph_content, 'Paragraph', paragraph_content)
+
+    #         paragraph_content = json_item['content']
+    #         if len(paragraph_content) > 1024 or len(paragraph_content) < Sentence_Len_Threshold:
+    #             continue
+
+    #         yield (idx, paragraph_content, 'Paragraph', paragraph_content)
+
+    #         sentences = re.split('[。？?.！!]', paragraph_content)
+    #         for sent in (sent for sent in sentences if len(sent) > Sentence_Len_Threshold): 
+    #             yield (idx, sent, 'Sentence', paragraph_content)
+
+    def chunk_generator(json_arr):
+        idx = 0
+        texts = []
+        for json_item in json_arr:
+            header = ""
+            if len(json_item['heading']) > 0:
+                header = json_item['heading'][0]['heading']
+            texts += text_splitter.split_text(f"{header}-{json_item['content']}")
+            for paragraph_content in texts:
+                idx += 1
+                yield (idx, paragraph_content, 'Paragraph', paragraph_content)
 
     generator = chunk_generator(json_arr)
     batches = batch_generator(generator, batch_size=EMB_BATCH_SIZE)
