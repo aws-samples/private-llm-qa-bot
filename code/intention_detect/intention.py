@@ -284,7 +284,7 @@ def lambda_handler(event, context):
     #     llm = Bedrock(model_id=llm_model_endpoint, client=boto3_bedrock, model_kwargs=parameters)
     
     parameters = {
-        "max_tokens": 50,
+        "max_tokens": 1000,
         "stop": ["</output>"],
         "temperature":0.01,
         "top_p":0.95
