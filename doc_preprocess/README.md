@@ -1,5 +1,3 @@
-
-
 ### 知识 - 标准中间格式
 在知识构造的过程中，所有原始格式的文档，都需要考虑转换到一种统一的知识格式，方便后续进行知识的注入和召回优化。
 
@@ -61,6 +59,24 @@
 
 
 
+### PDF按分页转换为Markdown
+
+- 基于Claude3的视觉能力方法 (英文文档友好)
+  需要配置好aws的aksk，具备bedrock的执行权限
+  ```
+  pip install pdf2image -U
+  python pdf2markdown.py --input_path "./PDF"  --output_path "./output" --region_name "us-west-2"
+  ```
+- 基于其他方案的识别方法 (中文文档相对友好)
+  https://github.com/aws-samples/llm-bot
+
+
+### Markdown转化成FAQ格式(NoChunk)
+  ```
+  python enhance_markdown_claude3.py --input_path "./PDF"  --output_path "./output" --region_name "us-west-2"
+  ```
+
+
 ### 从长文档提取FAQ
 
 - 适应场景
@@ -74,8 +90,6 @@
     # 输入的input_file 为纯文本文件，可以是txt，也可以是markdown
     python Enhance_Doc_Bedrock.py --input_file input.txt --output_file output.json
     ```
-
-
 
 ### OpenSource doc spliter(表格信息提取，需要结合OCR自行实现)
 
