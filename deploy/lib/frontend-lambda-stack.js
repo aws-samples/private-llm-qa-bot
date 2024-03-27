@@ -49,6 +49,8 @@ export class LambdaStack extends NestedStack {
     const agents_table = props.agents_table;
     const prompt_hub_table = props.prompt_hub_table;
     const model_hub_table = props.model_hub_table;
+    const feedback_us_table = props.feedback_us_table;
+
     this.handlersMap = new Map();
 
     const createNodeJsLambdaFn = (scope, path, index_fname, api, envProps) => {
@@ -238,6 +240,17 @@ export class LambdaStack extends NestedStack {
     })
     model_hub_table.grantReadWriteData(this.lambda_model_hub);
 
+    // feedback us 管理函数
+    this.lambda_feedback_us = new lambda.Function(this, 'lambda_feedback_us',{
+      code: lambda.Code.fromAsset('lambda/lambda_feedback_us'),
+      handler: 'app.handler',
+      runtime: lambda.Runtime.PYTHON_3_10,
+      timeout: Duration.minutes(3),
+      environment: {
+      },
+      memorySize: 256,
+    })
+    feedback_us_table.grantReadWriteData(this.lambda_feedback_us);
 
     // doc_index_table.grantReadWriteData(this.lambda_list_idx )
     const bucket = s3.Bucket.fromBucketName(this, 'DocUploadBucket',process.env.UPLOAD_BUCKET);
@@ -338,6 +351,14 @@ export class LambdaStack extends NestedStack {
      model_hub.addMethod('GET',modelHubIntegration,{authorizer});
      model_hub.addResource("{id}").addMethod("GET",modelHubIntegration,{authorizer});
 
+    // feedback us api
+    const feedbackUsIntegration = new LambdaIntegration(this.lambda_feedback_us );
+    const feedback_us = api.root.addResource('feedback_us');
+    feedback_us.addMethod('POST',feedbackUsIntegration,{authorizer});
+    feedback_us.addMethod('DELETE',feedbackUsIntegration,{authorizer});
+    feedback_us.addMethod('GET',feedbackUsIntegration,{authorizer});
+    feedback_us.addResource("{id}").addMethod("GET",feedbackUsIntegration,{authorizer});
+     
     const loginIntegration = new LambdaIntegration(this.login_fn);
     const login = api.root.addResource("login");
     login.addMethod("POST", loginIntegration);
