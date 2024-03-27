@@ -1,9 +1,11 @@
+import os
 import boto3
 import pandas as pd
 import json
 from io import StringIO
 import pandas as pd
 import argparse
+from tqdm import tqdm
 from langchain.text_splitter import MarkdownTextSplitter
 
 def construct_gen_summary_prompt(content):
@@ -61,7 +63,7 @@ Only output the resulting dataframe in the format of this example:  <output>{exa
     input_body = {}
     input_body["anthropic_version"] = "bedrock-2023-05-31"
     input_body["messages"] = messages
-    input_body["system"] = "You are a interviewer, your task is to generate a series of questions for the interview based. The questions should be asked frequently in realistic scenario， Especially in Game Customer Service."
+    input_body["system"] = "You are a AI Assistant."
     input_body["max_tokens"] = 2048
     input_body["stop_sequences"] = ['</output>']
 
@@ -101,15 +103,41 @@ def call_bedrock_enhance(content, prompt_func):
 
     return summary
 
+def enhance_markdown(content):
+    try:
+        enhanced_data = []
+
+        # paragraphs = markdown_spliter(content)
+        # enhanced_data = [ [p, content, 'Nochunk-Paragraph'] for p in paragraphs ]
+        
+        enhanced_data.append([content, content, 'Nochunk-Page'])
+
+        summary = call_bedrock_enhance(content, construct_gen_summary_prompt)
+        enhanced_data.append([summary, content, 'Nochunk-Summary'])
+
+        qa_list_str = call_bedrock_enhance(content, construct_QA_list_prompt)
+        obj_list = json.loads(qa_list_str)
+        qa_list = [ [ item['Question'], content, 'Nochunk-Question' ] for item in obj_list ]
+        enhanced_data.extend(qa_list)
+
+        df = pd.DataFrame(enhanced_data, columns=['Question', 'Answer', 'doc_type'])
+
+        return df
+    except Exception as e:
+        print(str(e))
+  
+    return None
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--bucket', type=str, default='106839800180-24-02-07-02-51-47-bucket', help='input bucket')
     parser.add_argument('--prefix', type=str, default='mihoyo-poc/enhanced_test/', help='input bucket')
+    parser.add_argument('--input_path', type=str, default='', help='input path')
     parser.add_argument('--output_path', type=str, default='./output', help='output path')
     parser.add_argument('--region_name', type=str, default='us-west-2', help='aws region')
     args = parser.parse_args()
 
+    input_path = args.input_path
     output_path = args.output_path
     region = args.region_name
     bucket_name = args.bucket
@@ -120,34 +148,36 @@ if __name__ == '__main__':
         region_name=region
     )
 
-    s3 = boto3.client('s3')
+    df = None
+    content = None
+    if not os.path.exists(output_path):
+        os.makedirs(output_path)
 
-    response = s3.list_objects_v2(Bucket=bucket_name, Prefix=prefix)
-    text_files = [obj['Key'] for obj in response['Contents'] if obj['Key'].endswith('.md')]
+    if input_path and os.path.exists(input_path):
+        for root, dirs, files in os.walk(input_path):
+            md_files = [ file for file in files if file.endswith('.md')]
+            for filename in tqdm(md_files):
+                f_path = os.path.join(root, filename)
 
-    for file in text_files:
-        try:
+                print(f"processing file: {f_path}")
+                with open(f_path, 'r') as f:
+                    content = f.read()
+
+                df = enhance_markdown(content)      
+                if df is not None:
+                    output_filename = "{}__{}".format(os.path.basename(root), filename.replace('.md', '.xlsx'))
+                    print(output_filename)
+                    df.to_excel(f'{output_path}/{output_filename}.xlsx', index=False)
+    else:      
+        s3 = boto3.client('s3')
+        response = s3.list_objects_v2(Bucket=bucket_name, Prefix=prefix)
+        text_files = [obj['Key'] for obj in response['Contents'] if obj['Key'].endswith('.md')]
+
+        for file in tqdm(text_files):
             output_filename = '__'.join(file.split('/')[2:])
             print(f"processing file: {file}")
             obj = s3.get_object(Bucket=bucket_name, Key=file)
             content = obj['Body'].read().decode('utf-8')
-
-            enhanced_data = []
-
-            paragraphs = markdown_spliter(content)
-            enhanced_data = [ [p, content, 'Nochunk-Paragraph'] for p in paragraphs ]
-            
-            enhanced_data.append([content, content, 'Nochunk-Page'])
-
-            summary = call_bedrock_enhance(content, construct_gen_summary_prompt)
-            enhanced_data.append([summary, content, 'Nochunk-Summary'])
-
-            qa_list_str = call_bedrock_enhance(content, construct_QA_list_prompt)
-            obj_list = json.loads(qa_list_str)
-            qa_list = [ [ item['Question'], content, 'Nochunk-Question' ] for item in obj_list ]
-            enhanced_data.extend(qa_list)
-
-            df = pd.DataFrame(enhanced_data, columns=['Question', 'Answer', 'doc_type'])
-            df.to_excel(f'{output_path}/{output_filename}.xlsx', index=False)
-        except Exception as e:
-            print(str(e))
+            df = enhance_markdown(content)      
+            if df is not None:
+                df.to_excel(f'{output_path}/{output_filename}.xlsx', index=False)
