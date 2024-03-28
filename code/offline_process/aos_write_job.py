@@ -28,8 +28,8 @@ bucket = args['bucket']
 object_key = args['object_key']
 QA_SEP = '=====' # args['qa_sep'] # 
 EXAMPLE_SEP = '\n\n'
-arg_chunk_size = 384
-CHUNK_SIZE=500
+arg_chunk_size = 1000
+CHUNK_SIZE=1000
 CHUNK_OVERLAP=0
 
 EMB_MODEL_ENDPOINT=args['EMB_MODEL_ENDPOINT']
