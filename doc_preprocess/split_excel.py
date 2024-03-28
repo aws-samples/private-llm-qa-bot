@@ -39,7 +39,7 @@ if __name__ == '__main__':
                     markdown_table = row_df.to_markdown(index=False)
                         
                     # 写入Markdown文件
-                    filename = f"{output_path}/{xlsx_file_name}_{worksheet.title}_row_{i}.md"
+                    filename = f"{output_path}/{xlsx_file_name}_{worksheet.title}_row_{i}.txt"
                     with open(filename, 'w', encoding='utf-8') as f:
                         f.write(markdown_table)
 
