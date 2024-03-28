@@ -1,7 +1,11 @@
+
+# pip install tabulate openpyxl pandas
 import os
 import glob
 import openpyxl
 import argparse
+import pandas as pd
+from tabulate import tabulate
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -22,20 +26,23 @@ if __name__ == '__main__':
             workbook = openpyxl.load_workbook(xlsx_file)
 
             for worksheet in workbook.worksheets:
-                # 遍历每一行,生成Markdown表格并保存到文件
-                for row in worksheet.iter_rows(min_row=2, values_only=True):
-                    # 获取表头
-                    headers = [ str(cell.value) for cell in worksheet[1]]
 
-                    # 生成Markdown表格
-                    table = '| ' + ' | '.join(headers) + ' |\n'
-                    table += '| ' + ' | '.join(['---' for _ in headers]) + ' |\n'
-                    table += '| ' + ' | '.join([str(cell) for cell in row]) + ' |'
+                df = pd.DataFrame(worksheet.values)
+                df = df.dropna(how='all', axis=0).dropna(how='all', axis=1)
 
-                    # 保存到文件
-                    filename = f"{output_path}/{xlsx_file_name}_{worksheet.title}_row_{row[0]}.md"
-                    with open(filename, 'w', encoding='utf-8') as file:
-                        file.write(table)
-                        print(f"Saved row {row[0]} from worksheet '{worksheet.title}' to {filename}")
+                header = df.loc[0].values
+                print(f"header: {header}")
+
+                for i, row in df[1:].iterrows():
+                    data = [ str(item).replace('\n', ';') for item in row.values]
+                    row_df = pd.DataFrame([data], columns=header)
+                    markdown_table = row_df.to_markdown(index=False)
+                        
+                    # 写入Markdown文件
+                    filename = f"{output_path}/{xlsx_file_name}_{worksheet.title}_row_{i}.md"
+                    with open(filename, 'w', encoding='utf-8') as f:
+                        f.write(markdown_table)
+
+                    print(f'已将第{i}行数据写入文件 {filename}')
         except Exception as e:
             print(str(e))
