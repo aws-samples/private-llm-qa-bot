@@ -249,26 +249,27 @@ def iterate_QA(file_content, object_key,doc_classify,smr_client, index_name, end
     for idx, batch in enumerate(qa_batches):
         print(f"processing {idx*EMB_BATCH_SIZE} - {(idx+1)*EMB_BATCH_SIZE}")
         try:
-            doc_template = "Question: {}\nAnswer: {}"
-            questions = [ item['Question'] for item in batch ]
-            answers = [ item['Answer'] for item in batch ]
             doc_type_list = [ item.get('doc_type', None) for item in batch ]
-
-            NoQA_embedding = set(doc_type_list)== {"NoQA"}
-
-            meta = [ { k:item[k] for k in item.keys() if k not in ['Question', 'Answer', 'Author', 'doc_type'] } for item in batch ]
-            contents = [ item['Answer'] if NoQA_embedding else doc_template.format(item['Question'], item['Answer']) for item in batch ]
+            doc_template = "Question: {}\nAnswer: {}"
+            meta = [ { k:item[k] for k in item.keys() if k not in ['Question', 'Answer', 'Trigger', 'Content', 'Author', 'doc_type'] } for item in batch ]
             authors = [ item.get('Author')  for item in batch ]
-            embeddings_q = get_embedding(smr_client, questions, endpoint_name)
             
+            NoQA_embedding = set(doc_type_list)== {"NoQA"}
             if NoQA_embedding:
-                for i in range(len(questions)):
-                    document = { "publish_date": publish_date, "doc" : questions[i], "idx": idx, "doc_type" : doc_type_list[i], "content" : contents[i], "doc_title": doc_title,"doc_author":authors[i] if authors[i] else doc_author, "doc_category": doc_category, "doc_meta": json.dumps(meta[i], ensure_ascii=False), "doc_classify":doc_classify,"embedding" : embeddings_q[i]}
+                contents = [ item['Content'] for item in batch ]
+                triggers = [ item['Trigger'] for item in batch ]
+                embeddings_trigger = get_embedding(smr_client, triggers, endpoint_name)
+                for i in range(len(doc_type_list)):
+                    document = { "publish_date": publish_date, "doc" : triggers[i], "idx": idx, "doc_type" : doc_type_list[i], "content" : contents[i], "doc_title": doc_title,"doc_author":authors[i] if authors[i] else doc_author, "doc_category": doc_category, "doc_meta": json.dumps(meta[i], ensure_ascii=False), "doc_classify":doc_classify,"embedding" : embeddings_trigger[i]}
                     yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document).encode('utf-8')).hexdigest()}
             else:
-                # embedding answer when doc_type is real QA
+                questions = [ item['Question'] for item in batch ]
+                answers = [ item['Answer'] for item in batch ]
+                contents = [ doc_template.format(item['Question'], item['Answer']) for item in batch ]
+
+                embeddings_q = get_embedding(smr_client, questions, endpoint_name)
                 embeddings_a = get_embedding(smr_client, answers, endpoint_name)
-                for i in range(len(questions)):
+                for i in range(len(doc_type_list)):
                     document = { "publish_date": publish_date, "doc" : questions[i], "idx": idx, "doc_type" : "Question", "content" : contents[i], "doc_title": doc_title,"doc_author":authors[i] if authors[i] else doc_author, "doc_category": doc_category, "doc_meta": json.dumps(meta[i], ensure_ascii=False), "doc_classify":doc_classify,"embedding" : embeddings_q[i]}
                     yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document).encode('utf-8')).hexdigest()}
                     document = { "publish_date": publish_date, "doc" : answers[i], "idx": idx,"doc_type" : "Paragraph", "content" : contents[i], "doc_title": doc_title,"doc_author":authors[i] if authors[i] else doc_author, "doc_category": doc_category, "doc_meta": json.dumps(meta[i], ensure_ascii=False), "doc_classify":doc_classify,"embedding" : embeddings_a[i]}
