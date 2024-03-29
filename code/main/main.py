@@ -753,39 +753,7 @@ def aos_search(client, index_name, field, query_term, exactly_match=False, size=
         query = {
             "size": size,
             "query": {
-                "bool": {
-                    "should": [{
-                            "bool": {
-                                "must": [{
-                                        "term": {
-                                            "doc_type": "Question"
-                                        }
-                                    },
-                                    {
-                                        "match": {
-                                            "content": query_term
-                                        }
-                                    }
-                                ]
-                            }
-                        },
-                        {
-                            "bool": {
-                                "must": [{
-                                        "term": {
-                                            "doc_type": "Paragraph"
-                                        }
-                                    },
-                                    {
-                                        "match": {
-                                            "content": query_term
-                                        }
-                                    }
-                                ]
-                            }
-                        }
-                    ]
-                }
+                "match": { "content" : query_term }
             },
             "sort": [{
                 "_score": {
