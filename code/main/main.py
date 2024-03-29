@@ -431,49 +431,42 @@ class CustomDocRetriever(BaseRetriever):
             def get_topk_items(opensearch_knn_respose, opensearch_query_response, topk=1):
 
                 opensearch_knn_nodup = []
-                unique_ids = set()
+                knn_unique_ids = set()
                 for item in opensearch_knn_respose:
                     doc_hash = hashlib.md5(str(item['doc']).encode('utf-8')).hexdigest()
-                    if doc_hash not in unique_ids:
+                    if doc_hash not in knn_unique_ids:
                         opensearch_knn_nodup.append(item)
-                        unique_ids.add(doc_hash)
+                        knn_unique_ids.add(doc_hash)
                 
                 opensearch_bm25_nodup = []
+                bm25_unique_ids = set()
                 for item in opensearch_query_response:
                     doc_hash = hashlib.md5(str(item['doc']).encode('utf-8')).hexdigest()
-                    if doc_hash not in unique_ids:
+                    if doc_hash not in bm25_unique_ids:
                         opensearch_bm25_nodup.append(item)
                         doc_hash = hashlib.md5(str(item['doc']).encode('utf-8')).hexdigest()
-                        unique_ids.add(doc_hash)
+                        bm25_unique_ids.add(doc_hash)
 
                 opensearch_knn_nodup.sort(key=lambda x: x['score'])
                 opensearch_bm25_nodup.sort(key=lambda x: x['score'])
+                logger.info(f'opensearch_knn_nodup count:{len(opensearch_knn_nodup)}')
+                logger.info(f'opensearch_bm25_nodup count:{len(opensearch_bm25_nodup)}')
                 
                 half_topk = math.ceil(topk/2) 
     
                 kg_combine_result = [ item for item in opensearch_knn_nodup[-1*half_topk:]]
-                knn_kept_doc = [ item['id'] for item in opensearch_knn_nodup[-1*half_topk:] ]
 
-                bm25_count = 0
-                for item in opensearch_bm25_nodup[::-1]:
-                    if item['id'] not in knn_kept_doc:
+                doc_hash = set([ hashlib.md5(str(item['doc']).encode('utf-8')).hexdigest() for item in kg_combine_result ])
+
+                for item in opensearch_bm25_nodup:
+                    if len(kg_combine_result) >= topk:
+                        break
+                        
+                    if hashlib.md5(str(item['doc']).encode('utf-8')).hexdigest() not in doc_hash:
                         kg_combine_result.append(item)
-                        bm25_count += 1
-                    if bm25_count+len(knn_kept_doc) >= topk:
-                        break
-                ##继续填补不足的召回
-                step_knn = 0
-                step_bm25 = 0
-                while topk - len(kg_combine_result)>0:
-                    if len(opensearch_knn_nodup) > half_topk and len(opensearch_knn_nodup[-1*half_topk-1-step_knn:-1*half_topk-step_knn]) > 0:
-                        kg_combine_result += [item for item in opensearch_knn_nodup[-1*half_topk-1-step_knn:-1*half_topk-step_knn]]
-                        kg_combine_result.sort(key=lambda x: x['score'])
-                        step_knn += 1
-                    elif len(opensearch_bm25_nodup) > half_topk and len(opensearch_bm25_nodup[-1*half_topk-1-step_bm25:-1*half_topk-step_bm25]) >0:
-                        kg_combine_result += [item for item in opensearch_bm25_nodup[-1*half_topk-1-step_bm25:-1*half_topk-step_bm25]]
-                        step_bm25 += 1
+                        logger.info(f'kg_combine_result.append')
                     else:
-                        break
+                        continue
 
                 return kg_combine_result
             
@@ -481,9 +474,7 @@ class CustomDocRetriever(BaseRetriever):
             logger.info(f'get_topk_items:{len(ret_content)}')
             return ret_content
         
-        filter_knn_result = [ item for item in opensearch_knn_respose if (item['score'] > KNN_QQ_THRESHOLD_HARD_REFUSE and item['doc_type'] == 'Question') or 
-                              (item['score'] > KNN_QD_THRESHOLD_HARD_REFUSE and item['doc_type'] == 'Paragraph') or
-                              (item['score'] > KNN_QQ_THRESHOLD_HARD_REFUSE and item['doc_type'] == 'Sentence')]
+        filter_knn_result = [ item for item in opensearch_knn_respose if item['score'] > KNN_QQ_THRESHOLD_HARD_REFUSE ]
         filter_inverted_result = [ item for item in opensearch_query_response if item['score'] > BM25_QD_THRESHOLD_HARD_REFUSE ]
 
         recall_knowledge = []
@@ -528,6 +519,8 @@ class CustomDocRetriever(BaseRetriever):
             #filter unrelevant knowledge by rerank score
             recall_knowledge = [item for item in  recall_knowledge if item['rank_score'] >= RERANK_THRESHOLD]
         else:
+            logger.info(f'filter_knn_result count:{len(filter_knn_result)}')
+            logger.info(f'filter_inverted_result count:{len(filter_inverted_result)}')
             recall_knowledge = combine_recalls(filter_knn_result, filter_inverted_result)
             recall_knowledge = [{**doc,'rank_score':0 } for doc in recall_knowledge]
 
