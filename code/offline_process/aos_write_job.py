@@ -22,7 +22,7 @@ import numpy as np
 from urllib.parse import unquote
 from datetime import datetime
 
-args = getResolvedOptions(sys.argv, ['bucket', 'object_key','AOS_ENDPOINT','REGION','EMB_MODEL_ENDPOINT','PUBLISH_DATE', 'company'])
+args = getResolvedOptions(sys.argv, ['bucket', 'object_key','AOS_ENDPOINT','REGION','EMB_MODEL_ENDPOINT','PUBLISH_DATE', 'company', 'emb_batch_size'])
 s3 = boto3.resource('s3')
 bucket = args['bucket']
 object_key = args['object_key']
@@ -44,7 +44,8 @@ publish_date = args['PUBLISH_DATE'] if 'PUBLISH_DATE' in args.keys() else dateti
 
 INDEX_NAME = 'chatbot-index'
 EXAMPLE_INDEX_NAME = 'chatbot-example-index'
-EMB_BATCH_SIZE=20
+EMB_BATCH_SIZE = int(args.get('emb_batch_size', '20'))
+print(f"EMB_BATCH_SIZE :{EMB_BATCH_SIZE}")
 Sentence_Len_Threshold=10
 Paragraph_Len_Threshold=20
 
@@ -246,26 +247,34 @@ def iterate_QA(file_content, object_key,doc_classify,smr_client, index_name, end
     doc_author = get_filename_from_obj_key(object_key)
 
     for idx, batch in enumerate(qa_batches):
-        doc_template = "Question: {}\nAnswer: {}"
-        questions = [ item['Question'] for item in batch ]
-        answers = [ item['Answer'] for item in batch ]
-        doc_type_list = [ item.get('doc_type', None) for item in batch ]
-        meta = [ { k:item[k] for k in item.keys() if k not in ['Question', 'Answer', 'Author'] } for item in batch ]
-        docs = [ item['Answer'] if item.get('doc_type', None) and item['doc_type'].startswith('Nochunk') else doc_template.format(item['Question'], item['Answer']) for item in batch ]
-        authors = [item.get('Author')  for item in batch ]
-        embeddings_q = get_embedding(smr_client, questions, endpoint_name)
-        embeddings_a = get_embedding(smr_client, answers, endpoint_name)
+        print(f"processing {idx*EMB_BATCH_SIZE} - {(idx+1)*EMB_BATCH_SIZE}")
+        try:
+            doc_template = "Question: {}\nAnswer: {}"
+            questions = [ item['Question'] for item in batch ]
+            answers = [ item['Answer'] for item in batch ]
+            doc_type_list = [ item.get('doc_type', None) for item in batch ]
 
-        for i in range(len(doc_type_list)):
-            if doc_type_list[i] and doc_type_list[i].startswith('Nochunk'):
-                doc_type = doc_type_list[i]
-                document = { "publish_date": publish_date, "doc" : questions[i], "idx": idx, "doc_type" : doc_type_list[i], "content" : docs[i], "doc_title": doc_title,"doc_author":authors[i] if authors[i] else doc_author, "doc_category": doc_category, "doc_meta": json.dumps(meta[i], ensure_ascii=False), "doc_classify":doc_classify,"embedding" : embeddings_a[i]}
-                yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document).encode('utf-8')).hexdigest()}
+            NoQA_embedding = set(doc_type_list)== {"NoQA"}
+
+            meta = [ { k:item[k] for k in item.keys() if k not in ['Question', 'Answer', 'Author', 'doc_type'] } for item in batch ]
+            contents = [ item['Answer'] if NoQA_embedding else doc_template.format(item['Question'], item['Answer']) for item in batch ]
+            authors = [ item.get('Author')  for item in batch ]
+            embeddings_q = get_embedding(smr_client, questions, endpoint_name)
+            
+            if NoQA_embedding:
+                for i in range(len(questions)):
+                    document = { "publish_date": publish_date, "doc" : questions[i], "idx": idx, "doc_type" : doc_type_list[i], "content" : contents[i], "doc_title": doc_title,"doc_author":authors[i] if authors[i] else doc_author, "doc_category": doc_category, "doc_meta": json.dumps(meta[i], ensure_ascii=False), "doc_classify":doc_classify,"embedding" : embeddings_q[i]}
+                    yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document).encode('utf-8')).hexdigest()}
             else:
-                document = { "publish_date": publish_date, "doc" : questions[i], "idx": idx, "doc_type" : "Question", "content" : docs[i], "doc_title": doc_title,"doc_author":authors[i] if authors[i] else doc_author, "doc_category": doc_category, "doc_meta": json.dumps(meta[i], ensure_ascii=False), "doc_classify":doc_classify,"embedding" : embeddings_q[i]}
-                yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document).encode('utf-8')).hexdigest()}
-                document = { "publish_date": publish_date, "doc" : answers[i], "idx": idx,"doc_type" : "Paragraph", "content" : docs[i], "doc_title": doc_title,"doc_author":authors[i] if authors[i] else doc_author, "doc_category": doc_category, "doc_meta": json.dumps(meta[i], ensure_ascii=False), "doc_classify":doc_classify,"embedding" : embeddings_a[i]}
-                yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document).encode('utf-8')).hexdigest()}
+                # embedding answer when doc_type is real QA
+                embeddings_a = get_embedding(smr_client, answers, endpoint_name)
+                for i in range(len(questions)):
+                    document = { "publish_date": publish_date, "doc" : questions[i], "idx": idx, "doc_type" : "Question", "content" : contents[i], "doc_title": doc_title,"doc_author":authors[i] if authors[i] else doc_author, "doc_category": doc_category, "doc_meta": json.dumps(meta[i], ensure_ascii=False), "doc_classify":doc_classify,"embedding" : embeddings_q[i]}
+                    yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document).encode('utf-8')).hexdigest()}
+                    document = { "publish_date": publish_date, "doc" : answers[i], "idx": idx,"doc_type" : "Paragraph", "content" : contents[i], "doc_title": doc_title,"doc_author":authors[i] if authors[i] else doc_author, "doc_category": doc_category, "doc_meta": json.dumps(meta[i], ensure_ascii=False), "doc_classify":doc_classify,"embedding" : embeddings_a[i]}
+                    yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document).encode('utf-8')).hexdigest()}
+        except Exception as e:
+            print(f"failed to process, {str(e)}")
 
 def iterate_examples(file_content, object_key, smr_client, index_name, endpoint_name):
     json_obj = json.loads(file_content)

@@ -48,7 +48,8 @@ export class GlueStack extends NestedStack {
               '--EMB_MODEL_ENDPOINT':process.env.embedding_endpoint,
               '--DOC_INDEX_TABLE':'chatbot_doc_index',
               '--additional-python-modules': 'pdfminer.six==20221105,gremlinpython==3.6.3,langchain==0.0.162,beautifulsoup4==4.12.2,boto3>=1.28.52,botocore>=1.31.52,,anthropic_bedrock,python-docx',
-              '--company' : 'default'
+              '--company' : 'default',
+              '--emb_batch_size' : '20'
           }
       })
       job.role.addToPrincipalPolicy(
