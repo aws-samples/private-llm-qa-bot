@@ -28,8 +28,8 @@ bucket = args['bucket']
 object_key = args['object_key']
 QA_SEP = '=====' # args['qa_sep'] # 
 EXAMPLE_SEP = '\n\n'
-arg_chunk_size = 384
-CHUNK_SIZE=500
+arg_chunk_size = 1000
+CHUNK_SIZE=1000
 CHUNK_OVERLAP=0
 
 EMB_MODEL_ENDPOINT=args['EMB_MODEL_ENDPOINT']
@@ -151,33 +151,33 @@ def iterate_paragraph(file_content, object_key, doc_classify,smr_client, index_n
         chunk_overlap  = CHUNK_OVERLAP,
         length_function = len,
     )
-    def chunk_generator(json_arr):
-        for idx, json_item in enumerate(json_arr):
-            header = ""
-            if len(json_item['heading']) > 0:
-                header = json_item['heading'][0]['heading']
-
-            paragraph_content = json_item['content']
-            if len(paragraph_content) > 1024 or len(paragraph_content) < Sentence_Len_Threshold:
-                continue
-
-            yield (idx, paragraph_content, 'Paragraph', paragraph_content)
-
-            sentences = re.split('[。？?.！!]', paragraph_content)
-            for sent in (sent for sent in sentences if len(sent) > Sentence_Len_Threshold): 
-                yield (idx, sent, 'Sentence', paragraph_content)
-
     # def chunk_generator(json_arr):
-    #     idx = 0
-    #     texts = []
-    #     for json_item in json_arr:
+    #     for idx, json_item in enumerate(json_arr):
     #         header = ""
     #         if len(json_item['heading']) > 0:
     #             header = json_item['heading'][0]['heading']
-    #         texts += text_splitter.split_text(f"{header}-{json_item['content']}")
-    #         for paragraph_content in texts:
-    #             idx += 1
-    #             yield (idx, paragraph_content, 'Paragraph', paragraph_content)
+
+    #         paragraph_content = json_item['content']
+    #         if len(paragraph_content) > 1024 or len(paragraph_content) < Sentence_Len_Threshold:
+    #             continue
+
+    #         yield (idx, paragraph_content, 'Paragraph', paragraph_content)
+
+    #         sentences = re.split('[。？?.！!]', paragraph_content)
+    #         for sent in (sent for sent in sentences if len(sent) > Sentence_Len_Threshold): 
+    #             yield (idx, sent, 'Sentence', paragraph_content)
+
+    def chunk_generator(json_arr):
+        idx = 0
+        texts = []
+        for json_item in json_arr:
+            header = ""
+            if len(json_item['heading']) > 0:
+                header = json_item['heading'][0]['heading']
+            texts += text_splitter.split_text(f"{header}-{json_item['content']}")
+            for paragraph_content in texts:
+                idx += 1
+                yield (idx, paragraph_content, 'Paragraph', paragraph_content)
 
     generator = chunk_generator(json_arr)
     batches = batch_generator(generator, batch_size=EMB_BATCH_SIZE)
@@ -249,26 +249,27 @@ def iterate_QA(file_content, object_key,doc_classify,smr_client, index_name, end
     for idx, batch in enumerate(qa_batches):
         print(f"processing {idx*EMB_BATCH_SIZE} - {(idx+1)*EMB_BATCH_SIZE}")
         try:
-            doc_template = "Question: {}\nAnswer: {}"
-            questions = [ item['Question'] for item in batch ]
-            answers = [ item['Answer'] for item in batch ]
             doc_type_list = [ item.get('doc_type', None) for item in batch ]
-
-            NoQA_embedding = set(doc_type_list)== {"NoQA"}
-
-            meta = [ { k:item[k] for k in item.keys() if k not in ['Question', 'Answer', 'Author', 'doc_type'] } for item in batch ]
-            contents = [ item['Answer'] if NoQA_embedding else doc_template.format(item['Question'], item['Answer']) for item in batch ]
+            doc_template = "Question: {}\nAnswer: {}"
+            meta = [ { k:item[k] for k in item.keys() if k not in ['Question', 'Answer', 'Trigger', 'Content', 'Author', 'doc_type'] } for item in batch ]
             authors = [ item.get('Author')  for item in batch ]
-            embeddings_q = get_embedding(smr_client, questions, endpoint_name)
             
+            NoQA_embedding = set(doc_type_list)== {"NoQA"}
             if NoQA_embedding:
-                for i in range(len(questions)):
-                    document = { "publish_date": publish_date, "doc" : questions[i], "idx": idx, "doc_type" : doc_type_list[i], "content" : contents[i], "doc_title": doc_title,"doc_author":authors[i] if authors[i] else doc_author, "doc_category": doc_category, "doc_meta": json.dumps(meta[i], ensure_ascii=False), "doc_classify":doc_classify,"embedding" : embeddings_q[i]}
+                contents = [ item['Content'] for item in batch ]
+                triggers = [ item['Trigger'] for item in batch ]
+                embeddings_trigger = get_embedding(smr_client, triggers, endpoint_name)
+                for i in range(len(doc_type_list)):
+                    document = { "publish_date": publish_date, "doc" : triggers[i], "idx": idx, "doc_type" : doc_type_list[i], "content" : contents[i], "doc_title": doc_title,"doc_author":authors[i] if authors[i] else doc_author, "doc_category": doc_category, "doc_meta": json.dumps(meta[i], ensure_ascii=False), "doc_classify":doc_classify,"embedding" : embeddings_trigger[i]}
                     yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document).encode('utf-8')).hexdigest()}
             else:
-                # embedding answer when doc_type is real QA
+                questions = [ item['Question'] for item in batch ]
+                answers = [ item['Answer'] for item in batch ]
+                contents = [ doc_template.format(item['Question'], item['Answer']) for item in batch ]
+
+                embeddings_q = get_embedding(smr_client, questions, endpoint_name)
                 embeddings_a = get_embedding(smr_client, answers, endpoint_name)
-                for i in range(len(questions)):
+                for i in range(len(doc_type_list)):
                     document = { "publish_date": publish_date, "doc" : questions[i], "idx": idx, "doc_type" : "Question", "content" : contents[i], "doc_title": doc_title,"doc_author":authors[i] if authors[i] else doc_author, "doc_category": doc_category, "doc_meta": json.dumps(meta[i], ensure_ascii=False), "doc_classify":doc_classify,"embedding" : embeddings_q[i]}
                     yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document).encode('utf-8')).hexdigest()}
                     document = { "publish_date": publish_date, "doc" : answers[i], "idx": idx,"doc_type" : "Paragraph", "content" : contents[i], "doc_title": doc_title,"doc_author":authors[i] if authors[i] else doc_author, "doc_category": doc_category, "doc_meta": json.dumps(meta[i], ensure_ascii=False), "doc_classify":doc_classify,"embedding" : embeddings_a[i]}
