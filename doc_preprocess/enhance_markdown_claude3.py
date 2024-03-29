@@ -108,17 +108,17 @@ def enhance_markdown(content):
         enhanced_data = []
 
         # paragraphs = markdown_spliter(content)
-        # enhanced_data = [ [p, content, 'Nochunk-Paragraph'] for p in paragraphs ]
+        # enhanced_data = [ [p, content, 'NoQA'] for p in paragraphs ]
         
-        enhanced_data.append([content, content, 'Nochunk-Page'])
+        enhanced_data.append([content, content, 'NoQA'])
 
         summary = call_bedrock_enhance(content, construct_gen_summary_prompt)
-        enhanced_data.append([summary, content, 'Nochunk-Summary'])
+        enhanced_data.append([summary, content, 'NoQA'])
 
-        qa_list_str = call_bedrock_enhance(content, construct_QA_list_prompt)
-        obj_list = json.loads(qa_list_str)
-        qa_list = [ [ item['Question'], content, 'Nochunk-Question' ] for item in obj_list ]
-        enhanced_data.extend(qa_list)
+        # qa_list_str = call_bedrock_enhance(content, construct_QA_list_prompt)
+        # obj_list = json.loads(qa_list_str)
+        # qa_list = [ [ item['Question'], content, 'NoQA' ] for item in obj_list ]
+        # enhanced_data.extend(qa_list)
 
         df = pd.DataFrame(enhanced_data, columns=['Question', 'Answer', 'doc_type'])
 
