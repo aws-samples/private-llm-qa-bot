@@ -313,8 +313,8 @@ def lambda_handler(event, context):
     answer = answer.replace('<output>', '')
 
     log_dict = { "prompt" : final_prompt, "answer" : answer , "examples": docs_simple }
-    log_dict_str = json.dumps(log_dict, ensure_ascii=False)
-    logger.info(log_dict_str)
+    # log_dict_str = json.dumps(log_dict, ensure_ascii=False)
+    logger.info(log_dict)
 
     # if answer not in options:
     #     answer = intention_counter.most_common(1)[0]
