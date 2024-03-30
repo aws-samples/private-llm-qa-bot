@@ -849,43 +849,46 @@ def process_s3_uploaded_file(bucket, object_key):
         print(f"{object_key} - unsupport content type...(pdf, faq, txt, csv, xlsx, pdf.json, md are supported.)")
         return
         
-    username = get_filename_from_obj_key(object_key)
-    
-    s3 = boto3.resource('s3')
-    obj = s3.Object(bucket,object_key)
-    metadata = obj.metadata
-    
-
-    doc_classify = unquote(metadata.get('category','') if metadata else '')
-    # COMPANY should passed by args
-    if  content_type == 'example':
-        index_name = f"chatbot-example-index-{COMPANY}"
-    else:
-        index_name = f"{INDEX_NAME}-{COMPANY}"
-
-
+    try:
+        username = get_filename_from_obj_key(object_key)
         
-    print(metadata)
-    print(f'use index :{index_name}')
-    #check if it is already built
-    idx_name = query_idx_from_ddb(object_key,username,EMB_MODEL_ENDPOINT)
-    if len(idx_name) > 0:
-        print("doc file already exists")
-        return
-    
+        s3 = boto3.resource('s3')
+        obj = s3.Object(bucket,object_key)
+        metadata = obj.metadata
+        
 
-    response = WriteVecIndexToAOS(bucket, object_key, content_type,doc_classify, smr_client, index_name=index_name)
-    print("response:")
-    print(response)
-    print("ingest {} chunk to AOS".format(response[0]))
-    timestamp_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    put_idx_to_ddb(filename=object_key,
-                    company=COMPANY,
-                    username=username,
-                        index_name=index_name,
-                            embedding_model=EMB_MODEL_ENDPOINT,
-                            category=doc_classify,
-                            createtime=timestamp_str)
+        doc_classify = unquote(metadata.get('category','') if metadata else '')
+        # COMPANY should passed by args
+        if  content_type == 'example':
+            index_name = f"chatbot-example-index-{COMPANY}"
+        else:
+            index_name = f"{INDEX_NAME}-{COMPANY}"
+
+
+            
+        print(metadata)
+        print(f'use index :{index_name}')
+        #check if it is already built
+        idx_name = query_idx_from_ddb(object_key,username,EMB_MODEL_ENDPOINT)
+        if len(idx_name) > 0:
+            print("doc file already exists")
+            return
+        
+
+        response = WriteVecIndexToAOS(bucket, object_key, content_type,doc_classify, smr_client, index_name=index_name)
+        print("response:")
+        print(response)
+        print("ingest {} chunk to AOS".format(response[0]))
+        timestamp_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        put_idx_to_ddb(filename=object_key,
+                        company=COMPANY,
+                        username=username,
+                            index_name=index_name,
+                                embedding_model=EMB_MODEL_ENDPOINT,
+                                category=doc_classify,
+                                createtime=timestamp_str)
+    except Exception as e:
+        print(f"Failed to process {object_key}, caused by {str(e)}")
 
 ##如果是从chatbot上传，则是ai-content/username/filename
 def get_filename_from_obj_key(object_key):
