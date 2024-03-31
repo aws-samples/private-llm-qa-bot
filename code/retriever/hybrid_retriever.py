@@ -64,9 +64,6 @@ def get_embedding_bedrock(texts, model_id):
 
 # AOS
 def get_vector_by_sm_endpoint(questions, sm_client, endpoint_name):
-    if endpoint_name in BEDROCK_EMBEDDING_MODELID_LIST:
-        return get_embedding_bedrock(questions,endpoint_name)
-
     parameters = {
     }
 
@@ -95,115 +92,136 @@ def get_vector_by_sm_endpoint(questions, sm_client, endpoint_name):
     embeddings = json_obj['sentence_embeddings']
     return embeddings
 
-def search_using_aos_knn(client, q_embedding, index, size=10):
-
-    #Note: 查询时无需指定排序方式，最临近的向量分数越高，做过归一化(0.0~1.0)
-    #精准Knn的查询语法参考 https://opensearch.org/docs/latest/search-plugins/knn/knn-score-script/
-    #模糊Knn的查询语法参考 https://opensearch.org/docs/latest/search-plugins/knn/approximate-knn/
-    #这里采用的是模糊查询
-    query = {
-        "size": size,
-        "query": {
-            "knn": {
-                "embedding": {
-                    "vector": q_embedding,
-                    "k": size
-                }
-            }
-        }
-    }
-    opensearch_knn_respose = []
-    query_response = client.search(
-        body=query,
-        index=index
-    )
-    opensearch_knn_respose = [{'idx':item['_source'].get('idx',1),'doc_category':item['_source']['doc_category'],'doc_classify':item['_source'].get('doc_classify'),'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc':item['_source']['content'],"doc_type":item["_source"]["doc_type"],"score":item["_score"],'doc_author': item['_source']['doc_author'], 'doc_meta': item['_source'].get('doc_meta','')}  for item in query_response["hits"]["hits"]]
-    return opensearch_knn_respose
-    
-
-
-def aos_search(client, index_name, field, query_term, exactly_match=False, size=10):
-    """
-    search opensearch with query.
-    :param host: AOS endpoint
-    :param index_name: Target Index Name
-    :param field: search field
-    :param query_term: query term
-    :return: aos response json
-    """
-    if not isinstance(client, OpenSearch):   
-        client = OpenSearch(
-            hosts=[{'host': client, 'port': 443}],
-            http_auth = awsauth,
-            use_ssl=True,
-            verify_certs=True,
-            connection_class=RequestsHttpConnection
-        )
-    query = None
-    if exactly_match:
-        query =  {
-            "query" : {
-                "match_phrase":{
-                    "doc": {
-                        "query": query_term,
-                        "analyzer": "ik_smart"
-                      }
-                }
-            }
-        }
+def get_embedding_from_text(texts, embedding_model):
+    if embedding_model in BEDROCK_EMBEDDING_MODELID_LIST:
+        return get_embedding_bedrock(texts, embedding_model)
     else:
-        query = {
-            "size": size,
-            "query": {
-                "match": { "content" : query_term }
-            },
-            "sort": [{
-                "_score": {
-                    "order": "desc"
-                }
-            }]
-        }
-    query_response = client.search(
-        body=query,
-        index=index_name
-    )
-
-    if exactly_match:
-        result_arr = [ {'idx':item['_source'].get('idx',0),'doc_category':item['_source']['doc_category'],'doc_classify':item['_source'].get('doc_classify'),'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc': item['_source']['content'], 'doc_type': item['_source']['doc_type'], 'score': item['_score'],'doc_author': item['_source']['doc_author'], 'doc_meta': item['_source'].get('doc_meta','')} for item in query_response["hits"]["hits"]]
-    else:
-        result_arr = [ {'idx':item['_source'].get('idx',0),'doc_category':item['_source']['doc_category'],'doc_classify':item['_source'].get('doc_classify'),'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc':item['_source']['content'], 'doc_type': item['_source']['doc_type'], 'score': item['_score'],'doc_author': item['_source']['doc_author'], 'doc_meta': item['_source'].get('doc_meta','')} for item in query_response["hits"]["hits"]]
-    return result_arr
+        return get_vector_by_sm_endpoint(questions=texts, sm_client=sm_client, endpoint_name=embedding_model)
 
 class CustomDocRetriever(BaseRetriever):
     embedding_model_endpoint :str
     aos_endpoint: str
     aos_index: str
+    aos_client: object
         
     class Config:
         """Configuration for this pydantic object."""
         arbitrary_types_allowed = True
         
     @classmethod
-    def from_endpoints(cls,embedding_model_endpoint:str, aos_endpoint:str, aos_index:str,):
+    def from_endpoints(cls,embedding_model_endpoint:str, aos_endpoint:str, aos_index:str):
+        aos_client = OpenSearch(
+                hosts=[{'host': aos_endpoint, 'port': 443}],
+                http_auth = awsauth,
+                use_ssl=True,
+                verify_certs=True,
+                connection_class=RequestsHttpConnection
+            )
+
         return cls(embedding_model_endpoint=embedding_model_endpoint,
                   aos_endpoint=aos_endpoint,
-                  aos_index=aos_index)
+                  aos_index=aos_index,
+                  aos_client=aos_client)
        
+    def search_doc_by_aos_knn(self, q_embedding, index, size=10):
+        #Note: 查询时无需指定排序方式，最临近的向量分数越高，做过归一化(0.0~1.0)
+        #精准Knn的查询语法参考 https://opensearch.org/docs/latest/search-plugins/knn/knn-score-script/
+        #模糊Knn的查询语法参考 https://opensearch.org/docs/latest/search-plugins/knn/approximate-knn/
+        #这里采用的是模糊查询
+        query = {
+            "size": size,
+            "query": {
+                "knn": {
+                    "embedding": {
+                        "vector": q_embedding,
+                        "k": size
+                    }
+                }
+            }
+        }
+        opensearch_knn_respose = []
+        query_response = self.aos_client.search(
+            body=query,
+            index=index
+        )
+        opensearch_knn_respose = [{'idx':item['_source'].get('idx',1),'doc_category':item['_source']['doc_category'],'doc_classify':item['_source'].get('doc_classify'),'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc':item['_source']['content'],"doc_type":item["_source"]["doc_type"],"score":item["_score"],'doc_author': item['_source']['doc_author'], 'doc_meta': item['_source'].get('doc_meta','')}  for item in query_response["hits"]["hits"]]
+        return opensearch_knn_respose
+
+    def search_example_by_aos_knn(self, q_embedding, example_index, sim_threshold, size):
+        query = {
+            "size": size,
+            "query": {
+                "knn": {
+                    "embedding": {
+                        "vector": q_embedding,
+                        "k": size
+                    }
+                }
+            }
+        }
+        opensearch_knn_respose = []
+        query_response = self.aos_client.search(
+            body=query,
+            index=example_index
+        )
+
+        examples = [ {"query" : item['_source']['query'], "detection" : item['_source']['detection'], "api_schema" : item['_source']['api_schema'], "score": item['_score'] } for item in query_response['hits']['hits'] if item['_score'] > sim_threshold ]
+        
+        return examples
+
+    def aos_search(self, index_name, field, query_term, exactly_match=False, size=10):
+        """
+        search opensearch with query.
+        :param host: AOS endpoint
+        :param index_name: Target Index Name
+        :param field: search field
+        :param query_term: query term
+        :return: aos response json
+        """
+        query = None
+        if exactly_match:
+            query =  {
+                "query" : {
+                    "match_phrase":{
+                        "doc": {
+                            "query": query_term,
+                            "analyzer": "ik_smart"
+                          }
+                    }
+                }
+            }
+        else:
+            query = {
+                "size": size,
+                "query": {
+                    "match": { "content" : query_term }
+                },
+                "sort": [{
+                    "_score": {
+                        "order": "desc"
+                    }
+                }]
+            }
+        query_response = self.aos_client.search(
+            body=query,
+            index=index_name
+        )
+
+        if exactly_match:
+            result_arr = [ {'idx':item['_source'].get('idx',0),'doc_category':item['_source']['doc_category'],'doc_classify':item['_source'].get('doc_classify'),'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc': item['_source']['content'], 'doc_type': item['_source']['doc_type'], 'score': item['_score'],'doc_author': item['_source']['doc_author'], 'doc_meta': item['_source'].get('doc_meta','')} for item in query_response["hits"]["hits"]]
+        else:
+            result_arr = [ {'idx':item['_source'].get('idx',0),'doc_category':item['_source']['doc_category'],'doc_classify':item['_source'].get('doc_classify'),'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc':item['_source']['content'], 'doc_type': item['_source']['doc_type'], 'score': item['_score'],'doc_author': item['_source']['doc_author'], 'doc_meta': item['_source'].get('doc_meta','')} for item in query_response["hits"]["hits"]]
+        return result_arr
+
      ## kkn前置检索FAQ,，如果query非常相似，则返回作为cache
     def knn_quick_prefetch(self, query_input: str, prefetch_threshold:float) -> List[Any]:
         start = time.time()
         query_embedding = get_vector_by_sm_endpoint(query_input, sm_client, self.embedding_model_endpoint)
         elpase_time = time.time() - start
         logger.info(f'knn_quick_prefetch, running time of get embeddings : {elpase_time:.3f}s')
-        aos_client = OpenSearch(
-                hosts=[{'host': self.aos_endpoint, 'port': 443}],
-                http_auth = awsauth,
-                use_ssl=True,
-                verify_certs=True,
-                connection_class=RequestsHttpConnection
-            )
+
         start = time.time()
-        opensearch_knn_respose = search_using_aos_knn(aos_client,query_embedding[0], self.aos_index,size=3)
+        opensearch_knn_respose = self.search_doc_by_aos_knn(query_embedding[0], self.aos_index, size=3)
         elpase_time = time.time() - start
         logger.info(f'runing time of quick_knn_fetch : {elpase_time:.3f}s')
         filter_knn_result = [item for item in opensearch_knn_respose if (item['score'] > prefetch_threshold and item['doc_type'] == 'Question')]
@@ -217,7 +235,7 @@ class CustomDocRetriever(BaseRetriever):
     def get_relevant_documents(self, query_input: str) -> List[Document]:
         raise NotImplementedError
     
-    def add_neighbours_doc(self,client,opensearch_respose):
+    def add_neighbours_doc(self, opensearch_respose):
         docs = []
         docs_dict = {}
         for item in opensearch_respose:
@@ -232,13 +250,13 @@ class CustomDocRetriever(BaseRetriever):
                 key = f"{item['doc_title']}-{item['doc_category']}-{item['idx']}"
                 if key not in docs_dict:
                     docs_dict[key] = item['idx']
-                    doc = self.search_paragraph_neighbours(client,item['idx'],item['doc_title'],item['doc_category'],item['doc_type'])
+                    doc = self.search_paragraph_neighbours(item['idx'],item['doc_title'],item['doc_category'],item['doc_type'])
                     docs.append({ **item, "doc": doc } )
             else:
                 docs.append(item)
         return docs
 
-    def search_paragraph_neighbours(self,client, idx, doc_title,doc_category,doc_type, neighbor_cnt=1):
+    def search_paragraph_neighbours(self, idx, doc_title,doc_category,doc_type, neighbor_cnt=1):
         query ={
             "query":{
                 "bool": {
@@ -267,7 +285,7 @@ class CustomDocRetriever(BaseRetriever):
                 }
             }
         }
-        query_response = client.search(
+        query_response = self.aos_client.search(
             body=query,
             index=self.aos_index
         )
@@ -354,21 +372,15 @@ class CustomDocRetriever(BaseRetriever):
         query_embedding = get_vector_by_sm_endpoint(query_input, sm_client, self.embedding_model_endpoint)
         elpase_time = time.time() - start
         logger.info(f'running time of get embeddings : {elpase_time:.3f}s')
-        aos_client = OpenSearch(
-                hosts=[{'host': self.aos_endpoint, 'port': 443}],
-                http_auth = awsauth,
-                use_ssl=True,
-                verify_certs=True,
-                connection_class=RequestsHttpConnection
-            )
+
         start = time.time()
-        opensearch_knn_respose = search_using_aos_knn(aos_client,query_embedding[0], self.aos_index,size=channel_return_cnt)
+        opensearch_knn_respose = self.search_doc_by_aos_knn(query_embedding[0], self.aos_index, size=channel_return_cnt)
         elpase_time = time.time() - start
         logger.info(f'runing time of opensearch_knn : {elpase_time}s seconds')
         
         # 4. get AOS invertedIndex recall
         start = time.time()
-        opensearch_query_response = aos_search(aos_client, self.aos_index, "doc", query_input,size=channel_return_cnt)
+        opensearch_query_response = self.aos_search(self.aos_index, "doc", query_input,size=channel_return_cnt)
         # logger.info(opensearch_query_response)
         elpase_time = time.time() - start
         logger.info(f'runing time of opensearch_query : {elpase_time}s seconds')
@@ -474,6 +486,6 @@ class CustomDocRetriever(BaseRetriever):
             recall_knowledge = [{**doc,'rank_score':0 } for doc in recall_knowledge]
 
         ##如果是段落类型，添加临近doc
-        recall_knowledge = self.add_neighbours_doc(aos_client,recall_knowledge)
+        recall_knowledge = self.add_neighbours_doc(recall_knowledge)
 
         return recall_knowledge,opensearch_knn_respose,opensearch_query_response
