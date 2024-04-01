@@ -242,7 +242,7 @@ export class LambdaStack extends NestedStack {
 
     // feedback us 管理函数
     this.lambda_feedback_us = new lambda.Function(this, 'lambda_feedback_us',{
-      code: lambda.Code.fromAsset('lambda/lambda_feedback_us'),
+      code: lambda.Code.fromAsset('../chatbotFE/deploy/lambda/lambda_feedback_us'),
       handler: 'app.handler',
       runtime: lambda.Runtime.PYTHON_3_10,
       timeout: Duration.minutes(3),
