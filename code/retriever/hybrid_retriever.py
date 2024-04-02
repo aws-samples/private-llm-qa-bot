@@ -4,7 +4,6 @@ import time
 import logging
 import hashlib
 import math
-import os
 from opensearchpy import OpenSearch, RequestsHttpConnection
 from typing import Any, Dict, List, Union,Mapping, Optional, TypeVar, Union
 from requests_aws4auth import AWS4Auth
@@ -14,7 +13,6 @@ from .web_search import web_search, add_webpage_content
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
-TOP_K = int(os.environ.get('TOP_K',4))
 
 credentials = boto3.Session().get_credentials()
 region = boto3.Session().region_name
@@ -338,7 +336,7 @@ class CustomDocRetriever(BaseRetriever):
             },
             retrievalConfiguration={
                 'vectorSearchConfiguration': {
-                    'numberOfResults': TOP_K,
+                    'numberOfResults': top_k,
                     'overrideSearchType': 'HYBRID',
                 }
             },
@@ -452,7 +450,7 @@ class CustomDocRetriever(BaseRetriever):
                 scores = self.rerank(query_input, all_docs,sm_client,rerank_endpoint)
                 ##sort by scores
                 sorted_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=False)
-                recall_knowledge = [{**all_docs[idx],'rank_score':scores[idx] } for idx in sorted_indices[-TOP_K:] ] 
+                recall_knowledge = [{**all_docs[idx],'rank_score':scores[idx] } for idx in sorted_indices[-top_k:] ] 
                 
                 ## 引入web search结果重新排序
                 if max(scores) < web_search_threshold and use_search:
@@ -462,7 +460,7 @@ class CustomDocRetriever(BaseRetriever):
                         sorted_indices = sorted(range(len(search_scores)), key=lambda i: search_scores[i], reverse=False)
                         
                         ## 过滤websearch结果
-                        sorted_web_knowledge = [{**web_knowledge[idx],'rank_score':search_scores[idx] } for idx in sorted_indices if search_scores[idx]>=WEBSEARCH_THRESHOLD] 
+                        sorted_web_knowledge = [{**web_knowledge[idx],'rank_score':search_scores[idx] } for idx in sorted_indices if search_scores[idx]>=web_search_threshold] 
                         ## 前面返回的是snippet内容，可以对结果继续用爬虫抓取完整内容
                         sorted_web_knowledge = add_webpage_content(sorted_web_knowledge)
                         
@@ -475,7 +473,7 @@ class CustomDocRetriever(BaseRetriever):
                 if web_knowledge:
                     search_scores = self.rerank(query_input, web_knowledge,sm_client,rerank_endpoint)
                     sorted_indices = sorted(range(len(search_scores)), key=lambda i: search_scores[i], reverse=False)
-                    sorted_web_knowledge = [{**web_knowledge[idx],'rank_score':search_scores[idx] } for idx in sorted_indices if search_scores[idx]>=WEBSEARCH_THRESHOLD]
+                    sorted_web_knowledge = [{**web_knowledge[idx],'rank_score':search_scores[idx] } for idx in sorted_indices if search_scores[idx]>=web_search_threshold]
                     ## 前面返回的是snippet内容，可以对结果继续用爬虫抓取完整内容
                     recall_knowledge = add_webpage_content(sorted_web_knowledge)
 
