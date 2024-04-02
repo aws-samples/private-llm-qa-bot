@@ -4,6 +4,7 @@ import time
 import logging
 import hashlib
 import math
+import os
 from opensearchpy import OpenSearch, RequestsHttpConnection
 from typing import Any, Dict, List, Union,Mapping, Optional, TypeVar, Union
 from requests_aws4auth import AWS4Auth
@@ -13,6 +14,7 @@ from .web_search import web_search, add_webpage_content
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
+TOP_K = int(os.environ.get('TOP_K',4))
 
 credentials = boto3.Session().get_credentials()
 region = boto3.Session().region_name
