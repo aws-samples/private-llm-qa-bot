@@ -49,8 +49,8 @@ STOP=[f"\n{A_Role_en}", f"\n{A_Role}", f"\n{Fewshot_prefix_Q}", '</response>']
 CHANNEL_RET_CNT = 10
 SESSION_EXPIRES_DAYS = 1
 
-BM25_QD_THRESHOLD_HARD_REFUSE = float(os.environ.get('bm25_qd_threshold_hard',15.0))
-BM25_QD_THRESHOLD_SOFT_REFUSE = float(os.environ.get('bm25_qd_threshold_soft',20.0))
+BM25_QD_THRESHOLD_HARD_REFUSE = float(os.environ.get('bm25_qd_threshold_hard',10.0))
+BM25_QD_THRESHOLD_SOFT_REFUSE = float(os.environ.get('bm25_qd_threshold_soft',12.0))
 KNN_QQ_THRESHOLD_HARD_REFUSE = float(os.environ.get('knn_qq_threshold_hard',0.6))
 KNN_QQ_THRESHOLD_SOFT_REFUSE = float(os.environ.get('knn_qq_threshold_soft',0.8))
 KNN_QD_THRESHOLD_HARD_REFUSE = float(os.environ.get('knn_qd_threshold_hard',0.6))

@@ -144,7 +144,7 @@ class CustomDocRetriever(BaseRetriever):
             body=query,
             index=index
         )
-        opensearch_knn_respose = [{'idx':item['_source'].get('idx',1),'doc_category':item['_source']['doc_category'],'doc_classify':item['_source'].get('doc_classify'),'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc':item['_source']['content'],"doc_type":item["_source"]["doc_type"],"score":item["_score"],'doc_author': item['_source']['doc_author'], 'doc_meta': item['_source'].get('doc_meta','')}  for item in query_response["hits"]["hits"]]
+        opensearch_knn_respose = [{'idx':item['_source'].get('idx',1),'doc_category':item['_source']['doc_category'],'doc_classify':item['_source'].get('doc_classify'),'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc':item['_source']['doc'],'content': item['_source']['content'],"doc_type":item["_source"]["doc_type"],"score":item["_score"],'doc_author': item['_source']['doc_author'], 'doc_meta': item['_source'].get('doc_meta','')}  for item in query_response["hits"]["hits"]]
         return opensearch_knn_respose
 
     def search_example_by_aos_knn(self, q_embedding, example_index, sim_threshold, size):
@@ -208,9 +208,9 @@ class CustomDocRetriever(BaseRetriever):
         )
 
         if exactly_match:
-            result_arr = [ {'idx':item['_source'].get('idx',0),'doc_category':item['_source']['doc_category'],'doc_classify':item['_source'].get('doc_classify'),'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc': item['_source']['content'], 'doc_type': item['_source']['doc_type'], 'score': item['_score'],'doc_author': item['_source']['doc_author'], 'doc_meta': item['_source'].get('doc_meta','')} for item in query_response["hits"]["hits"]]
+            result_arr = [ {'idx':item['_source'].get('idx',0),'doc_category':item['_source']['doc_category'],'doc_classify':item['_source'].get('doc_classify'),'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc': item['_source']['doc'], 'content': item['_source']['content'],'doc_type': item['_source']['doc_type'], 'score': item['_score'],'doc_author': item['_source']['doc_author'], 'doc_meta': item['_source'].get('doc_meta','')} for item in query_response["hits"]["hits"]]
         else:
-            result_arr = [ {'idx':item['_source'].get('idx',0),'doc_category':item['_source']['doc_category'],'doc_classify':item['_source'].get('doc_classify'),'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc':item['_source']['content'], 'doc_type': item['_source']['doc_type'], 'score': item['_score'],'doc_author': item['_source']['doc_author'], 'doc_meta': item['_source'].get('doc_meta','')} for item in query_response["hits"]["hits"]]
+            result_arr = [ {'idx':item['_source'].get('idx',0),'doc_category':item['_source']['doc_category'],'doc_classify':item['_source'].get('doc_classify'),'doc_title':item['_source']['doc_title'],'id':item['_id'],'doc':item['_source']['doc'], 'content': item['_source']['content'],'doc_type': item['_source']['doc_type'], 'score': item['_score'],'doc_author': item['_source']['doc_author'], 'doc_meta': item['_source'].get('doc_meta','')} for item in query_response["hits"]["hits"]]
         return result_arr
 
      ## kkn前置检索FAQ,，如果query非常相似，则返回作为cache
@@ -301,13 +301,14 @@ class CustomDocRetriever(BaseRetriever):
 
     ## 调用排序模型
     def rerank(self, query_input: str, docs: List[Any], sm_client, rerank_endpoint:str):
-        inputs = [query_input]*len(docs)
+        inputs = [query_input]*len(docs)*2
+        target_docs = [item['content'] for item in docs] + [item['doc'] for item in docs]
         response_model = sm_client.invoke_endpoint(
             EndpointName=rerank_endpoint,
             Body=json.dumps(
                 {
                     "inputs": inputs,
-                    "docs": [item['doc'] for item in docs]
+                    "docs": target_docs
                 }
             ),
             ContentType="application/json",
@@ -321,7 +322,7 @@ class CustomDocRetriever(BaseRetriever):
         unique_ids = set()
         nodup = []
         for item in docs:
-            doc_hash = hashlib.md5(str(item['doc']).encode('utf-8')).hexdigest()
+            doc_hash = hashlib.md5(str(item['content']).encode('utf-8')).hexdigest()
             if doc_hash not in unique_ids:
                 nodup.append(item)
                 unique_ids.add(doc_hash)
@@ -395,7 +396,7 @@ class CustomDocRetriever(BaseRetriever):
                 opensearch_knn_nodup = []
                 knn_unique_ids = set()
                 for item in opensearch_knn_respose:
-                    doc_hash = hashlib.md5(str(item['doc']).encode('utf-8')).hexdigest()
+                    doc_hash = hashlib.md5(str(item['content']).encode('utf-8')).hexdigest()
                     if doc_hash not in knn_unique_ids:
                         opensearch_knn_nodup.append(item)
                         knn_unique_ids.add(doc_hash)
@@ -403,10 +404,10 @@ class CustomDocRetriever(BaseRetriever):
                 opensearch_bm25_nodup = []
                 bm25_unique_ids = set()
                 for item in opensearch_query_response:
-                    doc_hash = hashlib.md5(str(item['doc']).encode('utf-8')).hexdigest()
+                    doc_hash = hashlib.md5(str(item['content']).encode('utf-8')).hexdigest()
                     if doc_hash not in bm25_unique_ids:
                         opensearch_bm25_nodup.append(item)
-                        doc_hash = hashlib.md5(str(item['doc']).encode('utf-8')).hexdigest()
+                        doc_hash = hashlib.md5(str(item['content']).encode('utf-8')).hexdigest()
                         bm25_unique_ids.add(doc_hash)
 
                 opensearch_knn_nodup.sort(key=lambda x: x['score'])
@@ -418,13 +419,13 @@ class CustomDocRetriever(BaseRetriever):
     
                 kg_combine_result = [ item for item in opensearch_knn_nodup[-1*half_topk:]]
 
-                doc_hash = set([ hashlib.md5(str(item['doc']).encode('utf-8')).hexdigest() for item in kg_combine_result ])
+                doc_hash = set([ hashlib.md5(str(item['content']).encode('utf-8')).hexdigest() for item in kg_combine_result ])
 
                 for item in opensearch_bm25_nodup:
                     if len(kg_combine_result) >= topk:
                         break
                         
-                    if hashlib.md5(str(item['doc']).encode('utf-8')).hexdigest() not in doc_hash:
+                    if hashlib.md5(str(item['content']).encode('utf-8')).hexdigest() not in doc_hash:
                         kg_combine_result.append(item)
                         logger.info(f'kg_combine_result.append')
                     else:
