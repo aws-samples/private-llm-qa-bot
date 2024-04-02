@@ -318,8 +318,8 @@ class CustomDocRetriever(BaseRetriever):
         scores = json_obj['scores']
         
         ##取content或者doc中大的值
-        content_scores = scores[:len(scores)/2]
-        doc_scores = scores[len(scores)/2:]
+        content_scores = scores[: int(len(scores)/2)]
+        doc_scores = scores[ int(len(scores)/2):]
         combined_scores = []
         for i,c_score in enumerate(content_scores):
             combined_scores.append( c_score if c_score>doc_scores[i] else doc_scores[i])
