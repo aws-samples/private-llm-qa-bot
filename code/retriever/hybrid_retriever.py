@@ -302,7 +302,7 @@ class CustomDocRetriever(BaseRetriever):
     ## 调用排序模型
     def rerank(self, query_input: str, docs: List[Any], sm_client, rerank_endpoint:str):
         inputs = [query_input]*len(docs)*2
-        target_docs = [item['content'] for item in docs] + [item['doc'] for item in docs]
+        target_docs = [item.get('content','') for item in docs] + [item.get('doc','') for item in docs]
         response_model = sm_client.invoke_endpoint(
             EndpointName=rerank_endpoint,
             Body=json.dumps(
@@ -316,7 +316,15 @@ class CustomDocRetriever(BaseRetriever):
         json_str = response_model['Body'].read().decode('utf8')
         json_obj = json.loads(json_str)
         scores = json_obj['scores']
-        return scores if isinstance(scores, list) else [scores]
+        
+        ##取content或者doc中大的值
+        content_scores = scores[:len(scores)/2]
+        doc_scores = scores[len(scores)/2:]
+        combined_scores = []
+        for i,c_score in enumerate(content_scores):
+            combined_scores.append( c_score if c_score>doc_scores[i] else doc_scores[i])
+        return combined_scores
+        # return scores if isinstance(scores, list) else [scores]
     
     def de_duplicate(self, docs):
         unique_ids = set()
@@ -449,6 +457,7 @@ class CustomDocRetriever(BaseRetriever):
             all_docs = self.de_duplicate(all_docs)
             if all_docs:
                 scores = self.rerank(query_input, all_docs,sm_client,rerank_endpoint)
+                logger.info("rerank scores:{scores}")
                 ##sort by scores
                 sorted_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=False)
                 recall_knowledge = [{**all_docs[idx],'rank_score':scores[idx] } for idx in sorted_indices[-top_k:] ] 
