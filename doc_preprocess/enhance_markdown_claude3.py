@@ -73,7 +73,7 @@ Only output the resulting dataframe in the format of this example:  <output>{exa
 
 def markdown_spliter(file_content):
     md_splitter = MarkdownTextSplitter( 
-        chunk_size = 512,
+        chunk_size = 2048,
         chunk_overlap  = 0,
     )
     
@@ -107,20 +107,21 @@ def enhance_markdown(content):
     try:
         enhanced_data = []
 
-        # paragraphs = markdown_spliter(content)
-        # enhanced_data = [ [p, content, 'NoQA'] for p in paragraphs ]
-        
-        enhanced_data.append([content, content, 'NoQA'])
-
+        if len(content) < 2048:
+            enhanced_data.append([content, content, 'NoQA'])
+        else:
+            paragraphs = markdown_spliter(content)
+            enhanced_data = [ [p, content, 'NoQA'] for p in paragraphs ]
+            
         summary = call_bedrock_enhance(content, construct_gen_summary_prompt)
         enhanced_data.append([summary, content, 'NoQA'])
 
-        # qa_list_str = call_bedrock_enhance(content, construct_QA_list_prompt)
-        # obj_list = json.loads(qa_list_str)
-        # qa_list = [ [ item['Question'], content, 'NoQA' ] for item in obj_list ]
-        # enhanced_data.extend(qa_list)
+        qa_list_str = call_bedrock_enhance(content, construct_QA_list_prompt)
+        obj_list = json.loads(qa_list_str)
+        qa_list = [ [ item['Question'], content, 'NoQA' ] for item in obj_list ]
+        enhanced_data.extend(qa_list)
 
-        df = pd.DataFrame(enhanced_data, columns=['Question', 'Answer', 'doc_type'])
+        df = pd.DataFrame(enhanced_data, columns=['Trigger', 'Content', 'doc_type'])
 
         return df
     except Exception as e:

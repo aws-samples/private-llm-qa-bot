@@ -95,49 +95,57 @@ def lambda_handler(event, context):
 #1
 {
   "fewshot_cnt": 5,
-  "query": "DynamoDB怎么计费"
+  "query": "DynamoDB怎么计费",
+  "example_index" : "chatbot-example-index-default"
 }
 
 #2
 {
   "fewshot_cnt": 5,
-  "query": "AWS Control Tower怎么用？"
+  "query": "AWS Control Tower怎么用？",
+  "example_index" : "chatbot-example-index-default"
 }
 
 #3
 {
   "fewshot_cnt": 5,
-  "query": "g5.2xlarge单价是多少？"
+  "query": "g5.2xlarge单价是多少？",
+  "example_index" : "chatbot-example-index-default"
 }
 
 #4
 {
   "fewshot_cnt": 5,
-  "query": "AWS 账户怎么加入到Organization？"
+  "query": "AWS 账户怎么加入到Organization？",
+  "example_index" : "chatbot-example-index-default"
 }
 
 #5
 {
   "fewshot_cnt": 5,
-  "query": "想出去玩吗"
+  "query": "想出去玩吗",
+  "example_index" : "chatbot-example-index-default"
 }
 
 #6
 {
   "fewshot_cnt": 5,
-  "query": "bedrock国内可用吗？"
+  "query": "bedrock国内可用吗？",
+  "example_index" : "chatbot-example-index-default"
 }
 
 #7
 {
   "fewshot_cnt": 5,
-  "query": "DataZone的GTMS是谁？"
+  "query": "DataZone的GTMS是谁？",
+  "example_index" : "chatbot-example-index-default"
 }
 
 #8
 {
   "fewshot_cnt": 5,
-  "query": "EMR serverless中国区能用吗"
+  "query": "EMR serverless中国区能用吗",
+  "example_index" : "chatbot-example-index-default"
 }
 ```
 

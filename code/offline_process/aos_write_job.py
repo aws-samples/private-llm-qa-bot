@@ -22,17 +22,19 @@ import numpy as np
 from urllib.parse import unquote
 from datetime import datetime
 
-args = getResolvedOptions(sys.argv, ['bucket', 'object_key','AOS_ENDPOINT','REGION','EMB_MODEL_ENDPOINT','PUBLISH_DATE'])
+args = getResolvedOptions(sys.argv, ['bucket', 'object_key','AOS_ENDPOINT','REGION','EMB_MODEL_ENDPOINT','PUBLISH_DATE', 'company', 'emb_batch_size'])
 s3 = boto3.resource('s3')
 bucket = args['bucket']
 object_key = args['object_key']
 QA_SEP = '=====' # args['qa_sep'] # 
 EXAMPLE_SEP = '\n\n'
-arg_chunk_size = 384
-CHUNK_SIZE=500
+arg_chunk_size = 1000
+CHUNK_SIZE=1000
 CHUNK_OVERLAP=0
 
 EMB_MODEL_ENDPOINT=args['EMB_MODEL_ENDPOINT']
+COMPANY = args.get('company', 'default')
+print(f"COMPANY :{COMPANY}")
 smr_client = boto3.client("sagemaker-runtime")
 
 AOS_ENDPOINT = args['AOS_ENDPOINT']
@@ -42,7 +44,8 @@ publish_date = args['PUBLISH_DATE'] if 'PUBLISH_DATE' in args.keys() else dateti
 
 INDEX_NAME = 'chatbot-index'
 EXAMPLE_INDEX_NAME = 'chatbot-example-index'
-EMB_BATCH_SIZE=20
+EMB_BATCH_SIZE = int(args.get('emb_batch_size', '20'))
+print(f"EMB_BATCH_SIZE :{EMB_BATCH_SIZE}")
 Sentence_Len_Threshold=10
 Paragraph_Len_Threshold=20
 
@@ -244,22 +247,35 @@ def iterate_QA(file_content, object_key,doc_classify,smr_client, index_name, end
     doc_author = get_filename_from_obj_key(object_key)
 
     for idx, batch in enumerate(qa_batches):
-        doc_template = "Question: {}\nAnswer: {}"
-        questions = [ item['Question'] for item in batch ]
-        answers = [ item['Answer'] for item in batch ]
-        meta = [ { k:item[k] for k in item.keys() if k not in ['Question', 'Answer', 'Author'] } for item in batch ]
-        docs = [ doc_template.format(item['Question'], item['Answer']) for item in batch ]
-        authors = [item.get('Author')  for item in batch ]
-        embeddings_q = get_embedding(smr_client, questions, endpoint_name)
+        print(f"processing {idx*EMB_BATCH_SIZE} - {(idx+1)*EMB_BATCH_SIZE}")
+        try:
+            doc_type_list = [ item.get('doc_type', None) for item in batch ]
+            doc_template = "Question: {}\nAnswer: {}"
+            meta = [ { k:item[k] for k in item.keys() if k not in ['Question', 'Answer', 'Trigger', 'Content', 'Author', 'doc_type'] } for item in batch ]
+            authors = [ item.get('Author')  for item in batch ]
+            
+            NoQA_embedding = set(doc_type_list)== {"NoQA"}
+            if NoQA_embedding:
+                contents = [ item['Content'] for item in batch ]
+                triggers = [ item['Trigger'] for item in batch ]
+                embeddings_trigger = get_embedding(smr_client, triggers, endpoint_name)
+                for i in range(len(doc_type_list)):
+                    document = { "publish_date": publish_date, "doc" : triggers[i], "idx": idx, "doc_type" : doc_type_list[i], "content" : contents[i], "doc_title": doc_title,"doc_author":authors[i] if authors[i] else doc_author, "doc_category": doc_category, "doc_meta": json.dumps(meta[i], ensure_ascii=False), "doc_classify":doc_classify,"embedding" : embeddings_trigger[i]}
+                    yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document).encode('utf-8')).hexdigest()}
+            else:
+                questions = [ item['Question'] for item in batch ]
+                answers = [ item['Answer'] for item in batch ]
+                contents = [ doc_template.format(item['Question'], item['Answer']) for item in batch ]
 
-        for i in range(len(embeddings_q)):
-            document = { "publish_date": publish_date, "doc" : questions[i], "idx": idx, "doc_type" : "Question", "content" : docs[i], "doc_title": doc_title,"doc_author":authors[i] if authors[i] else doc_author, "doc_category": doc_category, "doc_meta": json.dumps(meta[i], ensure_ascii=False), "doc_classify":doc_classify,"embedding" : embeddings_q[i]}
-            yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document).encode('utf-8')).hexdigest()}
-
-        embeddings_a = get_embedding(smr_client, answers, endpoint_name)
-        for i in range(len(embeddings_a)):
-            document = { "publish_date": publish_date, "doc" : answers[i], "idx": idx,"doc_type" : "Paragraph", "content" : docs[i], "doc_title": doc_title,"doc_author":authors[i] if authors[i] else doc_author, "doc_category": doc_category, "doc_meta": json.dumps(meta[i], ensure_ascii=False), "doc_classify":doc_classify,"embedding" : embeddings_a[i]}
-            yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document).encode('utf-8')).hexdigest()}
+                embeddings_q = get_embedding(smr_client, questions, endpoint_name)
+                embeddings_a = get_embedding(smr_client, answers, endpoint_name)
+                for i in range(len(doc_type_list)):
+                    document = { "publish_date": publish_date, "doc" : questions[i], "idx": idx, "doc_type" : "Question", "content" : contents[i], "doc_title": doc_title,"doc_author":authors[i] if authors[i] else doc_author, "doc_category": doc_category, "doc_meta": json.dumps(meta[i], ensure_ascii=False), "doc_classify":doc_classify,"embedding" : embeddings_q[i]}
+                    yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document).encode('utf-8')).hexdigest()}
+                    document = { "publish_date": publish_date, "doc" : answers[i], "idx": idx,"doc_type" : "Paragraph", "content" : contents[i], "doc_title": doc_title,"doc_author":authors[i] if authors[i] else doc_author, "doc_category": doc_category, "doc_meta": json.dumps(meta[i], ensure_ascii=False), "doc_classify":doc_classify,"embedding" : embeddings_a[i]}
+                    yield {"_index": index_name, "_source": document, "_id": hashlib.md5(str(document).encode('utf-8')).hexdigest()}
+        except Exception as e:
+            print(f"failed to process, {str(e)}")
 
 def iterate_examples(file_content, object_key, smr_client, index_name, endpoint_name):
     json_obj = json.loads(file_content)
@@ -830,23 +846,22 @@ def process_s3_uploaded_file(bucket, object_key):
         print("********** pre-processing md file")
         content_type = 'md'
     else:
-        raise RuntimeError("unsupport content type...(pdf, faq, txt, csv, xlsx, pdf.json, md are supported.)")
-    
+        print(f"{object_key} - unsupport content type...(pdf, faq, txt, csv, xlsx, pdf.json, md are supported.)")
+        return
+        
     username = get_filename_from_obj_key(object_key)
     
     s3 = boto3.resource('s3')
     obj = s3.Object(bucket,object_key)
     metadata = obj.metadata
-    # company = unquote(metadata.get('company','default') if metadata else 'default')
     
-    ## 如果满足 ai-content/company/username/file
-    company = object_key.split('/')[1] if len(object_key.split('/')) == 4 else 'default'
+
     doc_classify = unquote(metadata.get('category','') if metadata else '')
-        
+    # COMPANY should passed by args
     if  content_type == 'example':
-        index_name = f"chatbot-example-index-{company}"
+        index_name = f"chatbot-example-index-{COMPANY}"
     else:
-        index_name = f"{INDEX_NAME}-{company}"
+        index_name = f"{INDEX_NAME}-{COMPANY}"
 
 
         
@@ -865,7 +880,7 @@ def process_s3_uploaded_file(bucket, object_key):
     print("ingest {} chunk to AOS".format(response[0]))
     timestamp_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     put_idx_to_ddb(filename=object_key,
-                    company=company,
+                    company=COMPANY,
                     username=username,
                         index_name=index_name,
                             embedding_model=EMB_MODEL_ENDPOINT,

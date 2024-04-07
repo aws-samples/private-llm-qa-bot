@@ -1,27 +1,17 @@
 import json
 import os
 import logging
+import boto3
 # from collections import Counter
 
-from langchain.embeddings import SagemakerEndpointEmbeddings
-from langchain.embeddings.sagemaker_endpoint import EmbeddingsContentHandler
-from langchain.vectorstores import OpenSearchVectorSearch
-from langchain.llms.sagemaker_endpoint import LLMContentHandler
 from langchain.prompts import PromptTemplate
-# from langchain.llms import SagemakerEndpoint
 from typing import Any, Dict, List, Union,Mapping, Optional, TypeVar, Union
-# from langchain.chains import LLMChain
-# from langchain.llms.bedrock import Bedrock
-# from botocore.exceptions import ClientError
-from opensearchpy import OpenSearch, RequestsHttpConnection, AWSV4SignerAuth, helpers
-import boto3
 from generator.llm_wrapper import get_langchain_llm_model, invoke_model, format_to_message
-
+from retriever.hybrid_retriever import CustomDocRetriever, get_embedding_from_text
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-credentials = boto3.Session().get_credentials()
 BEDROCK_EMBEDDING_MODELID_LIST = ["cohere.embed-multilingual-v3","cohere.embed-english-v3","amazon.titan-embed-text-v1"]
 BEDROCK_LLM_MODELID_LIST = {'claude-instant':'anthropic.claude-instant-v1',
                             'claude-v2':'anthropic.claude-v2',
@@ -29,88 +19,6 @@ BEDROCK_LLM_MODELID_LIST = {'claude-instant':'anthropic.claude-instant-v1',
                             'claude-v3-haiku' : 'anthropic.claude-3-haiku-20240307-v1:0'}
 
 SIMS_THRESHOLD= float(os.environ.get('intent_detection_threshold',0.7))
-
-from typing import Any, Dict, List, Optional
-from langchain.embeddings.base import Embeddings
-
-
-class BedrockCohereEmbeddings(Embeddings):
-    client: Any  #: :meta private:
-
-    region_name: Optional[str] = None
-    """The aws region e.g., `us-west-2`. Fallsback to AWS_DEFAULT_REGION env variable
-    or region specified in ~/.aws/config in case it is not provided here.
-    """
-
-    credentials_profile_name: Optional[str] = None
-    """The name of the profile in the ~/.aws/credentials or ~/.aws/config files, which
-    has either access keys or role information specified.
-    If not specified, the default credential profile or, if on an EC2 instance,
-    credentials from IMDS will be used.
-    See: https://boto3.amazonaws.com/v1/documentation/api/latest/guide/credentials.html
-    """
-
-    model_id: str = "cohere.embed-multilingual-v3"
-    """Id of the model to call, e.g., amazon.titan-e1t-medium, this is
-    equivalent to the modelId property in the list-foundation-models api"""
-
-    model_kwargs: Optional[Dict] = None
-    """Key word arguments to pass to the model."""
-
-    def __init__(self, region_name, model_id) -> None:
-        self.region_name = region_name
-        self.model_id = model_id
-        self.client = boto3.client(service_name='bedrock-runtime', region_name=region_name)
-
-    def embed_documents(
-        self, texts: List[str], chunk_size: int = 1
-    ) -> List[List[float]]:
-        input_body = {}
-        input_body["texts"] = [text[:2048] for text in texts]
-        input_body["input_type"] = 'search_document'
-        # input_body["truncate"] = 'RIGHT'
-        body = json.dumps(input_body)
-        content_type = "application/json"
-        accepts = "application/json"
-
-        embeddings = []
-        try:
-            response = self.client.invoke_model(
-                body=body,
-                modelId=self.model_id,
-                accept=accepts,
-                contentType=content_type,
-            )
-            response_body = json.loads(response.get("body").read())
-            embeddings = response_body.get("embeddings")
-        except Exception as e:
-            raise ValueError(f"Error raised by inference endpoint: {e}")
-
-        return embeddings
-
-    def embed_query(self, text: str) -> List[float]:
-        input_body = {}
-        input_body["texts"] = [ text[:2048] ]
-        input_body["input_type"] = 'search_query'
-        # input_body["truncate"] = 'RIGHT'
-        body = json.dumps(input_body)
-        content_type = "application/json"
-        accepts = "application/json"
-
-        embeddings = []
-        try:
-            response = self.client.invoke_model(
-                body=body,
-                modelId=self.model_id,
-                accept=accepts,
-                contentType=content_type,
-            )
-            response_body = json.loads(response.get("body").read())
-            embeddings = response_body.get("embeddings")
-        except Exception as e:
-            raise ValueError(f"Error raised by inference endpoint: {e}")
-
-        return embeddings[0]
 
 class APIException(Exception):
     def __init__(self, message, code: str = None):
@@ -136,38 +44,6 @@ def handle_error(func):
             )
 
     return wrapper
-
-class ContentHandler(EmbeddingsContentHandler):
-    content_type = "application/json"
-    accepts = "application/json"
-
-    def transform_input(self, inputs: List[str], model_kwargs: Dict) -> bytes:
-        instruction_zh = "为这个句子生成表示以用于检索相关文章："
-        instruction_en = "Represent this sentence for searching relevant passages:"
-        input_str = json.dumps({"inputs": inputs, "parameters":{}, "is_query":False, "instruction":instruction_en})
-        return input_str.encode('utf-8')
-
-    def transform_output(self, output: bytes) -> List[List[float]]:
-        response_json = json.loads(output.read().decode("utf-8"))
-        return response_json["sentence_embeddings"]
-
-class llmContentHandler(LLMContentHandler):
-    def transform_input(self, prompt: str, model_kwargs: Dict) -> bytes:
-        input_str = json.dumps({'inputs': prompt,'history':[],**model_kwargs})
-        return input_str.encode('utf-8')
-    
-    def transform_output(self, output: bytes) -> str:
-        response_json = json.loads(output.read().decode("utf-8"))
-        return response_json["outputs"]
-
-# def create_intention_prompt_templete():
-#     prompt_template = """{instruction}\n\n{fewshot}\n\nHuman: \"{query}\"，这个问题的提问意图是啥？可选项[{options}]\nAssistant: """
-
-#     PROMPT = PromptTemplate(
-#         template=prompt_template, 
-#         input_variables=['fewshot','query', 'instruction', 'options']
-#     )
-#     return PROMPT
 
 def create_detect_prompt_templete():
     prompt_template = """Here is a list of aimed functions:\n\n<api_schemas>{api_schemas}</api_schemas>\n\nYou should follow below examples to choose the corresponding function and params according to user's query\n\n<examples>{examples}</examples>\n\n"""
@@ -197,39 +73,12 @@ def lambda_handler(event, context):
     logger.info("fewshot_cnt:{}".format(fewshot_cnt))
     logger.info("llm_model_endpoint:{}".format(llm_model_endpoint))
 
-    content_handler = ContentHandler()
+    q_embedding = get_embedding_from_text(query, embedding_endpoint)
+    doc_retriever = CustomDocRetriever.from_endpoints(embedding_model_endpoint=embedding_endpoint,
+                                aos_endpoint= aos_endpoint,
+                                aos_index=index_name)
+    docs_simple = doc_retriever.search_example_by_aos_knn(q_embedding=q_embedding[0], example_index=index_name, sim_threshold=SIMS_THRESHOLD, size=fewshot_cnt)
 
-    if embedding_endpoint in BEDROCK_EMBEDDING_MODELID_LIST :
-        embeddings =  BedrockCohereEmbeddings(region_name=region, model_id=embedding_endpoint) 
-    else: 
-       embeddings = SagemakerEndpointEmbeddings(
-        endpoint_name=embedding_endpoint,
-        region_name=region,
-        content_handler=content_handler
-    ) 
-
-    auth = AWSV4SignerAuth(credentials, region)
-        
-    docsearch = OpenSearchVectorSearch(
-        index_name=index_name,
-        embedding_function=embeddings,
-        opensearch_url="https://{}".format(aos_endpoint),
-        http_auth = auth,
-        use_ssl = True,
-        verify_certs = True,
-        connection_class = RequestsHttpConnection
-    )
-    
-    docs = docsearch.similarity_search_with_score(
-        query=query, 
-        k = fewshot_cnt,
-        space_type="cosinesimil",
-        vector_field="embedding",
-        text_field="query",
-        metadata_field='*'
-    )
-
-    docs_simple = [ {"query" : doc[0].page_content, "detection" : doc[0].metadata['detection'], "api_schema" : doc[0].metadata['api_schema'], "score":doc[1]} for doc in docs if doc[1]>=SIMS_THRESHOLD]
     #如果没有召回到example，则默认走QA，通过QA阶段的策略去判断，召回内容的是否跟问题相关，如果不相关则走chat
     if not docs_simple:
         answer = {"func":"QA"}
@@ -255,35 +104,6 @@ def lambda_handler(event, context):
     example_list_str = "\n{}\n".format("\n".join(example_list))
     
     parameters = {
-        "temperature": 0.01,
-         "stop_sequences": ["</output>"],
-    }
-
-    # llm = None
-    # if llm_model_endpoint not in list(BEDROCK_LLM_MODELID_LIST.values()):
-    #     llmcontent_handler = llmContentHandler()
-    #     llm=SagemakerEndpoint(
-    #             endpoint_name=llm_model_endpoint, 
-    #             region_name=region, 
-    #             model_kwargs={'parameters':parameters},
-    #             content_handler=llmcontent_handler
-    #         )
-    # else:
-    #     boto3_bedrock = boto3.client(
-    #         service_name="bedrock-runtime",
-    #         region_name=region
-    #     )
-    
-    #     parameters = {
-    #         "max_tokens_to_sample": 50,
-    #         "stop_sequences": ["</output>"],
-    #         "temperature":0.01,
-    #         "top_p":1
-    #     }
-        
-    #     llm = Bedrock(model_id=llm_model_endpoint, client=boto3_bedrock, model_kwargs=parameters)
-    
-    parameters = {
         "max_tokens": 1000,
         "stop": ["</output>"],
         "temperature":0.01,
@@ -307,14 +127,13 @@ def lambda_handler(event, context):
     ai_reply = invoke_model(llm=llm, prompt=prompt, messages=msg_list)
     final_prompt = json.dumps(msg_list,ensure_ascii=False)
     answer = ai_reply.content
-    # llmchain = LLMChain(llm=llm, verbose=False, prompt=prompt_template)
-    # answer = llmchain.run({"api_schemas":api_schema_str, "examples": example_list_str, "query":query, "prefix" : prefix})
+    
     answer = prefix + answer.strip()
     answer = answer.replace('<output>', '')
 
     log_dict = { "prompt" : final_prompt, "answer" : answer , "examples": docs_simple }
-    log_dict_str = json.dumps(log_dict, ensure_ascii=False)
-    logger.info(log_dict_str)
+    # log_dict_str = json.dumps(log_dict, ensure_ascii=False)
+    logger.info(log_dict)
 
     # if answer not in options:
     #     answer = intention_counter.most_common(1)[0]
