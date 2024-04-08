@@ -142,6 +142,14 @@ export class LambdaStack extends NestedStack {
     });
 
 
+    const layer_jwt = new lambda.LayerVersion(this, 'JWTLayer', {
+      code: lambda.Code.fromAsset('../chatbotFE/deploy/layer/jwt_layer.zip'),
+      description: 'PyJWT Python helper utility',
+      compatibleRuntimes: [lambda.Runtime.PYTHON_3_10],
+      layerVersionName:'jwt_layer',
+    });
+
+
     this.lambda_chat_py = new lambda.Function(this, 'handle_chat_py',{
       code: lambda.Code.fromAsset('../chatbotFE/deploy/lambda/lambda_chat_py'),
       layers:[layer],
@@ -219,10 +227,12 @@ export class LambdaStack extends NestedStack {
     // prompt hub 管理函数
     this.lambda_prompt_hub = new lambda.Function(this, 'lambda_prompthub',{
       code: lambda.Code.fromAsset('../chatbotFE/deploy/lambda/lambda_prompthub'),
+      layers: [layer_jwt],
       handler: 'app.handler',
       runtime: lambda.Runtime.PYTHON_3_10,
       timeout: Duration.minutes(3),
       environment: {
+        TOKEN_KEY: process.env.TOKEN_KEY,
       },
       memorySize: 256,
     })
@@ -235,6 +245,7 @@ export class LambdaStack extends NestedStack {
       runtime: lambda.Runtime.PYTHON_3_10,
       timeout: Duration.minutes(3),
       environment: {
+        TOKEN_KEY: process.env.TOKEN_KEY,
       },
       memorySize: 256,
     })
