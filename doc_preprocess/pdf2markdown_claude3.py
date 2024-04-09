@@ -27,8 +27,19 @@ def Image2base64(img_path):
     return base64_encoded_string
 
 def construct_multimodal_prompt(img_path):
-    prompt = """Please help me organize the content on the picture into text. Output in markdown format.
-Pay attention to the formatting, for example the quote and header tag. 
+    prompt = """Please help me organize the content on the picture into text. 
+
+<requirements>
+1. Based on the layout in the image, determine the output order. If there is no explicit order, convert the text part first, then the chart part.
+2. Output in markdown format. Try your best to keep all the information(text, format, chart).
+4. Pay attention to the formatting, keep the the quote and header level. 
+5. convert image to markdown picture tag, describe image in image name, for example "![description](url placeholder)"
+6. convert table into markdown table format
+7. convert bar chart into bullets format, use Chart Title as Title, Category Label as bullet header, Value Labels as value, keep all category labels.
+8. convert pie chart into bullets format, use Chart Title as Title, Category Label as bullet header, Value Labels as value, keep all category labels.
+9. Be consistent with the original language in pictures.
+
+</requirements>
 put your output between <output> and </output>"""
 
     base64_image = Image2base64(img_path)
@@ -73,6 +84,9 @@ def convert2markdown(img_path):
 def pdf2image(input_dir, output_dir):
     for root, dirs, files in os.walk(input_dir):
         for file in files:
+            if not file.endswith('.pdf'):
+                print(f"skip {file}..")
+                continue
             # 构造文件的完整路径
             file_path = os.path.join(root, file)
             path_without_ext, ext = os.path.splitext(file_path)
