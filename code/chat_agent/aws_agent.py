@@ -42,19 +42,6 @@ ERROR_ANSWER = """
             Skip the preamble, go straight into the answer. Respond in the original language of user's question.
 """
 
-FUNCTION_CALL_TEMPLATE = """here is a list of functions you can use, contains in <tools> tags
-
-<tools>
-{functions}
-</tools>
-
-Given you a task, you need to :
-1. Decide which tool need to be chosen to solve the task, if no tool is chosen, you should reply “I don't know”
-2. Once you decide a tool, please extract the required parameters and function name from the task. 
-3. Please response in json format such as {{"name":"function name", "arguments":{{"x":1,"y":1}}}}, and enclose the response in <function_call></function_call> tag, 
-
-Task: {task}"""
-
 CONTEXT_TEMPLATE = """
         You are acting as an AWS assistant, please based on the context in <context></context>, answer user's question.
         Skip the preamble, go straight into the answer. if the context is empty,refuse to response politely.
