@@ -5,6 +5,18 @@
     },
     "examples":[
         {
+            "query":"中国区有哪些大模型可以推荐",
+            "detection":{
+                "func":"QA"
+            }
+        },
+        {
+            "query":"gloabl有哪些大模型可以推荐",
+            "detection":{
+                "func":"QA"
+            }
+        },
+        {
             "query":"什么是 AWS Organizations？",
             "detection":{
                 "func":"QA"
