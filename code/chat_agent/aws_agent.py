@@ -42,6 +42,72 @@ ERROR_ANSWER = """
             Skip the preamble, go straight into the answer. Respond in the original language of user's question.
 """
 
+FUNCTION_CALL_TEMPLATE = """here is a list of functions you can use, contains in <tools> tags
+
+<tools>
+{functions}
+</tools>
+
+Given you a task, you need to :
+1. Decide which tool need to be chosen to solve the task, if no tool is chosen, you should reply “I don't know”
+2. Once you decide a tool, please extract the required parameters and function name from the task. 
+3. Please response in json format such as {{"name":"function name", "arguments":{{"x":1,"y":1}}}}, and enclose the response in <function_call></function_call> tag, 
+
+Task: {task}"""
+
+
+API_SCHEMA = [
+                {
+                "name": "ec2_price",
+                "description": "query the price of AWS ec2 instance",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                         "instance_type": {
+                            "type": "string",
+                            "description": "the AWS ec2 instance type, for example, c5.xlarge, m5.large, t3.mirco, g4dn.2xlarge, if it is a partial of the instance type, you should try to auto complete it. for example, if it is r6g.2x, you can complete it as r6g.2xlarge",
+                        },
+                        "region": {
+                            "type": "string",
+                            "description": "the AWS region name where the ec2 is located in, for example us-east-1, us-west-1, if it is common words such as 'us east 1','美东1','美西2',you should try to normalize it to standard AWS region name, for example, 'us east 1' is normalized to 'us-east-1', '美东2' is normalized to 'us-east-2','美西2' is normalized to 'us-west-2','北京' is normalized to 'cn-north-1', '宁夏' is normalized to 'cn-northwest-1', '中国区' is normalized to 'cn-north-1'",
+                        },
+                        "os": {
+                            "type": "string",
+                            "description": "the operating system of ec2 instance,the valid value should be 'Linux' or 'Windows' ",
+                        },
+                        "term": {
+                            "type": "string",
+                            "description": "the payment term,the valid value should be 'OnDemand' or 'Reserved' ",
+                        },
+                        "purchase_option": {
+                            "type": "string",
+                            "description": "the purchase option of Reserved instance, the valid value should be 'No Upfront', 'Partial Upfront' or 'All Upfront' ",
+                        },
+                    },
+                    "required": ["instance_type"],
+                    },
+                },
+                {
+                "name": "service_org",
+                "description": "query the contact person in the organization",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "user's original input for query the service contact person",
+                        },
+                        "service": {
+                            "type": "string",
+                            "description": "the AWS service name ",
+                        },
+                    },
+                    "required": ["query"],
+                    },
+                },
+            ]
+
+
 CONTEXT_TEMPLATE = """
         You are acting as an AWS assistant, please based on the context in <context></context>, answer user's question.
         Skip the preamble, go straight into the answer. if the context is empty,refuse to response politely.
@@ -79,6 +145,7 @@ Please put your answer between <response> tags and follow below requirements:
 
 class AgentTools(BaseModel):
     function_map: dict = {}
+    api_schema: list
     llm: Any
 
     def register_tool(cls,name:str,func:Union[callable,str]) -> None:
@@ -120,6 +187,34 @@ class AgentTools(BaseModel):
         else:
             return None
 
+
+    def dispatch_function_call(cls,query:str):
+        ##parse the args
+        prompt_template = PromptTemplate(
+                template=FUNCTION_CALL_TEMPLATE,
+                input_variables=["functions",'task']
+            )
+        
+        prompt = prompt_template.format(functions=json.dumps(cls.api_schema, ensure_ascii=False), task=query)
+        msg_list = [format_to_message(query=prompt)]
+        ai_reply = invoke_model(llm=cls.llm, prompt=prompt, messages=msg_list)
+        answer = ai_reply.content
+        # llmchain = LLMChain(llm=cls.llm,verbose=False,prompt = prompt)
+        # answer = llmchain.run({'functions':cls.api_schema, "task": query})
+        function_call = AgentTools.extract_function_call(answer)
+        print(f"****use function_call****:{function_call}")
+        if not function_call:
+            return None,None,None,None
+        try:
+            args = json.loads(function_call['arguments'])
+            func_name = function_call['name']
+            result = cls._tool_call(query, func_name, **args)
+            return result,func_name,args,None
+        except Exception as e:
+            print(str(e))
+            logger.info(str(e))
+            return None,function_call['name'],args,str(e)
+
     def _add_error_answer(cls,query,func_name,args,error) ->str:
         prompt_template = PromptTemplate(
                 template=ERROR_ANSWER,
@@ -129,6 +224,8 @@ class AgentTools(BaseModel):
         msg_list = [format_to_message(query=prompt)]
         ai_reply = invoke_model(llm=cls.llm, prompt=prompt, messages=msg_list)
         answer = ai_reply.content
+        # llmchain = LLMChain(llm=cls.llm,verbose=False,prompt = prompt)
+        # answer = llmchain.run({'func_name':func_name, "args": args,"error":error,"query":query})
         answer = answer.strip()
         return answer
 
@@ -148,6 +245,19 @@ class AgentTools(BaseModel):
         # answer = llmchain.run({'context':context, "question": query})
         answer = answer.replace('</response>','').strip()
         return answer
+
+    def run(cls,query) ->Dict[str,str]:
+        context,func_name,args,error = cls.dispatch_function_call(query)
+        logger.info(f"****function_call [{func_name}] result ****:\n{context}")
+        if error:
+            answer = cls._add_error_answer(query,func_name,args,error)
+        else:
+            answer = cls._add_context_answer(query,context)
+        if answer: 
+            ref_doc = f"本次回答基于使用工具[{func_name}]为您查询到结果:\n\n{context}\n\n"
+            return answer,ref_doc
+        else :
+            return REFUSE_ANSWER.format(func_name=func_name,args=args),''
     
     def run_with_func_args(cls,query,func_name,args) ->Dict[str,str]:
         context= ''
@@ -218,10 +328,37 @@ def lambda_handler(event, context):
 
     global BEDROCK_REGION
     BEDROCK_REGION = region
-    llm_model_endpoint = os.environ.get('llm_model_endpoint','claude-v3-sonnet')
+    llm_model_endpoint = os.environ.get('llm_model_endpoint')
+    use_bedrock = True if llm_model_endpoint.startswith('anthropic') or llm_model_endpoint.startswith('claude') else False
     logger.info("region:{}".format(region))
     logger.info("params:{}".format(params))
     logger.info("llm_model_endpoint:{}".format(llm_model_endpoint))
+
+    # llm = None
+    # if not use_bedrock:
+    #     logger.info(f'not use bedrock, use {llm_model_endpoint}')
+    #     llmcontent_handler = llmContentHandler()
+    #     llm=SagemakerEndpoint(
+    #             endpoint_name=llm_model_endpoint, 
+    #             region_name=region, 
+    #             model_kwargs={'parameters':parameters},
+    #             content_handler=llmcontent_handler
+    #         )
+    # else:
+    #     boto3_bedrock = boto3.client(
+    #         service_name="bedrock-runtime",
+    #         region_name=region
+    #     )
+    
+    #     parameters = {
+    #         "max_tokens_to_sample": 8096,
+    #         "stop_sequences": ["</response>"],
+    #         "temperature":0.01,
+    #         "top_p":0.85
+    #     }
+        
+    #     model_id = "anthropic.claude-v2"
+    #     llm = Bedrock(model_id=model_id, client=boto3_bedrock, model_kwargs=parameters)
     
     parameters = {
         "temperature":0.01,
@@ -236,7 +373,7 @@ def lambda_handler(event, context):
 
     llm = get_langchain_llm_model(model_id, parameters, region, llm_stream=False)
 
-    agent_tools = AgentTools(llm=llm)
+    agent_tools = AgentTools(api_schema=API_SCHEMA,llm=llm)
     agent_tools.register_tool(name='ec2_price',func=query_ec2_price)
     agent_tools.register_tool(name='service_org',func=service_org)
 
@@ -265,7 +402,7 @@ def lambda_handler(event, context):
         else:
             answer,ref_doc = agent_tools.run_with_func_args(query,func_name,func_params)
     else:
-        answer,ref_doc = f"对不起，未传入函数名称", ""
+        answer,ref_doc = agent_tools.run(query)
 
     pattern = r'^根据[^，,]*[,|，]'
     answer = re.sub(pattern, "", answer)
@@ -281,9 +418,9 @@ def lambda_handler(event, context):
 ##for local test only
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument("--query", type=str, default='查询g5.2x在美西2的价格')
+    parser.add_argument("--query", type=str, default='查询g4dn在美西2的价格')
     args = parser.parse_args()
     query = args.query
-    event = {'params':{'query':query,'detection':{'func':'ec2_price','param':{'instance_type':'g5.2xlarge','region':'us-west-2'}}}}
+    event = {'params':{'query':query},'use_bedrock':True}
     response = lambda_handler(event,{})
     print(response['body'])
