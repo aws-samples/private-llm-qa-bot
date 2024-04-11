@@ -1452,6 +1452,41 @@ def generate_s3_image_url(bucket_name, key, expiration=3600):
     )
     return url
 
+##把连续的role进行合并
+def reconstruct_to_claude_messages(messages):
+    rec_messages = []
+    # system = None
+    for message in messages:
+        # if isinstance(message,SystemMessage) and not system:
+        # # if message['role'] =='system' and not system:
+        #     system = message
+        #     continue
+        if rec_messages:
+            ##如果第一个消息是assitant,则需要更换成user
+            # if rec_messages[0]['role'] == 'assistant':
+            if isinstance(rec_messages[0], AIMessage):
+                # rec_messages[0] = {"role":'user',"content":rec_messages[0]['content']}
+                rec_messages[0] = HumanMessage(content=rec_messages[0].content)
+            last_msg = rec_messages[-1]
+            # last_role = last_msg['role']
+            last_role = 'assistant' if isinstance(last_msg,AIMessage) else 'user'
+            # current_role = message['role']
+            current_role = 'assistant' if isinstance(message,AIMessage) else 'user'
+            if last_role == current_role:
+                # new_content = last_msg['content'] +"\n\n" + message['content']
+                last_msg_content = last_msg.content[-1]['text'] if isinstance(last_msg.content,list) else last_msg.content
+                current_msg_content = message.content[-1]['text'] if isinstance(message.content, list) else message.content
+                new_content = last_msg_content +"\n\n" + current_msg_content
+                # rec_messages[-1] = {"role":last_role,"content":new_content}
+                # rec_messages[-1] = {"role":last_role,"content":new_content}
+                rec_messages[-1] = HumanMessage(content=new_content) if last_role == 'user' else AIMessage(content=new_content)
+            else:
+                rec_messages.append(message)
+        else:
+            rec_messages.append(message)
+    return rec_messages
+
+
 def pehub_chat(query_input:str,system_prompt:str,model_kargs:Dict[str,Any],user_id:str,wsclient:str,wsconnection_id:str,msgid:str,session_id:str,llm_model_endpoint:str, llm_model_name:str, use_stream:bool,multi_rounds:bool,images_base64:List[str],history_messages:List[Dict[str,Any]]):
     
     json_obj = {
@@ -1550,7 +1585,9 @@ def pehub_chat(query_input:str,system_prompt:str,model_kargs:Dict[str,Any],user_
         
         ##alway put system message in the first slot
         system_message = [SystemMessage(content=system_prompt)]
-        messages = system_message+ chat_conversions+prompt_func({'query_input':query_input,'images':images_base64})
+        ## 合并相同role的message
+        reconstructed_messges = reconstruct_to_claude_messages(chat_conversions+prompt_func({'query_input':query_input,'images':images_base64}))
+        messages = system_message+ reconstructed_messges
         logger.info('-------------------invoke:messages-------------------')
         print(messages)
         try:
