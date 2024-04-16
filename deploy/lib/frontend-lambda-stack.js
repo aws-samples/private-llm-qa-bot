@@ -8,7 +8,7 @@ import {
   EndpointType
 } from "aws-cdk-lib/aws-apigateway";
 import * as s3 from "aws-cdk-lib/aws-s3";
-
+import * as iam from "aws-cdk-lib/aws-iam";
 import * as sns from "aws-cdk-lib/aws-sns";
 import subscriptions from "aws-cdk-lib/aws-sns-subscriptions";
 import lambda from "aws-cdk-lib/aws-lambda";
@@ -263,6 +263,27 @@ export class LambdaStack extends NestedStack {
     })
     feedback_us_table.grantReadWriteData(this.lambda_feedback_us);
 
+
+    //automatic pe function
+    this.lambda_auto_pe = new lambda.Function(this, 'lambda_automatic_prompt',{
+      code: lambda.Code.fromAsset('../chatbotFE/deploy/lambda/lambda_automatic_prompt'),
+      handler: 'app.handler',
+      runtime: lambda.Runtime.PYTHON_3_10,
+      timeout: Duration.minutes(3),
+      environment: {
+        REGION_NAME:"us-east-1"
+      },
+      memorySize: 256,
+    })
+
+    this.lambda_auto_pe.addToRolePolicy(new iam.PolicyStatement({
+      actions: [ 
+        "bedrock:*",
+        ],
+      effect: iam.Effect.ALLOW,
+      resources: ['*'],
+      }))
+      
     // doc_index_table.grantReadWriteData(this.lambda_list_idx )
     const bucket = s3.Bucket.fromBucketName(this, 'DocUploadBucket',process.env.UPLOAD_BUCKET);
     bucket.grantReadWrite(this.lambda_handle_upload);
@@ -369,6 +390,11 @@ export class LambdaStack extends NestedStack {
     feedback_us.addMethod('DELETE',feedbackUsIntegration,{authorizer});
     feedback_us.addMethod('GET',feedbackUsIntegration,{authorizer});
     feedback_us.addResource("{id}").addMethod("GET",feedbackUsIntegration,{authorizer});
+
+    // auto pe api
+    const autoPeIntegration = new LambdaIntegration(this.lambda_auto_pe );
+    const aut_pe = api.root.addResource('automatic_prompt');
+    aut_pe.addMethod('POST',autoPeIntegration,{authorizer});
      
     const loginIntegration = new LambdaIntegration(this.login_fn);
     const login = api.root.addResource("login");
