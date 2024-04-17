@@ -2,8 +2,8 @@
 import cdk  from 'aws-cdk-lib';
 import { DeployStack } from '../lib/deploy-stack.js';
 import { FrontendCdkStack } from '../lib/frontend-cdk-stack.js';
-import { BedrockCdkStack } from '../lib/bedrock-stack.js';
-import { GeneratorCdkStack } from '../lib/generator-stack.js';
+// import { BedrockCdkStack } from '../lib/bedrock-stack.js';
+// import { GeneratorCdkStack } from '../lib/generator-stack.js';
 // import { exec } from 'child_process';
 import * as dotenv from 'dotenv' ;
 dotenv.config()
@@ -19,13 +19,13 @@ new FrontendCdkStack(app, 'ChatFrontendDeployStack', {
 });
 
 // you need to install by `npm i bedrock-agents-cdk`
-new BedrockCdkStack(app, 'BedrockKBDeployStack', {
-  env: { account: process.env.CDK_DEFAULT_ACCOUNT, region: process.env.CDK_DEFAULT_REGION, s3bucket: process.env.UPLOAD_BUCKET, s3prefix : process.env.UPLOAD_OBJ_PREFIX },
-});
+// new BedrockCdkStack(app, 'BedrockKBDeployStack', {
+//   env: { account: process.env.CDK_DEFAULT_ACCOUNT, region: process.env.CDK_DEFAULT_REGION, s3bucket: process.env.UPLOAD_BUCKET, s3prefix : process.env.UPLOAD_OBJ_PREFIX },
+// });
 
-new GeneratorCdkStack(app, 'GeneratorStack', {
-  env: { account: process.env.CDK_DEFAULT_ACCOUNT, region: process.env.CDK_DEFAULT_REGION},
-});
+// new GeneratorCdkStack(app, 'GeneratorStack', {
+//   env: { account: process.env.CDK_DEFAULT_ACCOUNT, region: process.env.CDK_DEFAULT_REGION},
+// });
 
 // const frontEndScriptPath = '../chatbotFE/gen_env.sh';
 
