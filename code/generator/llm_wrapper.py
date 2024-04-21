@@ -20,9 +20,6 @@ from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-bedrock_llms = get_all_bedrock_llm()
-private_llm = get_all_private_llm()
-
 STOP=["user:", "用户：", "用户:", '</response>']
 
 class SageMakerContentHandler(LLMContentHandler):
@@ -63,6 +60,8 @@ def get_langchain_llm_model(llm_model_id, params, region, llm_stream=False, llm_
     llm = None
     parameters = { item[0]:item[1] for item in params.items() if item[0] in ['temperature','max_tokens', 'top_p', 'top_k', 'stop']}
 
+    bedrock_llms = get_all_bedrock_llm()
+    private_llm = get_all_private_llm()
     if llm_model_id in bedrock_llms:
         boto3_bedrock = boto3.client(
             service_name="bedrock-runtime",
