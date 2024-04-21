@@ -216,7 +216,7 @@ class CustomDocRetriever(BaseRetriever):
      ## kkn前置检索FAQ,，如果query非常相似，则返回作为cache
     def knn_quick_prefetch(self, query_input: str, prefetch_threshold:float) -> List[Any]:
         start = time.time()
-        query_embedding = get_vector_by_sm_endpoint(query_input, sm_client, self.embedding_model_endpoint)
+        query_embedding = get_embedding_from_text(query_input, self.embedding_model_endpoint)
         elpase_time = time.time() - start
         logger.info(f'knn_quick_prefetch, running time of get embeddings : {elpase_time:.3f}s')
 
@@ -369,7 +369,7 @@ class CustomDocRetriever(BaseRetriever):
         # global KNN_QQ_THRESHOLD_HARD_REFUSE, KNN_QQ_THRESHOLD_SOFT_REFUSE,WEBSEARCH_THRESHOLD
         # global KNN_QD_THRESHOLD_HARD_REFUSE, KNN_QD_THRESHOLD_SOFT_REFUSE
         start = time.time()
-        query_embedding = get_vector_by_sm_endpoint(query_input, sm_client, self.embedding_model_endpoint)
+        query_embedding = get_embedding_from_text(query_input, self.embedding_model_endpoint)
         elpase_time = time.time() - start
         logger.info(f'running time of get embeddings : {elpase_time:.3f}s')
 
