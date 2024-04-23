@@ -141,10 +141,11 @@ def lambda_handler(event, context):
     #         if opt in answer:
     #             answer = opt
     #             break
-    ret = {"func":"QA"}
+    default_ret = {"func":"QA"}
     try:
         ret = json.loads(answer)
     except Exception as e:
         logger.info("Fail to detect function, caused by {}".format(str(e)))
-
-    return ret
+    finally:
+        ret = ret if ret.get('func') else default_ret
+    return ret 
