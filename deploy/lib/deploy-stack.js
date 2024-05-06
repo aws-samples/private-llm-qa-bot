@@ -458,9 +458,13 @@ export class DeployStack extends Stack {
   )
 
 
-       //create REST api
+    //create REST api
     const restapi = new ApiGatewayStack(this,'ChatBotRestApi',{lambda_fn:lambda_main_brain,name:"chatbot_entry"})
-    new CfnOutput(this, `API gateway endpoint url`,{value:`${restapi.endpoint}`});
+    new CfnOutput(this, `Chat API gateway endpoint url`,{value:`${restapi.endpoint}`});
+    
+    //create REST api
+    const intent_detect_restapi = new ApiGatewayStack(this,'IntentDetectRestApi',{lambda_fn:lambda_intention,name:"intent_detect_entry"})
+    new CfnOutput(this, `IntentDetect API gateway endpoint url`,{value:`${intent_detect_restapi.endpoint}`});
 
     const role = new iam.Role(this, 'chatbot-kinesis-firehose', {
       assumedBy: new iam.ServicePrincipal('logs.amazonaws.com'),

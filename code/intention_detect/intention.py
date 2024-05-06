@@ -91,13 +91,20 @@ def lambda_handler(event, context):
 
     options = set([ doc['detection'] for doc in docs_simple])
 
+    default_ret = {"func":"QA"}
+
     if len(options) == 1 and len(docs_simple) == fewshot_cnt:
         logger.info("Notice: Only Single latent Intention detected.")
         answer = options.pop()
-        log_dict = { "answer" : answer, "examples": docs_simple }
-        log_dict_str = json.dumps(log_dict, ensure_ascii=False)
-        logger.info(log_dict_str)
-        return answer
+        ret = default_ret
+        try:
+            ret = json.loads(answer)
+            log_dict = { "answer" : answer, "examples": docs_simple }
+            log_dict_str = json.dumps(log_dict, ensure_ascii=False)
+            logger.info(log_dict_str)
+        except Exception as e:
+            logger.info("Fail to parse answer - {}".format(str(answer)))
+        return ret
 
     api_schema_options = set(api_schema_list)
     api_schema_str = "<api_schema>\n{}\n</api_schema>".format(",\n".join(api_schema_options))
@@ -141,10 +148,11 @@ def lambda_handler(event, context):
     #         if opt in answer:
     #             answer = opt
     #             break
-    ret = {"func":"QA"}
+
     try:
         ret = json.loads(answer)
     except Exception as e:
         logger.info("Fail to detect function, caused by {}".format(str(e)))
-
-    return ret
+    finally:
+        ret = ret if ret.get('func') else default_ret
+    return ret 

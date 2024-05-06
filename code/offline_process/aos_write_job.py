@@ -53,7 +53,7 @@ DOC_INDEX_TABLE= 'chatbot_doc_index'
 dynamodb = boto3.client('dynamodb')
 
 AOS_BENCHMARK_ENABLED=False
-BEDROCK_EMBEDDING_MODELID_LIST = ["cohere.embed-multilingual-v3","cohere.embed-english-v3","amazon.titan-embed-text-v1"]
+BEDROCK_EMBEDDING_MODELID_LIST = ["cohere.embed-multilingual-v3","cohere.embed-english-v3","amazon.titan-embed-text-v1","amazon.titan-embed-text-v2:0"]
 
 
 bedrock = boto3.client(service_name='bedrock-runtime',
@@ -76,7 +76,30 @@ def token_length_function(string:str) -> int:
     except Exception as e:
         print(f'str(e),using len()')
         return len(string)
-    
+
+def get_embedding_from_titan(text, model_id):
+    if isinstance(text, list):
+        raise RuntimeError("For titan embedding, it only support str, but list[str] provided")
+
+    body = {
+        "inputText": text[:8192],  
+    }
+
+    if model_id == 'amazon.titan-embed-text-v2:0':
+        body['dimensions'] = 1024 
+        body['normalize'] = True
+
+    playload = json.dumps(body)
+
+    bedrock_resp = bedrock.invoke_model(
+        body=playload,
+        modelId=model_id,
+        accept="application/json",
+        contentType="application/json"
+    )
+    response_body = json.loads(bedrock_resp.get('body').read())
+    return response_body['embedding']
+
 def get_embedding_bedrock(texts,model_id):
     provider = model_id.split(".")[0]
     if provider == "cohere":
@@ -85,24 +108,23 @@ def get_embedding_bedrock(texts,model_id):
             "input_type": "search_document",
             # "truncate":"RIGHT" ## 该参数目前不起作用，只能通过text[:2048]来截断
         })
-    else:
-        # includes common provider == "amazon"
-        if isinstance(texts, list) and len(texts) > 1:
-            raise ('titan embedding cannot support batch inference')
-        body = json.dumps({
-            "inputText": texts if isinstance(texts, str) else texts[0],
-        })
-    bedrock_resp = bedrock.invoke_model(
-            body=body,
+
+        bedrock_resp = bedrock.invoke_model(
+            body=playload,
             modelId=model_id,
             accept="application/json",
             contentType="application/json"
         )
-    response_body = json.loads(bedrock_resp.get('body').read())
-    if provider == "cohere":
+        response_body = json.loads(bedrock_resp.get('body').read())
         embeddings = response_body['embeddings']
-    else:
-        embeddings = [response_body['embedding']]
+    elif provider == "amazon" :
+        if model_id not in  ["amazon.titan-embed-text-v2:0", "amazon.titan-embed-text-v1"]:
+            raise RuntimeError(f"{model_id} is not supported")
+
+        if isinstance(texts, list) and len(texts) > 1:
+            embeddings = [ get_embedding_from_titan(text, model_id) for text in texts ]
+        else:
+            embeddings = [ get_embedding_from_titan(texts, model_id) ]
     return embeddings
 
 
