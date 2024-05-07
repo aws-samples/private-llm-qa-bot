@@ -2,7 +2,7 @@ import json
 import os
 import logging
 import boto3
-# from collections import Counter
+from collections import Counter
 
 from langchain.prompts import PromptTemplate
 from typing import Any, Dict, List, Union,Mapping, Optional, TypeVar, Union
@@ -64,6 +64,8 @@ def lambda_handler(event, context):
     query = event.get('query')
     index_name = event.get('example_index')
     fewshot_cnt = event.get('fewshot_cnt')
+    threshold_cnt = event.get('threshold_cnt', 0)
+
     llm_model_endpoint = os.environ.get('llm_model_endpoint', BEDROCK_LLM_MODELID_LIST["claude-v3-sonnet"])
     
     logger.info("embedding_endpoint: {}".format(embedding_endpoint))
@@ -89,7 +91,9 @@ def lambda_handler(event, context):
 
     api_schema_list = [ doc['api_schema'] for doc in docs_simple]
 
-    options = set([ doc['detection'] for doc in docs_simple])
+    detection_list = [ json.loads(doc['detection'])['func'] for doc in docs_simple ]
+
+    options = set(detection_list)
 
     default_ret = {"func":"QA"}
 
@@ -98,13 +102,21 @@ def lambda_handler(event, context):
         answer = options.pop()
         ret = default_ret
         try:
-            ret = json.loads(answer)
+            ret = {"func": answer}
             log_dict = { "answer" : answer, "examples": docs_simple }
             log_dict_str = json.dumps(log_dict, ensure_ascii=False)
             logger.info(log_dict_str)
         except Exception as e:
             logger.info("Fail to parse answer - {}".format(str(answer)))
         return ret
+    elif threshold_cnt > 0 and threshold_cnt < fewshot_cnt:
+        logger.info("Notice: threshold_cnt is set, the intention will be determined if the count of specified intention exceeds the threshold_cnt")
+        count = Counter(detection_list)
+        most_common = count.most_common(1)
+        intention, cnt = most_common[0]
+        logger.info(f"The counter information of intention: {str(count)}")
+        if cnt >= threshold_cnt:
+            return {"func": intention }
 
     api_schema_options = set(api_schema_list)
     api_schema_str = "<api_schema>\n{}\n</api_schema>".format(",\n".join(api_schema_options))
