@@ -22,7 +22,7 @@ import numpy as np
 from urllib.parse import unquote
 from datetime import datetime
 
-args = getResolvedOptions(sys.argv, ['bucket', 'object_key','AOS_ENDPOINT','REGION','EMB_MODEL_ENDPOINT','PUBLISH_DATE', 'company', 'emb_batch_size'])
+args = getResolvedOptions(sys.argv, ['bucket', 'object_key','AOS_ENDPOINT','REGION','EMB_MODEL_ENDPOINT','PUBLISH_DATE', 'company', 'emb_batch_size', 'index_name'])
 s3 = boto3.resource('s3')
 bucket = args['bucket']
 object_key = args['object_key']
@@ -42,8 +42,14 @@ REGION = args['REGION']
 
 publish_date = args['PUBLISH_DATE'] if 'PUBLISH_DATE' in args.keys() else datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-INDEX_NAME = 'chatbot-index'
-EXAMPLE_INDEX_NAME = 'chatbot-example-index'
+default_index_name = None
+if object_key.endswith == '.example':
+    default_index_name = f"chatbot-example-index-{COMPANY}"
+else:
+    default_index_name = f"chatbot-index-{COMPANY}"
+
+INDEX_NAME = args.get('index_name', default_index_name)
+
 EMB_BATCH_SIZE = int(args.get('emb_batch_size', '20'))
 print(f"EMB_BATCH_SIZE :{EMB_BATCH_SIZE}")
 Sentence_Len_Threshold=10
@@ -877,26 +883,17 @@ def process_s3_uploaded_file(bucket, object_key):
     obj = s3.Object(bucket,object_key)
     metadata = obj.metadata
     
-
     doc_classify = unquote(metadata.get('category','') if metadata else '')
-    # COMPANY should passed by args
-    if  content_type == 'example':
-        index_name = f"chatbot-example-index-{COMPANY}"
-    else:
-        index_name = f"{INDEX_NAME}-{COMPANY}"
 
-
-        
     print(metadata)
-    print(f'use index :{index_name}')
+    print(f'use index :{INDEX_NAME}')
     #check if it is already built
-    idx_name = query_idx_from_ddb(object_key,username,EMB_MODEL_ENDPOINT)
+    idx_name = query_idx_from_ddb(object_key, username, EMB_MODEL_ENDPOINT)
     if len(idx_name) > 0:
         print("doc file already exists")
         return
     
-
-    response = WriteVecIndexToAOS(bucket, object_key, content_type,doc_classify, smr_client, index_name=index_name)
+    response = WriteVecIndexToAOS(bucket, object_key, content_type,doc_classify, smr_client, index_name=INDEX_NAME)
     print("response:")
     print(response)
     print("ingest {} chunk to AOS".format(response[0]))
@@ -904,10 +901,10 @@ def process_s3_uploaded_file(bucket, object_key):
     put_idx_to_ddb(filename=object_key,
                     company=COMPANY,
                     username=username,
-                        index_name=index_name,
-                            embedding_model=EMB_MODEL_ENDPOINT,
-                            category=doc_classify,
-                            createtime=timestamp_str)
+                    index_name=INDEX_NAME,
+                    embedding_model=EMB_MODEL_ENDPOINT,
+                    category=doc_classify,
+                    createtime=timestamp_str)
 
 ##如果是从chatbot上传，则是ai-content/username/filename
 def get_filename_from_obj_key(object_key):
