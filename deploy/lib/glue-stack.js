@@ -31,13 +31,13 @@ export class GlueStack extends NestedStack {
       });
 
 
-      const job = new glue.Job(this, 'chatbot-from-s3-to-aos',{
+      const job = new glue.Job(this, 'chatbot-ingestion-job',{
             executable: glue.JobExecutable.pythonShell({
             glueVersion: glue.GlueVersion.V1_0,
             pythonVersion: glue.PythonVersion.THREE_NINE,
             script: glue.Code.fromAsset(path.join(__dirname, '../../code/offline_process/aos_write_job.py')),
           }),
-          // jobName:'chatbot-from-s3-to-aos',
+          jobName:'chatbot-ingestion-job',
           maxConcurrentRuns:100,
           maxRetries:3,
           connections:[connection],
@@ -68,6 +68,47 @@ export class GlueStack extends NestedStack {
               resources: ['*'],
               })
       )
+
+      const update_intention_index_job = new glue.Job(this, 'update_intention_index_job',{
+            executable: glue.JobExecutable.pythonShell({
+            glueVersion: glue.GlueVersion.V1_0,
+            pythonVersion: glue.PythonVersion.THREE_NINE,
+            script: glue.Code.fromAsset(path.join(__dirname, '../../code/offline_process/update_intention_index_regular.py')),
+          }),
+          jobName:'update_intention_index_job',
+          maxConcurrentRuns:1,
+          maxRetries:0,
+          connections:[connection],
+          maxCapacity:1,
+          defaultArguments:{
+              '--additional-python-modules': 'boto3>=1.28.52,botocore>=1.31.52,pytz,requests_aws4auth,opensearch-py',
+              '--bucket':process.env.UPLOAD_BUCKET,
+              '--region':props.region,
+              '--aos_endpoint':props.opensearch_endpoint,
+              '--emb_model_endpoint':process.env.embedding_endpoint,
+              '--path_prefix':'intention/',
+              '--ssm_key_for_index_status':'intention_index_status',
+              '--concurrent_runs_quota':'10',
+              '--job_name':'chatbot-ingestion-job',
+              '--company':"default",
+              '--emb_batch_size':'20'
+          }
+      })
+      update_intention_index_job.role.addToPrincipalPolicy(
+        new iam.PolicyStatement({
+              actions: [ 
+                "s3:List*",
+                "s3:Put*",
+                "s3:Get*",
+                "es:*",
+                "dynamodb:*",
+                "ssm:*"
+                ],
+              effect: iam.Effect.ALLOW,
+              resources: ['*'],
+              })
+      )
+
       this.jobArn = job.jobArn;
       this.jobName = job.jobName;
     
