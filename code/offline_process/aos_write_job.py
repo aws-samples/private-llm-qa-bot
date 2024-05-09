@@ -116,7 +116,7 @@ def get_embedding_bedrock(texts,model_id):
         })
 
         bedrock_resp = bedrock.invoke_model(
-            body=playload,
+            body=body,
             modelId=model_id,
             accept="application/json",
             contentType="application/json"
