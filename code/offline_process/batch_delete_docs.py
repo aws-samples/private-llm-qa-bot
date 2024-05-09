@@ -4,20 +4,38 @@ import os
 import time
 import pytz
 import json
+import argparse
 from datetime import datetime
 from requests_aws4auth import AWS4Auth
 from opensearchpy import OpenSearch, RequestsHttpConnection
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
-lambda_client= boto3.client('lambda')
-credentials = boto3.Session().get_credentials()
-region = boto3.Session().region_name
-awsauth = AWS4Auth(credentials.access_key, credentials.secret_key, region, 'es', session_token=credentials.token)
+
+awsauth=None
+region=None
 DOC_INDEX_TABLE= 'chatbot_doc_index'
 
+
+def list_s3_objects(s3_client,bucket_name, prefix=''):
+    objects = []
+    paginator = s3_client.get_paginator('list_objects_v2')
+    page_iterator = paginator.paginate(Bucket=bucket_name, Prefix=prefix)
+    # iterate over pages
+    for page in page_iterator:
+        # loop through objects in page
+        if 'Contents' in page:
+            for obj in page['Contents']:
+                yield obj['Key']
+        # if there are more pages to fetch, continue
+        if 'NextContinuationToken' in page:
+            page_iterator = paginator.paginate(Bucket=bucket_name, Prefix=prefix,
+                                                ContinuationToken=page['NextContinuationToken'])
+
 def delete_doc_index(aos_endpoint, obj_key, embedding_model, index_name):
+    global region
     def delete_aos_index(aos_endpoint, obj_key, index_name, size=50):
+        global awsauth
         client = OpenSearch(
                     hosts=[{'host':aos_endpoint, 'port': 443}],
                     http_auth = awsauth,
@@ -53,7 +71,7 @@ def delete_doc_index(aos_endpoint, obj_key, embedding_model, index_name):
 
     if success:
         ##删除ddb里的索引
-        dynamodb = boto3.client('dynamodb')
+        dynamodb = boto3.client('dynamodb', region)
         try:
             dynamodb.delete_item(
                 TableName=DOC_INDEX_TABLE,
@@ -79,6 +97,10 @@ if __name__ == '__main__':
     args = parser.parse_args()
     
     region = args.region
+    s3 = boto3.client('s3', region)
+    credentials = boto3.Session().get_credentials()
+    awsauth = AWS4Auth(credentials.access_key, credentials.secret_key, region, 'es', session_token=credentials.token)
+
     bucket = args.bucket
     aos_endpoint = args.aos_endpoint
     emb_model_endpoint = args.emb_model_endpoint
@@ -87,10 +109,10 @@ if __name__ == '__main__':
 
     file_generator = list_s3_objects(s3, bucket_name=bucket, prefix=path_prefix)
     for obj_key in file_generator:
-        logger.info(f"deleting intention example file - {obj_key}")
+        print(f"deleting intention example file - {obj_key}")
         success = delete_doc_index(aos_endpoint, obj_key, emb_model_endpoint, index_name)
         status = 'Successed' if success else 'Failed'
-        logger.info(f"deleting intention example file - {obj_key}, status : {status}")
+        print(f"deleting intention example file - {obj_key}, status : {status}")
         time.sleep(3)
 
-    logger.info(f"Finish {index_name}'s deletion")
+    print(f"Finish {index_name}'s deletion")
