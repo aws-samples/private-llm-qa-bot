@@ -94,6 +94,7 @@ def delete_doc_index(aos_endpoint, obj_key, embedding_model, index_name):
 
         return False
 
+    obj_key = os.path.basename(obj_key)
     success = delete_aos_index(aos_endpoint, obj_key, index_name)
 
     if success:
@@ -163,6 +164,8 @@ def delete_intentions(region, bucket, path_prefix, aos_endpoint, emb_model_endpo
     s3 = boto3.client('s3', region)
     file_generator = list_s3_objects(s3, bucket_name=bucket, prefix=path_prefix)
     for obj_key in file_generator:
+        if not obj_key.endswith('.example'):
+            continue
         logger.info(f"deleting intention example file - {obj_key}")
         success = delete_doc_index(aos_endpoint, obj_key, emb_model_endpoint, index_name)
         status = 'Successed' if success else 'Failed'
@@ -240,12 +243,12 @@ logger.info(f"standby_index_name - {standby_index_name}")
 logger.info(f"serving_index_name - {serving_index_name}")
 
 # step2
-logger.info(f"[Step2] start deleting of {standby_index_name}...")
+logger.info(f"[Step2] start deleting of {standby_index_name}, data_path: {path_prefix}/deleteset/")
 delete_intentions(region, bucket, f"{path_prefix}/deleteset/", aos_endpoint, emb_model_endpoint, standby_index_name)
 logger.info(f"[Step2] Finish {standby_index_name}'s deletion")
 
 # step3
-logger.info(f"[Step3] start adding of {standby_index_name}...")
+logger.info(f"[Step3] start adding of {standby_index_name}, data_path: {path_prefix}/addset/")
 add_intentions(region, bucket, f"{path_prefix}/addset/", aos_endpoint, emb_model_endpoint, standby_index_name, concurrent_runs_quota, job_name, company, emb_batch_size)
 logger.info(f"[Step3] Finish {standby_index_name}'s updating")
 
@@ -254,12 +257,12 @@ reponse = swap_serving_index_name(region, ssm_key_for_index_status)
 logger.info(f"[Step4] reponse of swap action : {str(reponse)}...")
 
 # step5
-logger.info(f"[Step5] start deleting of {serving_index_name}...")
+logger.info(f"[Step5] start deleting of {serving_index_name}, data_path: {path_prefix}/deleteset/")
 delete_intentions(region, bucket, f"{path_prefix}/deleteset/", aos_endpoint, emb_model_endpoint, serving_index_name)
 logger.info(f"[Step5] Finish {serving_index_name}'s deletion")
 
 # step6
-logger.info(f"[Step6] start adding of {serving_index_name}...")
+logger.info(f"[Step6] start adding of {serving_index_name}, data_path: {path_prefix}/addset/")
 add_intentions(region, bucket, f"{path_prefix}/addset/", aos_endpoint, emb_model_endpoint, serving_index_name, concurrent_runs_quota, job_name, company, emb_batch_size)
 logger.info(f"[Step6] Finish {serving_index_name}'s updating")
 

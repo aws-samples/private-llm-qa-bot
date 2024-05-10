@@ -310,7 +310,7 @@ def iterate_examples(file_content, object_key, smr_client, index_name, endpoint_
 
     api_schema = json_obj["api_schema"] if "api_schema" in json_obj.keys() else ""
     json_arr = json_obj["examples"]
-    doc_title = object_key
+    doc_title = os.path.basename(object_key)
     
     # print("api_schema:")
     # print(api_schema)
@@ -898,7 +898,10 @@ def process_s3_uploaded_file(bucket, object_key):
     print(response)
     print("ingest {} chunk to AOS".format(response[0]))
     timestamp_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    put_idx_to_ddb(filename=object_key,
+
+    ddb_filename = os.path.basename(object_key) if object_key.endswith('.example') else object_key
+
+    put_idx_to_ddb(filename=ddb_filename,
                     company=COMPANY,
                     username=username,
                     index_name=INDEX_NAME,
