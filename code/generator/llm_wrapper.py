@@ -65,7 +65,7 @@ def get_langchain_llm_model(llm_model_id, params, region, llm_stream=False, llm_
     if llm_model_id in bedrock_llms:
         boto3_bedrock = boto3.client(
             service_name="bedrock-runtime",
-            region_name=region
+            region_name="us-west-2"
         )
 
         # make sure its default value

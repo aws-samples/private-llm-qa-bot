@@ -19,7 +19,7 @@ region = boto3.Session().region_name
 awsauth = AWS4Auth(credentials.access_key, credentials.secret_key, region, 'es', session_token=credentials.token)
 boto3_bedrock = boto3.client(
     service_name="bedrock-runtime",
-    region_name= region
+    region_name= "us-west-2"
 )
 sm_client = boto3.client("sagemaker-runtime")
 knowledgebase_client = boto3.client("bedrock-agent-runtime", region)
