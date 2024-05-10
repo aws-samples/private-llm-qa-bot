@@ -42,6 +42,39 @@
       "company": "default",
       "user_id": "admin"}' https://xxxxx.execute-api.us-west-2.amazonaws.com/prod
     ```
+
+    返回格式如下：
+    ```bash
+    {
+        "statusCode": 200,
+        "headers": {
+            "Content-Type": "application/json"
+        },
+        "body": [
+            {
+                "id": "08dfe03e-fc82-4d25-b39f-a2dd319431a5",
+                "use_stream": "False",
+                "query": "PEHUB 是什么",
+                "created": 1715359948.7244642,
+                "useTime": 13.356543779373169,
+                "model": "main_brain",
+                "choices": [
+                    {
+                        "text": "PE Hub 是 SSA 团队为公司内部构建的集中式、场景化的提示词共享平台。旨在帮助一线团队为客户进行快速演示,加速创新设计,缩短技术验证周期。"
+                    }
+                ],
+                "extra_info": {},
+                "usage": {
+                    "prompt_tokens": 58,
+                    "completion_tokens": 15,
+                    "total_tokens": 73
+                }
+            }
+        ]
+    }
+    ```
+    Postman截图示例：  
+    ![alt text](image-2.png)
   - 知识管理接口(POST方法)
     ```json
       {
@@ -57,6 +90,62 @@
     ```bash
     curl -X POST -H "Content-Type: application/json" -d '{"method":"get","resource":"docs","company":"default"}'  https://xxxxxx.execute-api.us-west-2.amazonaws.com/prod
     ```
+    返回格式如下：
+    ```bash
+    {
+        "statusCode": 200,
+        "body": [
+            {
+                "filename": {
+                    "S": "ai-content/default/admin/aws_1.blog.json"
+                },
+                "index_name": {
+                    "S": "chatbot-index-default"
+                },
+                "company": {
+                    "S": "default"
+                },
+                "createtime": {
+                    "S": "2024-04-18 02:54:48"
+                },
+                "category": {
+                    "S": "AWS知识"
+                },
+                "username": {
+                    "S": "default"
+                },
+                "embedding_model": {
+                    "S": "bge-m3-2024-03-18-15-40-52-986-endpoint"
+                }
+            },
+            {
+                "filename": {
+                    "S": "ai-content/init_docs/aws_faq.example"
+                },
+                "index_name": {
+                    "S": "chatbot-example-index-default"
+                },
+                "company": {
+                    "S": "default"
+                },
+                "createtime": {
+                    "S": "2024-03-17 08:40:07"
+                },
+                "category": {
+                    "S": ""
+                },
+                "username": {
+                    "S": "init_docs"
+                },
+                "embedding_model": {
+                    "S": "cohere.embed-multilingual-v3"
+                }
+            },
+        ]
+    }
+    ```
+    Postman截图如下:   
+    ![alt text](image-3.png)
 
   - feedback管理接口(post方法)
     ```json
