@@ -56,7 +56,7 @@ export class DeployStack extends Stack {
     if (process.env.aos_required!=='false'){
       let opensearchStack;
       const ec2stack = new Ec2Stack(this,'Ec2Stack',{vpc:vpc,securityGroup:securityGroups[0]});
-      new CfnOutput(this, 'OpenSearch EC2 Proxy Address', { value: `http://${ec2stack.publicIP}/_dashboards/`});
+      // new CfnOutput(this, 'OpenSearch EC2 Proxy Address', { value: `http://${ec2stack.publicIP}/_dashboards/`});
       ec2stack.addDependency(vpcStack);
       if (!aos_existing_endpoint || aos_existing_endpoint === 'optional'){
         opensearchStack = new OpenSearchStack(this,'os-chat-dev',
