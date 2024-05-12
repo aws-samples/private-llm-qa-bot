@@ -27,7 +27,8 @@ BEDROCK_REGION = None
 BEDROCK_LLM_MODELID_LIST = {'claude-instant':'anthropic.claude-instant-v1',
                             'claude-v2':'anthropic.claude-v2:1',
                             'claude-v3-sonnet': 'anthropic.claude-3-sonnet-20240229-v1:0',
-                            'claude-v3-haiku' : 'anthropic.claude-3-haiku-20240307-v1:0'}
+                            'claude-v3-haiku' : 'anthropic.claude-3-haiku-20240307-v1:0',
+                            'llama3-70b' : 'meta.llama3-70b-instruct-v1:0'}
 REFUSE_ANSWER = '对不起, 根据{func_name}({args}),没有查询到您想要的信息，请您更具体的描述下您的要求.'
 
 ERROR_ANSWER = """
@@ -50,8 +51,8 @@ FUNCTION_CALL_TEMPLATE = """here is a list of functions you can use, contains in
 
 Given you a task, you need to :
 1. Decide which tool need to be chosen to solve the task, if no tool is chosen, you should reply “I don't know”
-2. Once you decide a tool, please extract the required parameters and function name from the task. 
-3. Please response in json format such as {{"name":"function name", "arguments":{{"x":1,"y":1}}}}, and enclose the response in <function_call></function_call> tag, 
+2. Once you decide a tool, please extract the required parameters and function name from the task.
+3. Please response in json format such as {{"name":"function name", "arguments":{{"x":1,"y":1}}}}, and enclose the response in <function_call></function_call> tag,
 
 Task: {task}"""
 
@@ -140,7 +141,7 @@ Please put your answer between <response> tags and follow below requirements:
 1. Respond in the original language of the question.
 2. If there is no relevant information in message, you should reply user that you can't find any information by his original question, don't say anything else.
 3. if suggestion is provided and is not empty, you should suggest user to ask by referring suggestion. If no suggestion is empty, don't say anything else.
-4. Do not begin with phrases like "API", skip the preamble, go straight into the answer. 
+4. Do not begin with phrases like "API", skip the preamble, go straight into the answer.
 """
 
 class AgentTools(BaseModel):
@@ -194,7 +195,7 @@ class AgentTools(BaseModel):
                 template=FUNCTION_CALL_TEMPLATE,
                 input_variables=["functions",'task']
             )
-        
+
         prompt = prompt_template.format(functions=json.dumps(cls.api_schema, ensure_ascii=False), task=query)
         msg_list = [format_to_message(query=prompt)]
         ai_reply = invoke_model(llm=cls.llm, prompt=prompt, messages=msg_list)
@@ -231,7 +232,7 @@ class AgentTools(BaseModel):
 
     def _add_context_answer(cls,query,context) ->str:
         if not context:
-            return None 
+            return None
         prompt_template = PromptTemplate(
                 template=Enhanced_TEMPLATE,
                 input_variables=["context",'question']
@@ -253,12 +254,12 @@ class AgentTools(BaseModel):
             answer = cls._add_error_answer(query,func_name,args,error)
         else:
             answer = cls._add_context_answer(query,context)
-        if answer: 
+        if answer:
             ref_doc = f"本次回答基于使用工具[{func_name}]为您查询到结果:\n\n{context}\n\n"
             return answer,ref_doc
         else :
             return REFUSE_ANSWER.format(func_name=func_name,args=args),''
-    
+
     def run_with_func_args(cls,query,func_name,args) ->Dict[str,str]:
         context= ''
         try:
@@ -266,14 +267,14 @@ class AgentTools(BaseModel):
             logger.info(f"****function_call [{func_name}] result ****:\n{context}")
             answer = cls._add_context_answer(query,context)
             ref_doc = f"本次回答基于使用工具[{func_name}]为您查询到结果:\n\n{context}\n\n"
-            if answer: 
+            if answer:
                 return answer,ref_doc
             else:
                 return REFUSE_ANSWER.format(func_name=func_name,args=args),''
         except Exception as e:
             logger.info(str(e))
             answer = cls._add_error_answer(query,func_name,args,str(e))
-            if answer: 
+            if answer:
                 ref_doc = f"本次回答基于使用工具[{func_name}]为您查询到结果:\n\n{context}\n\n"
                 return answer,ref_doc
             else :
@@ -309,7 +310,7 @@ class llmContentHandler(LLMContentHandler):
     def transform_input(self, prompt: str, model_kwargs: Dict) -> bytes:
         input_str = json.dumps({'inputs': prompt,'history':[],**model_kwargs})
         return input_str.encode('utf-8')
-    
+
     def transform_output(self, output: bytes) -> str:
         response_json = json.loads(output.read().decode("utf-8"))
         return response_json["outputs"]
@@ -320,9 +321,9 @@ def lambda_handler(event, context):
     params = event.get('params')
     param_dict = params
     query = param_dict["query"]
-    intention = param_dict.get("intention")      
+    intention = param_dict.get("intention")
     detection = param_dict.get("detection")
-    
+
     region = os.environ.get('region')
     agent_lambdas = os.environ.get('agent_tools', None)
 
@@ -339,8 +340,8 @@ def lambda_handler(event, context):
     #     logger.info(f'not use bedrock, use {llm_model_endpoint}')
     #     llmcontent_handler = llmContentHandler()
     #     llm=SagemakerEndpoint(
-    #             endpoint_name=llm_model_endpoint, 
-    #             region_name=region, 
+    #             endpoint_name=llm_model_endpoint,
+    #             region_name=region,
     #             model_kwargs={'parameters':parameters},
     #             content_handler=llmcontent_handler
     #         )
@@ -349,23 +350,23 @@ def lambda_handler(event, context):
     #         service_name="bedrock-runtime",
     #         region_name=region
     #     )
-    
+
     #     parameters = {
     #         "max_tokens_to_sample": 8096,
     #         "stop_sequences": ["</response>"],
     #         "temperature":0.01,
     #         "top_p":0.85
     #     }
-        
+
     #     model_id = "anthropic.claude-v2"
     #     llm = Bedrock(model_id=model_id, client=boto3_bedrock, model_kwargs=parameters)
-    
+
     parameters = {
         "temperature":0.01,
         "top_p":0.95,
         "stop": ["</response>"],
     }
-    
+
     if llm_model_endpoint.startswith('claude') or llm_model_endpoint.startswith('anthropic'):
         model_id = BEDROCK_LLM_MODELID_LIST.get(llm_model_endpoint, BEDROCK_LLM_MODELID_LIST["claude-v3-sonnet"])
     else:

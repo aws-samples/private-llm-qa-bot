@@ -16,7 +16,8 @@ BEDROCK_EMBEDDING_MODELID_LIST = ["cohere.embed-multilingual-v3","cohere.embed-e
 BEDROCK_LLM_MODELID_LIST = {'claude-instant':'anthropic.claude-instant-v1',
                             'claude-v2':'anthropic.claude-v2',
                             'claude-v3-sonnet': 'anthropic.claude-3-sonnet-20240229-v1:0',
-                            'claude-v3-haiku' : 'anthropic.claude-3-haiku-20240307-v1:0'}
+                            'claude-v3-haiku' : 'anthropic.claude-3-haiku-20240307-v1:0',
+                            'llama3-70b' : 'meta.llama3-70b-instruct-v1:0'}
 
 SIMS_THRESHOLD= float(os.environ.get('intent_detection_threshold',0.7))
 
@@ -49,14 +50,14 @@ def create_detect_prompt_templete():
     prompt_template = """Here is a list of aimed functions:\n\n<api_schemas>{api_schemas}</api_schemas>\n\nYou should follow below examples to choose the corresponding function and params according to user's query\n\n<examples>{examples}</examples>\n\n"""
 
     PROMPT = PromptTemplate(
-        template=prompt_template, 
+        template=prompt_template,
         input_variables=['api_schemas','examples']
     )
     return PROMPT
 
 @handle_error
 def lambda_handler(event, context):
-    
+
     embedding_endpoint = os.environ.get('embedding_endpoint')
     region = os.environ.get('region')
     aos_endpoint = os.environ.get('aos_endpoint')
@@ -65,7 +66,7 @@ def lambda_handler(event, context):
     index_name = event.get('example_index')
     fewshot_cnt = event.get('fewshot_cnt')
     llm_model_endpoint = os.environ.get('llm_model_endpoint', BEDROCK_LLM_MODELID_LIST["claude-v3-sonnet"])
-    
+
     logger.info("embedding_endpoint: {}".format(embedding_endpoint))
     logger.info("region:{}".format(region))
     logger.info("aos_endpoint:{}".format(aos_endpoint))
@@ -109,21 +110,21 @@ def lambda_handler(event, context):
     api_schema_options = set(api_schema_list)
     api_schema_str = "<api_schema>\n{}\n</api_schema>".format(",\n".join(api_schema_options))
     example_list_str = "\n{}\n".format("\n".join(example_list))
-    
+
     parameters = {
         "max_tokens": 1000,
         "stop": ["</output>"],
         "temperature":0.01,
         "top_p":0.95
     }
-    
+
     if llm_model_endpoint.startswith('claude') or llm_model_endpoint.startswith('anthropic'):
         model_id = BEDROCK_LLM_MODELID_LIST.get(llm_model_endpoint, BEDROCK_LLM_MODELID_LIST["claude-v3-sonnet"])
     else:
         model_id = llm_model_endpoint
 
     llm = get_langchain_llm_model(model_id, parameters, region, llm_stream=False)
-    
+
     prompt_template = create_detect_prompt_templete()
     prefix = """{"func":"""
     prefill = """<query>{query}</query>\n<output>{prefix}""".format(query=query, prefix=prefix)
@@ -134,7 +135,7 @@ def lambda_handler(event, context):
     ai_reply = invoke_model(llm=llm, prompt=prompt, messages=msg_list)
     final_prompt = json.dumps(msg_list,ensure_ascii=False)
     answer = ai_reply.content
-    
+
     answer = prefix + answer.strip()
     answer = answer.replace('<output>', '')
 
@@ -155,4 +156,4 @@ def lambda_handler(event, context):
         logger.info("Fail to detect function, caused by {}".format(str(e)))
     finally:
         ret = ret if ret.get('func') else default_ret
-    return ret 
+    return ret

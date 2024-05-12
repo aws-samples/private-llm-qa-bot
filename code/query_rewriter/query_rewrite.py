@@ -15,7 +15,8 @@ from generator.llm_wrapper import get_langchain_llm_model, invoke_model, format_
 BEDROCK_LLM_MODELID_LIST = {'claude-instant':'anthropic.claude-instant-v1',
                             'claude-v2':'anthropic.claude-v2:1',
                             'claude-v3-sonnet': 'anthropic.claude-3-sonnet-20240229-v1:0',
-                            'claude-v3-haiku' : 'anthropic.claude-3-haiku-20240307-v1:0'}
+                            'claude-v3-haiku' : 'anthropic.claude-3-haiku-20240307-v1:0',
+                            'llama3-70b' : 'meta.llama3-70b-instruct-v1:0'}
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
@@ -50,7 +51,7 @@ class llmContentHandler(LLMContentHandler):
     def transform_input(self, prompt: str, model_kwargs: Dict) -> bytes:
         input_str = json.dumps({'inputs': prompt,'history':[],**model_kwargs})
         return input_str.encode('utf-8')
-    
+
     def transform_output(self, output: bytes) -> str:
         response_json = json.loads(output.read().decode("utf-8"))
         return response_json["outputs"]
@@ -72,7 +73,7 @@ if you don't understand the {role_a}'s question, or the question is not relevant
 Skip the preamble, don't explain, go straight into the answer. Please put the standalone question in <standalone_question> tag
 """
     PROMPT = PromptTemplate(
-        template=prompt_template, 
+        template=prompt_template,
         input_variables=['history','cur_query','role_a']
     )
     return PROMPT
@@ -101,7 +102,7 @@ user: 中国区sagemaker有jumpstart吗
 
 Assistant: <conversation>\n{conversation}\n</conversation>\n<answer>"""
     PROMPT = PromptTemplate(
-        template=prompt_template, 
+        template=prompt_template,
         input_variables=['conversation']
     )
     return PROMPT
@@ -114,8 +115,8 @@ def extract_content(content: str):
         return extract_content.strip('"')
     else:
         return content.strip('"')
-    
-    
+
+
 @handle_error
 def lambda_handler(event, context):
     region = os.environ.get('region')
@@ -124,7 +125,7 @@ def lambda_handler(event, context):
     use_bedrock = True if llm_model_endpoint.startswith('anthropic') or llm_model_endpoint.startswith('claude') else False
     role_a = event.get('role_a', 'user')
     role_b = event.get('role_b', 'AI')
-    
+
     logger.info("region:{}".format(region))
     logger.info("params:{}".format(params))
     logger.info("llm_model_endpoint:{}".format(llm_model_endpoint))
@@ -142,8 +143,8 @@ def lambda_handler(event, context):
     # if not use_bedrock:
     #     llmcontent_handler = llmContentHandler()
     #     llm=SagemakerEndpoint(
-    #             endpoint_name=llm_model_endpoint, 
-    #             region_name=region, 
+    #             endpoint_name=llm_model_endpoint,
+    #             region_name=region,
     #             model_kwargs={'parameters':parameters},
     #             content_handler=llmcontent_handler
     #         )
@@ -152,7 +153,7 @@ def lambda_handler(event, context):
     #         service_name="bedrock-runtime",
     #         region_name=region
     #     )
-    
+
     #     parameters = {
     #         "max_tokens_to_sample": 100,
     #         "stop_sequences": ["\n\n", '</standalone_question>'],
@@ -167,7 +168,7 @@ def lambda_handler(event, context):
         "top_p":0.95,
         "stop": ['</standalone_question>']
     }
-    
+
     if llm_model_endpoint.startswith('claude') or llm_model_endpoint.startswith('anthropic'):
         model_id = BEDROCK_LLM_MODELID_LIST.get(llm_model_endpoint, BEDROCK_LLM_MODELID_LIST["claude-v3-sonnet"])
     else:
@@ -190,5 +191,5 @@ def lambda_handler(event, context):
     log_dict = { "history" : history, "answer" : answer , "cur_query": query, "prompt":final_prompt, "model_id" : llm_model_endpoint }
     log_dict_str = json.dumps(log_dict, ensure_ascii=False)
     logger.info(log_dict_str)
-        
+
     return extract_content(answer)

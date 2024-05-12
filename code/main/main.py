@@ -69,7 +69,7 @@ KNOWLEDGE_BASE_ID = os.environ.get('knowledge_base_id',None)
 BEDROCK_LLM_MODELID_LIST = {'claude-instant':'anthropic.claude-instant-v1',
                             'claude-v2':'anthropic.claude-v2',
                             'claude-v3-sonnet': 'anthropic.claude-3-sonnet-20240229-v1:0',
-                            'claude-v3-haiku' : 'anthropic.claude-3-haiku-20240307-v1:0'}
+                            'claude-v3-haiku' : 'anthropic.claude-3-haiku-20240307-v1:0', 'llama3-70b' : 'meta.llama3-70b-instruct-v1:0'}
 
 ###记录跟踪日志，用于前端输出
 class TraceLogger(BaseModel):
@@ -83,14 +83,14 @@ class TraceLogger(BaseModel):
     hide_ref:bool=Field()
     class Config:
         extra = 'forbid'
-    
+
     def postMessage(self,text:str) -> None:
         data = json.dumps({ 'msgid':self.msgid, 'role': "AI", 'text': {'content':f'{text}\n\n'},'connectionId':self.connectionId })
         try:
             self.wsclient.post_to_connection(Data = data.encode('utf-8'),  ConnectionId=self.connectionId)
         except Exception as e:
             logger.warning(str(e))
-            
+
     def add_ref(self,text:str) -> None:
         self.ref_docs.append(text)
 
@@ -100,17 +100,17 @@ class TraceLogger(BaseModel):
         self.logs.append(text)
         if self.stream:
             self.postMessage(text)
-        
+
     ##ref doc排在llm输出answer之后，使用外部传入的stream参数控制是否需要推到ws
     def dump_refs(self,stream) -> List[str]:
         if stream and not self.use_trace and not self.hide_ref: ##当不使用trace，不隐藏ref时才推送
             for text in self.ref_docs:
                 self.postMessage(text)
         return '\n\n'.join(self.ref_docs)
-    
+
     def dump_logs_to_string(self) -> List[str]:
         return '\n\n'.join(self.logs)
-    
+
 TRACE_LOGGER = None
 
 class CustomStreamingOutCallbackHandler(BaseCallbackHandler):
@@ -144,7 +144,7 @@ class CustomStreamingOutCallbackHandler(BaseCallbackHandler):
             else {'role': 'user', 'content': msg['content']}
             for msg in messages
         ]
-    
+
     def on_llm_start(
         self, serialized: Dict[str, Any], prompts: List[str], **kwargs: Any
     ) -> None:
@@ -244,7 +244,7 @@ def chat_agent(query, detection):
     msg = {
       "params": {
         "query": query,
-        "detection": detection 
+        "detection": detection
       }
     }
     response = lambda_client.invoke(FunctionName="Chat_Agent",
@@ -271,7 +271,7 @@ def delete_session(session_id,user_id):
     except Exception as e:
         logger.info(f"delete session failed {str(e)}")
 
-        
+
 def get_session(session_id,user_id):
 
     table_name = chat_session_table
@@ -317,10 +317,10 @@ def update_session(session_id,user_id,msgid, question, answer, intention):
         chat_history = []
 
     timestamp_str = str(datetime.now())
-    expire_at = int(time.time())+3600*24*SESSION_EXPIRES_DAYS #session expires in 1 days 
-    
+    expire_at = int(time.time())+3600*24*SESSION_EXPIRES_DAYS #session expires in 1 days
+
     chat_history = [item for item in chat_history if len(item) >=6 and item[5] > int(time.time())]
-    
+
     chat_history.append([question, answer, intention,msgid,timestamp_str,expire_at])
     content = json.dumps(chat_history,ensure_ascii=False)
 
@@ -349,7 +349,7 @@ def enforce_stop_tokens(text: str, stop: List[str]) -> str:
     """Cut off the text as soon as any stop words occur."""
     if stop is None:
         return text
-    
+
     return re.split("|".join(stop), text)[0]
 
 def format_knowledges(recalls):
@@ -450,7 +450,7 @@ How do you respond to the user’s question?
 Think about your answer first before you respond.
 Assistant:"""
         PROMPT = PromptTemplate(
-            template=prompt_template_zh, 
+            template=prompt_template_zh,
             partial_variables={'system_role_prompt':SYSTEM_ROLE_PROMPT},
             input_variables=['question', 'chat_history','role_bot']
         )
@@ -460,7 +460,7 @@ Assistant:"""
         else:
             prompt_template_zh = prompt_template.replace('{context}','') ##remove{context}
         PROMPT = PromptTemplate(
-            template=prompt_template_zh, 
+            template=prompt_template_zh,
             partial_variables={'system_role_prompt':SYSTEM_ROLE_PROMPT},
             input_variables=['question','chat_history','role_bot']
         )
@@ -485,7 +485,7 @@ def get_reply_stratgy(recall_knowledge,refuse_strategy:str):
         elif refuse_strategy == 'WITH_LLM':
             stratgy = ReplyStratgy.WITH_LLM
         else:
-            stratgy = ReplyStratgy.LLM_ONLY 
+            stratgy = ReplyStratgy.LLM_ONLY
         return stratgy
 
     ## 如果使用了rerank模型
@@ -498,7 +498,7 @@ def get_reply_stratgy(recall_knowledge,refuse_strategy:str):
             elif refuse_strategy == 'WITH_LLM':
                 stratgy = ReplyStratgy.WITH_LLM
             else:
-                stratgy = ReplyStratgy.LLM_ONLY 
+                stratgy = ReplyStratgy.LLM_ONLY
             return stratgy
         else:
             return ReplyStratgy.WITH_LLM
@@ -522,9 +522,9 @@ def get_reply_stratgy(recall_knowledge,refuse_strategy:str):
                 else:
                     stratgy = ReplyStratgy(min(ReplyStratgy.RETURN_OPTIONS.value, stratgy.value))
         return stratgy
-            
-            
-def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:str, embedding_model_endpoint:str, llm_model_endpoint:str, llm_model_name:str, aos_endpoint:str, aos_index:str, aos_knn_field:str, aos_result_num:int, kendra_index_id:str, 
+
+
+def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:str, embedding_model_endpoint:str, llm_model_endpoint:str, llm_model_name:str, aos_endpoint:str, aos_index:str, aos_knn_field:str, aos_result_num:int, kendra_index_id:str,
                    kendra_result_num:int,use_qa:bool,wsclient=None,msgid:str='',max_tokens:int = 2048,temperature:float = 0.1,template:str = '',images_base64:List[str] = None,multi_rounds:bool = False, hide_ref:bool = False,use_stream:bool=False,example_index:str='chatbot-example-index',use_search:bool=True,refuse_strategy:str = 'LLM_ONLY',refuse_answer:str = ''):
     """
     Entry point for the Lambda function.
@@ -569,7 +569,7 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
         logger.info(json_obj_str)
         use_stream = False
         return answer,'',use_stream,'',[],[],[]
-    
+
     logger.info("llm_model_name : {} ,use_stream :{}".format(llm_model_name,use_stream))
     llm = None
 
@@ -582,13 +582,14 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
         "top_p":0.95
     }
 
-    if llm_model_name.startswith('claude'):
+    if llm_model_name.startswith('claude') or llm_model_name.startswith('llama'):
         model_id = BEDROCK_LLM_MODELID_LIST.get(llm_model_name, BEDROCK_LLM_MODELID_LIST['claude-v3-sonnet'])
     else:
         model_id = llm_model_endpoint
 
+    logger.info("current model_id : {}".format(model_id))
     llm = get_langchain_llm_model(model_id, params, region, llm_stream=use_stream, llm_callbacks=[])
-    
+
     # 1. get_session
     start1 = time.time()
     session_history = get_session(session_id=session_id,user_id=user_id)
@@ -624,11 +625,11 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
         chat_history_msgs= []
 
 
-    
+
     doc_retriever = CustomDocRetriever.from_endpoints(embedding_model_endpoint=embedding_model_endpoint,
                                     aos_endpoint= aos_endpoint,
                                     aos_index=aos_index)
-    
+
     TRACE_LOGGER.trace(f'**Using LLM model : {llm_model_name}**')
     cache_answer = None
     if use_qa:
@@ -663,7 +664,7 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
         logger.info(f'running time of detecting : {elpase_time_detect:.3f}s')
         TRACE_LOGGER.trace(f'**Running time of detecting: {elpase_time_detect:.3f}s**')
         TRACE_LOGGER.trace(f'**Detected intention: {intention}**')
-    
+
     if not use_qa:
         intention = 'chat'
 
@@ -682,7 +683,7 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
             answer = "不好意思没能帮到您，是否帮你转人工客服？"
         elif intention == 'transfer':
             answer = '立即为您转人工客服，请稍后'
-        
+
         if use_stream:
             TRACE_LOGGER.postMessage(answer)
 
@@ -708,20 +709,20 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
 
         final_prompt = json.dumps(msg_list,ensure_ascii=False)
         answer = ai_reply.content
-        
+
         recall_knowledge,opensearch_knn_respose,opensearch_query_response = [],[],[]
 
     elif intention == 'QA': ##如果使用QA
         # 2. aos retriever
         TRACE_LOGGER.trace('**Using RAG Chat...**')
-        
+
 
         # doc_retriever = CustomDocRetriever.from_endpoints(embedding_model_endpoint=embedding_model_endpoint,
         #                             aos_endpoint= aos_endpoint,
         #                             aos_index=aos_index)
         # 3. check is it keyword search
         # exactly_match_result = aos_search(aos_endpoint, aos_index, "doc", query_input, exactly_match=True)
-        ## 精准匹配对paragraph类型文档不太适用，先屏蔽掉 
+        ## 精准匹配对paragraph类型文档不太适用，先屏蔽掉
         exactly_match_result = None
 
         start = time.time()
@@ -733,33 +734,33 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
         if KNOWLEDGE_BASE_ID:
             TRACE_LOGGER.trace('**Retrieving knowledge from bedrock knowledgebase...**')
             recall_knowledge = doc_retriever.get_relevant_documents_from_bedrock(
-                    knowledge_base_id=KNOWLEDGE_BASE_ID, 
-                    query_input=query_input, 
-                    top_k=TOP_K, 
-                    rerank_endpoint=CROSS_MODEL_ENDPOINT, 
+                    knowledge_base_id=KNOWLEDGE_BASE_ID,
+                    query_input=query_input,
+                    top_k=TOP_K,
+                    rerank_endpoint=CROSS_MODEL_ENDPOINT,
                     rerank_threshold=RERANK_THRESHOLD
                 )
         else:
             TRACE_LOGGER.trace('**Retrieving knowledge from OpenSearch...**')
             recall_knowledge, opensearch_knn_respose, opensearch_query_response = doc_retriever.get_relevant_documents_custom(
-                query_input=query_input, 
-                channel_return_cnt=CHANNEL_RET_CNT, 
-                top_k=TOP_K, 
-                knn_threshold=KNN_QQ_THRESHOLD_HARD_REFUSE, 
-                bm25_threshold=BM25_QD_THRESHOLD_HARD_REFUSE, 
-                web_search_threshold=WEBSEARCH_THRESHOLD, 
+                query_input=query_input,
+                channel_return_cnt=CHANNEL_RET_CNT,
+                top_k=TOP_K,
+                knn_threshold=KNN_QQ_THRESHOLD_HARD_REFUSE,
+                bm25_threshold=BM25_QD_THRESHOLD_HARD_REFUSE,
+                web_search_threshold=WEBSEARCH_THRESHOLD,
                 use_search=use_search,
                 rerank_endpoint=CROSS_MODEL_ENDPOINT,
                 rerank_threshold=RERANK_THRESHOLD
-            ) 
+            )
 
         elpase_time = time.time() - start
         logger.info(f'running time of opensearch_query : {elpase_time:.3f}s seconds')
-        
+
         reply_stratgy = get_reply_stratgy(recall_knowledge,refuse_strategy)
-        if reply_stratgy == ReplyStratgy.LLM_ONLY: 
+        if reply_stratgy == ReplyStratgy.LLM_ONLY:
             recall_knowledge = []
-            
+
         TRACE_LOGGER.trace(f'**Running time of retrieving knowledge : {elpase_time:.3f}s**')
         TRACE_LOGGER.trace(f'**Retrieved {len(recall_knowledge)} knowledge:**')
         TRACE_LOGGER.add_ref(f'\n\n**Refer to {len(recall_knowledge)} knowledge:**')
@@ -770,7 +771,7 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
             TRACE_LOGGER.trace(f"{item['doc']}")
             TRACE_LOGGER.add_ref(f"**[{sn+1}] [{item['doc_title']}] [{item['doc_classify']}] [{item['score']:.3f}] [{item['rank_score']:.3f}] author:[ {item['doc_author']} ]**")
             #doc 太长之后进行截断
-            TRACE_LOGGER.add_ref(f"{item['doc'][:500]}{'...' if len(item['doc'])>500 else ''}") 
+            TRACE_LOGGER.add_ref(f"{item['doc'][:500]}{'...' if len(item['doc'])>500 else ''}")
         TRACE_LOGGER.trace('**Answer:**')
 
         if exactly_match_result and recall_knowledge:
@@ -778,20 +779,20 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
             hide_ref= True ## 隐藏ref doc
             if use_stream:
                 TRACE_LOGGER.postMessage(answer)
-                
+
         elif reply_stratgy == ReplyStratgy.RETURN_OPTIONS:
             some_reference, multi_choice_field = format_knowledges(recall_knowledge[::2])
             answer = f"我不太确定，这有两条可能相关的信息，供参考：\n=====\n{some_reference}\n====="
             hide_ref= True ## 隐藏ref doc
             if use_stream:
                 TRACE_LOGGER.postMessage(answer)
-                
+
         elif reply_stratgy == ReplyStratgy.SAY_DONT_KNOW:
             answer = refuse_answer
             hide_ref= True ## 隐藏ref doc
             if use_stream:
                 TRACE_LOGGER.postMessage(answer)
-                
+
         elif reply_stratgy == ReplyStratgy.LLM_ONLY: ##走LLM默认知识
             # prompt_template = create_chat_prompt_templete()
             # hide_ref= True ## 隐藏ref doc
@@ -799,7 +800,7 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
             # ##最终的answer
             # answer = llmchain.run({'question':query_input,'chat_history':chat_history,'role_bot':B_Role})
             # ##最终的prompt日志
-            
+
             # for message api
             sys_msg = {"role": "system", "content": SYSTEM_ROLE_PROMPT } if SYSTEM_ROLE_PROMPT else None
             msg_list = [sys_msg, *chat_history_msgs] if sys_msg else [*chat_history_msgs]
@@ -814,8 +815,8 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
 
             final_prompt = json.dumps(msg_list,ensure_ascii=False)
             answer = ai_reply.content
-            
-        else:      
+
+        else:
             prompt_template = create_qa_prompt_templete(template)
             # llmchain = LLMChain(llm=llm,verbose=verbose,prompt =prompt_template )
 
@@ -829,7 +830,7 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
             try:
                 chat_history = '' ##QA 场景下先不使用history
                 prompt = prompt_template.format(question=query_input,role_bot=B_Role,context=context,chat_history=chat_history,ask_user_prompt=ask_user_prompts_str)
-                
+
                 sys_msg = {"role": "system", "content": SYSTEM_ROLE_PROMPT } if SYSTEM_ROLE_PROMPT else None
                 msg_list = [sys_msg, *chat_history_msgs] if sys_msg else [*chat_history_msgs]
                 msg = format_to_message(query=prompt, image_base64_list=images_base64)
@@ -950,7 +951,7 @@ def lambda_handler(event, context):
     else:
         wsclient = None
     global openai_api_key
-    openai_api_key = event.get('OPENAI_API_KEY') 
+    openai_api_key = event.get('OPENAI_API_KEY')
     hide_ref = event.get('hide_ref',False)
     feature_config = event.get('feature_config','')
     retrieve_only = event.get('retrieve_only',False)
@@ -958,7 +959,7 @@ def lambda_handler(event, context):
     wsconnection_id = event.get('wsconnection_id',session_id)
     question = event['prompt']
     model_name = event['model'] if event.get('model') else event.get('model_name','')
-    embedding_endpoint = event.get('embedding_model',os.environ.get("embedding_endpoint")) 
+    embedding_endpoint = event.get('embedding_model',os.environ.get("embedding_endpoint"))
     use_qa = event.get('use_qa',False)
     multi_rounds = event.get('multi_rounds',False)
     use_stream = event.get('use_stream',False)
@@ -975,8 +976,8 @@ def lambda_handler(event, context):
     example_index = f'chatbot-example-index-{company}'
     refuse_strategy = event.get('refuse_strategy','')
     refuse_answer = event.get('refuse_answer','对不起，我不太清楚这个问题，请问问人工吧')
-        
-    
+
+
     imgurls = event.get('imgurl')
     image_path = ''
     images_base64 = []
@@ -994,28 +995,28 @@ def lambda_handler(event, context):
                                     aos_endpoint= os.environ.get("aos_endpoint", ""),
                                     aos_index=aos_index)
         recall_knowledge,opensearch_knn_respose,opensearch_query_response = doc_retriever.get_relevant_documents_custom(
-                query_input=question, 
-                channel_return_cnt=CHANNEL_RET_CNT, 
-                top_k=TOP_K, 
-                knn_threshold=KNN_QQ_THRESHOLD_HARD_REFUSE, 
-                bm25_threshold=BM25_QD_THRESHOLD_HARD_REFUSE, 
-                web_search_threshold=WEBSEARCH_THRESHOLD, 
+                query_input=question,
+                channel_return_cnt=CHANNEL_RET_CNT,
+                top_k=TOP_K,
+                knn_threshold=KNN_QQ_THRESHOLD_HARD_REFUSE,
+                bm25_threshold=BM25_QD_THRESHOLD_HARD_REFUSE,
+                web_search_threshold=WEBSEARCH_THRESHOLD,
                 use_search=use_search,
                 rerank_endpoint=CROSS_MODEL_ENDPOINT,
                 rerank_threshold=RERANK_THRESHOLD
-            ) 
+            )
         extra_info = {"query_input": question, "opensearch_query_response" : opensearch_query_response, "opensearch_knn_respose": opensearch_knn_respose,"recall_knowledge":recall_knowledge }
         return {
             'statusCode': 200,
             'headers': {'Content-Type': 'application/json'},
             'body': [{"id": str(uuid.uuid4()), "extra_info" : extra_info,} ]
         }
-        
+
     ##获取前端给的系统设定，如果没有，则使用lambda里的默认值
     global B_Role,SYSTEM_ROLE_PROMPT
     B_Role = event.get('system_role',B_Role)
     SYSTEM_ROLE_PROMPT = event.get('system_role_prompt',SYSTEM_ROLE_PROMPT)
-    
+
     logger.info(f'system_role:{B_Role},system_role_prompt:{SYSTEM_ROLE_PROMPT}')
 
     llm_endpoint = os.environ.get('llm_model_endpoint')
@@ -1046,7 +1047,7 @@ def lambda_handler(event, context):
     if template_id and template_id != 'default':
         prompt_template = get_template(template_id,company)
         prompt_template = '' if prompt_template is None else prompt_template['template']['S']
-    
+
     use_search = False if feature_config == 'search_disabled' else True
     logger.info(f'use_search : {use_search}')
     logger.info(f'user_id : {user_id}')
@@ -1065,12 +1066,12 @@ def lambda_handler(event, context):
     logger.info(f'intention list: {INTENTION_LIST}')
     logger.info(f'refuse_strategy: {refuse_strategy}')
     logger.info(f'refuse_answer: {refuse_answer}')
-    
+
     ##if aos and bedrock kb are null then set use_qa = false
     if not aos_endpoint and not KNOWLEDGE_BASE_ID:
         use_qa = False
         logger.info(f'force set use_qa: {use_qa}')
-        
+
     global TRACE_LOGGER
     TRACE_LOGGER = TraceLogger(wsclient=wsclient,msgid=msgid,connectionId=wsconnection_id,stream=use_stream,use_trace=use_trace,hide_ref=hide_ref)
     main_entry_start = time.time()  # 或者使用 time.time_ns() 获取纳秒级别的时间戳
