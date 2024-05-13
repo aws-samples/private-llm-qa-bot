@@ -1,7 +1,4 @@
 AWSTemplateFormatVersion: 2010-09-09
-Outputs:
-  SpammerApp:
-    Value: !Ref "AWS::AccountId"
 Parameters:
   LatestAmiId:
     Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
@@ -10,102 +7,108 @@ Parameters:
     Description: EC2 instance type
     Type: String
     Default: m5.large
-  SSHLocation:
-    Description: The IP address range that can be used to SSH in but not a public address and different from VpcCIDR
-    Type: String
-    MinLength: '9'
-    MaxLength: '18'
-    Default: 0.0.0.0/0
-    AllowedPattern: '(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})'
+
   EnvironmentName:
     Description: An environment name that is prefixed to resource names
     Type: String
     Default: "Chatbot"
-  VpcCIDR:
-    Description: Please enter the IP range (CIDR notation) for this VPC
+
+  VpcId:
+    Description: ID of the VPC to deploy resources into (leave blank to create a new VPC)
+    Type: AWS::EC2::VPC::Id
+    Default: AWS::NoValue
+
+  PublicSubnetId:
+    Description: ID of the public subnet to deploy resources into (leave blank to create a new one)
+    Type: AWS::EC2::Subnet::Id
+    Default: AWS::NoValue
+
+  
+  KeyPairName:
+    Description: Name of an existing EC2 KeyPair to enable SSH access. Leave blank for no SSH access
     Type: String
-    Default: 10.192.0.0/16
-  PublicSubnet1CIDR:
-    Description: Please enter the IP range (CIDR notation) for the public subnet in the first Availability Zone
-    Type: String
-    Default: 10.192.10.0/24
-  PublicSubnet2CIDR:
-    Description: Please enter the IP range (CIDR notation) for the public subnet in the second Availability Zone
-    Type: String
-    Default: 10.192.11.0/24
+
+  VolumeSize:
+    Description: EBS volume size (GB) for the instance
+    Type: Number
+    MinValue: 20
+    Default: 20
+
+
 Resources:
   VPC:
     Type: AWS::EC2::VPC
+    Condition: CreateNewVPC
     Properties:
-      CidrBlock: !Ref VpcCIDR
-      EnableDnsSupport: true
+      CidrBlock: 10.0.0.0/16
       EnableDnsHostnames: true
+      EnableDnsSupport: true
+      InstanceTenancy: default
       Tags:
-        - Key: Name
-          Value: !Ref EnvironmentName
+        - Key: Name 
+          Value: 'chatbot'
 
   InternetGateway:
     Type: AWS::EC2::InternetGateway
-    Properties:
-      Tags:
-        - Key: Name
-          Value: !Ref EnvironmentName
+    Condition: CreateNewVPC
 
   InternetGatewayAttachment:
     Type: AWS::EC2::VPCGatewayAttachment
+    Condition: CreateNewVPC 
     Properties:
       InternetGatewayId: !Ref InternetGateway
       VpcId: !Ref VPC
 
-  PublicSubnet1:
+  PublicSubnet:
     Type: AWS::EC2::Subnet
+    Condition: CreateNewSubnetId
     Properties:
-      VpcId: !Ref VPC
-      AvailabilityZone: !Select [ 0, !GetAZs '' ]
-      CidrBlock: !Ref PublicSubnet1CIDR
+      VpcId: !If [CreateNewVPC, !Ref VPC, !Ref VpcId]
+      AvailabilityZone: !Select [0, !GetAZs '']
+      CidrBlock: 10.0.0.0/24
       MapPublicIpOnLaunch: true
-      Tags:
+      Tags: 
         - Key: Name
-          Value: !Sub ${EnvironmentName} Public Subnet (AZ1)
+          Value: 'Public-Subnet'
 
-  PublicSubnet2:
-    Type: AWS::EC2::Subnet
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
     Properties:
-      VpcId: !Ref VPC
-      AvailabilityZone: !Select [ 1, !GetAZs  '' ]
-      CidrBlock: !Ref PublicSubnet2CIDR
-      MapPublicIpOnLaunch: true
-      Tags:
-        - Key: Name
-          Value: !Sub ${EnvironmentName} Public Subnet (AZ2)
-  
-  PublicRouteTable:
-    Type: AWS::EC2::RouteTable
-    Properties:
-      VpcId: !Ref VPC
-      Tags:
-        - Key: Name
-          Value: !Sub ${EnvironmentName} Public Routes
+      GroupDescription: Allow SSH and custom ports
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp  
+          FromPort: 3000
+          ToPort: 3000
+          CidrIp: 0.0.0.0/0
+      VpcId: !If [CreateNewVPC, !Ref VPC, !Ref VpcId]
 
-  DefaultPublicRoute:
-    Type: AWS::EC2::Route
-    DependsOn: InternetGatewayAttachment
+  ec2Role:
+    Type: AWS::IAM::Role
     Properties:
-      RouteTableId: !Ref PublicRouteTable
-      DestinationCidrBlock: 0.0.0.0/0
-      GatewayId: !Ref InternetGateway
-
-  PublicSubnet1RouteTableAssociation:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      RouteTableId: !Ref PublicRouteTable
-      SubnetId: !Ref PublicSubnet1
-
-  PublicSubnet2RouteTableAssociation:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      RouteTableId: !Ref PublicRouteTable
-      SubnetId: !Ref PublicSubnet2
+      RoleName: 'chatbotaosproxyec2'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore'
+        - 'arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess'
+      Policies:
+        - PolicyName: CustomPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: 'lambda:GetFunctionConfiguration'
+                Resource: '*'
+    DeletionPolicy: Delete
 
   Bootstrapper:
     Type: 'AWS::EC2::Instance'
@@ -153,32 +156,27 @@ Resources:
           echo "\n[$?] /opt/aws/bin/cfn-signal" >> "$logfile"
 
       InstanceType: !Ref InstanceType
+      KeyName: 
+        Fn::If:
+          - HasKeyPairName
+          - !Ref 'KeyPairName'
+          - !Ref 'AWS::NoValue'
       IamInstanceProfile: !Ref RootInstanceProfile
-      SecurityGroupIds:
-        - !GetAtt "SSHOnlySecurityGroup.GroupId"
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            VolumeSize: !Ref 'VolumeSize'
+            VolumeType: gp3
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: "true"
+          DeviceIndex: "0"
+          GroupSet: 
+            - !Ref SecurityGroup
+          SubnetId: !If [CreateNewSubnetId, !Ref PublicSubnet, !Ref PublicSubnetId]
       ImageId: !Ref LatestAmiId
-      SubnetId: !Ref PublicSubnet1
       Tags: 
         - Key: "Name"
           Value: "cdk_deployer"
-  SSHOnlySecurityGroup:
-    Type: 'AWS::EC2::SecurityGroup'
-    Metadata:
-      cfn_nag:
-        rules_to_suppress:
-          - id: F1000
-            reason: 'require all traffic for outbound to connect to external amazonlinux-2-repos, otherwise Timeout'
-    Properties:
-      GroupDescription: Restrict SSH access to SSHLocation
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: '22'
-          ToPort: '22'
-          CidrIp: !Ref SSHLocation
-      VpcId: !Ref VPC
-      Tags: 
-        - Key: "Name"
-          Value: "cdk_deployer_sg"
 
   IAMPolicy:
     Type: AWS::IAM::ManagedPolicy
@@ -390,6 +388,7 @@ Resources:
             Effect: Allow
             Action: dynamodb:PutItem
             Resource: !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/chatbotFE_user'
+    DeletionPolicy: Delete
 
   RoleWithIAMPolicy:
     Type: AWS::IAM::Role
@@ -404,6 +403,7 @@ Resources:
             Action: 'sts:AssumeRole'
       ManagedPolicyArns:
         - !Ref IAMPolicy
+    DeletionPolicy: Delete
 
   RootInstanceProfile:
     Type: 'AWS::IAM::InstanceProfile'
@@ -411,3 +411,8 @@ Resources:
       Path: /
       Roles:
         - !Ref RoleWithIAMPolicy
+
+Conditions:
+  CreateNewVPC: !Equals [!Ref VpcId, '']
+  CreateNewSubnetId: !Equals [!Ref PublicSubnetId, '']
+  HasKeyPairName: !Not [!Equals [!Ref KeyPairName, '']]

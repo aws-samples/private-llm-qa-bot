@@ -36,18 +36,21 @@ export class Ec2Stack extends NestedStack {
   // securityGroup.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(80), 'Allow HTTP Access')
   securityGroup.addIngressRule(securityGroup, ec2.Port.allTraffic(), 'Allow Self Access')
 
-  const role = new iam.Role(this, 'ec2Role', {
-    assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com')
-  })
 
-  role.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonSSMManagedInstanceCore'))
-  role.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonS3ReadOnlyAccess'))
-  const customPolicyStatement = new iam.PolicyStatement({
-    effect: iam.Effect.ALLOW,
-    actions: ['lambda:GetFunctionConfiguration'], 
-    resources: ['*'] 
-  });
-  role.addToPolicy(customPolicyStatement);
+  // chatbotaosproxyec2
+  const role = iam.Role.fromRoleName(this,'ec2Role','chatbotaosproxyec2')
+  // const role = new iam.Role(this, 'ec2Role', {
+  //   assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com')
+  // })
+
+  // role.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonSSMManagedInstanceCore'))
+  // role.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonS3ReadOnlyAccess'))
+  // const customPolicyStatement = new iam.PolicyStatement({
+  //   effect: iam.Effect.ALLOW,
+  //   actions: ['lambda:GetFunctionConfiguration'], 
+  //   resources: ['*'] 
+  // });
+  // role.addToPolicy(customPolicyStatement);
 
   const ami = new ec2.AmazonLinuxImage({
     generation: ec2.AmazonLinuxGeneration.AMAZON_LINUX_2,

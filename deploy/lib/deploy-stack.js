@@ -466,48 +466,48 @@ export class DeployStack extends Stack {
     const intent_detect_restapi = new ApiGatewayStack(this,'IntentDetectRestApi',{lambda_fn:lambda_intention,name:"intent_detect_entry"})
     new CfnOutput(this, `IntentDetect API gateway endpoint url`,{value:`${intent_detect_restapi.endpoint}`});
 
-    const role = new iam.Role(this, 'chatbot-kinesis-firehose', {
-      assumedBy: new iam.ServicePrincipal('logs.amazonaws.com'),
-    });
-    new CfnOutput(this, 'Kinesis_Firehose_Role',{value:`${role.roleName}`});
+    // const role = new iam.Role(this, 'chatbot-kinesis-firehose', {
+    //   assumedBy: new iam.ServicePrincipal('logs.amazonaws.com'),
+    // });
+    // new CfnOutput(this, 'Kinesis_Firehose_Role',{value:`${role.roleName}`});
 
-    const logResource =  (region.startsWith('cn'))?
-                `arn:aws-cn:logs:${region}:${account_id}:log-group:*`:
-                `arn:aws:logs:${region}:${account_id}:log-group:*`;
+    // const logResource =  (region.startsWith('cn'))?
+    //             `arn:aws-cn:logs:${region}:${account_id}:log-group:*`:
+    //             `arn:aws:logs:${region}:${account_id}:log-group:*`;
                 
 
-    const policy = new iam.Policy(this, 'chatbot-kinesis-policy', {
-      statements: [
-        new iam.PolicyStatement({
-          effect: iam.Effect.ALLOW,
-          actions: [
-            'kinesis:PutRecord',
-            'firehose:PutRecord',
-            'kinesis:PutRecords',
-            'firehose:PutRecordBatch',
-          ],
-          resources: ['*'],
-        }),
-        new iam.PolicyStatement({
-          effect: iam.Effect.ALLOW,
-          actions: [
-            's3:PutObject',
-            's3:GetObject',
-            's3:ListBucketMultipartUploads',
-            's3:AbortMultipartUpload',
-            's3:ListBucket',
-            'logs:PutLogEvents',
-            's3:GetBucketLocation',
-          ],
-          resources: [
-            logResource,
-            `${bucket.bucketArn}/*`,
-            `${bucket.bucketArn}`,
-          ],
-        }),
-      ],
-    });
+    // const policy = new iam.Policy(this, 'chatbot-kinesis-policy', {
+    //   statements: [
+    //     new iam.PolicyStatement({
+    //       effect: iam.Effect.ALLOW,
+    //       actions: [
+    //         'kinesis:PutRecord',
+    //         'firehose:PutRecord',
+    //         'kinesis:PutRecords',
+    //         'firehose:PutRecordBatch',
+    //       ],
+    //       resources: ['*'],
+    //     }),
+    //     new iam.PolicyStatement({
+    //       effect: iam.Effect.ALLOW,
+    //       actions: [
+    //         's3:PutObject',
+    //         's3:GetObject',
+    //         's3:ListBucketMultipartUploads',
+    //         's3:AbortMultipartUpload',
+    //         's3:ListBucket',
+    //         'logs:PutLogEvents',
+    //         's3:GetBucketLocation',
+    //       ],
+    //       resources: [
+    //         logResource,
+    //         `${bucket.bucketArn}/*`,
+    //         `${bucket.bucketArn}`,
+    //       ],
+    //     }),
+    //   ],
+    // });
     
-    role.attachInlinePolicy(policy);
+    // role.attachInlinePolicy(policy);
   }
 }
