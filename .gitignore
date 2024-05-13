@@ -1,5 +1,6 @@
 .ipynb_checkpoints/*
 */.ipynb_checkpoints/*
+.idea
 debug_py.py
 doc_preprocess/.DS_Store
 docs/.DS_Store

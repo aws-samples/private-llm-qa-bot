@@ -69,7 +69,9 @@ KNOWLEDGE_BASE_ID = os.environ.get('knowledge_base_id',None)
 BEDROCK_LLM_MODELID_LIST = {'claude-instant':'anthropic.claude-instant-v1',
                             'claude-v2':'anthropic.claude-v2',
                             'claude-v3-sonnet': 'anthropic.claude-3-sonnet-20240229-v1:0',
-                            'claude-v3-haiku' : 'anthropic.claude-3-haiku-20240307-v1:0', 'llama3-70b' : 'meta.llama3-70b-instruct-v1:0'}
+                            'claude-v3-haiku' : 'anthropic.claude-3-haiku-20240307-v1:0',
+                            'llama3-70b': 'meta.llama3-70b-instruct-v1:0',
+                            'llama3-8b': 'meta.llama3-8b-instruct-v1:0'}
 
 ###记录跟踪日志，用于前端输出
 class TraceLogger(BaseModel):
@@ -453,6 +455,20 @@ Assistant:"""
             template=prompt_template_zh,
             partial_variables={'system_role_prompt':SYSTEM_ROLE_PROMPT},
             input_variables=['question', 'chat_history','role_bot']
+        )
+    elif llm_model_name.startswith('llama3'):
+        prompt_template_zh = """
+        <|begin_of_text|><|start_header_id|>system<|end_header_id|>
+        {system_role_prompt}{role_bot}<|eot_id|><|start_header_id|>user<|end_header_id|>
+        Here is the conversation history (between the user and you) prior to the question. It could be empty if there is no history:
+        <history> {chat_history} </history>
+        Here is the user’s question: <question> {question} </question>
+        <|eot_id|><|start_header_id|>assistant<|end_header_id|>
+        """
+        PROMPT = PromptTemplate(
+            template=prompt_template_zh,
+            partial_variables={'system_role_prompt': SYSTEM_ROLE_PROMPT},
+            input_variables=['question', 'chat_history', 'role_bot']
         )
     else:
         if prompt_template == '':
