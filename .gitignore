@@ -4,6 +4,7 @@ debug_py.py
 doc_preprocess/.DS_Store
 docs/.DS_Store
 .DS_Store
+.idea
 __pycache__
 .streamlit
 default.sqlite
