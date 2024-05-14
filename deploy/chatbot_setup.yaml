@@ -665,7 +665,7 @@ Resources:
           sudo yum update -y
           sudo curl --silent --location https://rpm.nodesource.com/setup_18.x | bash -
           sudo yum install -y nodejs --nogpgcheck
-          sudo -u ec2-user git clone --recurse-submodules https://github.com/aws-samples/private-llm-qa-bot.git -b main_dev
+          sudo -u ec2-user git clone --recurse-submodules https://github.com/aws-samples/private-llm-qa-bot.git -b v1.3.6
           cd private-llm-qa-bot/deploy/
           sh gen_env.sh ${AWS::Region} ${AWS::AccountId}
           echo "\n[$?] sh gen_env.sh ${AWS::Region} ${AWS::AccountId}" >> "$logfile"
