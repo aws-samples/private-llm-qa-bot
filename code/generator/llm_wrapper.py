@@ -10,7 +10,7 @@ from langchain.llms.base import LLM
 from langchain.callbacks.base import BaseCallbackHandler
 from langchain.callbacks.manager import CallbackManagerForLLMRun
 from langchain.llms.bedrock import Bedrock
-from langchain_community.chat_models import BedrockChat
+from langchain_aws import ChatBedrock
 from langchain.llms.sagemaker_endpoint import LLMContentHandler, SagemakerEndpoint
 from langchain.prompts import PromptTemplate
 from langchain_core.prompts import ChatPromptTemplate
@@ -87,7 +87,7 @@ def get_langchain_llm_model(llm_model_id, params, region, llm_stream=False, llm_
             logger.info("--------adapt_parameters------")
             logger.info(adapt_parameters)
             logger.info("--------adapt_parameters------")
-            llm = BedrockChat(model_id=llm_model_id, 
+            llm = ChatBedrock(model_id=llm_model_id, 
                 client=boto3_bedrock, 
                 streaming=llm_stream, 
                 callbacks=llm_callbacks,
@@ -208,7 +208,7 @@ def format_to_message(query:str, image_base64_list:List[str]=None, role:str = "u
 
 def invoke_model(llm, prompt:str=None, messages:List[Dict]=[], callbacks=[]) -> AIMessage:
     ai_reply = None
-    if isinstance(llm, BedrockChat):
+    if isinstance(llm, ChatBedrock):
         if messages:
             ai_reply = llm.invoke(input=messages, stop=None, config={'callbacks': callbacks})
         else:

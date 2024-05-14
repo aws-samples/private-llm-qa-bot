@@ -47,7 +47,7 @@ def handle_error(func):
 
     return wrapper
 
-def create_detect_prompt_templete():
+def create_detect_prompt_templete():   
     prompt_template = """Here is a list of aimed functions:\n\n<api_schemas>{api_schemas}</api_schemas>\n\nYou should follow below examples to choose the corresponding function and params according to user's query\n\n<examples>{examples}</examples>\n\n"""
 
     PROMPT = PromptTemplate(
@@ -66,7 +66,7 @@ def lambda_handler(event, context):
     query = event.get('query')
     index_name = event.get('example_index')
     fewshot_cnt = event.get('fewshot_cnt')
-    llm_model_endpoint = os.environ.get('llm_model_endpoint', BEDROCK_LLM_MODELID_LIST["claude-v3-sonnet"])
+    llm_model_endpoint =event.get("llm_model_name") if event.get("llm_model_name") else os.environ.get('llm_model_endpoint', BEDROCK_LLM_MODELID_LIST["claude-v3-sonnet"])
     
     logger.info("embedding_endpoint: {}".format(embedding_endpoint))
     logger.info("region:{}".format(region))
@@ -119,7 +119,7 @@ def lambda_handler(event, context):
         "top_p":0.95
     }
     
-    if llm_model_endpoint.startswith('claude') or llm_model_endpoint.startswith('anthropic'):
+    if llm_model_endpoint.startswith('claude') or llm_model_endpoint.startswith('anthropic') or llm_model_endpoint.startswith('llama'):
         model_id = BEDROCK_LLM_MODELID_LIST.get(llm_model_endpoint, BEDROCK_LLM_MODELID_LIST["claude-v3-sonnet"])
     else:
         model_id = llm_model_endpoint
