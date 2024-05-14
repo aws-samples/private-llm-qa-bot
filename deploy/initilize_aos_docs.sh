@@ -27,4 +27,4 @@ aws s3 cp ../docs/aws_cleanroom.faq $kd_path
 aws s3 cp ../docs/aws_emr.faq $kd_path
 aws s3 cp ../docs/aws_msk.faq $kd_path
 aws s3 cp ../docs/ask_user_faq.xlsx $kd_path
-aws s3 cp ../docs/ask_aws_blog.md $kd_path
+aws s3 cp ../docs/aws_blog.md $kd_path
