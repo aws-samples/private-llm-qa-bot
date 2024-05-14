@@ -7,33 +7,29 @@ Parameters:
     Description: EC2 instance type
     Type: String
     Default: m5.large
-
+  SSHLocation:
+    Description: The IP address range that can be used to SSH in but not a public address and different from VpcCIDR
+    Type: String
+    MinLength: '9'
+    MaxLength: '18'
+    Default: 0.0.0.0/0
+    AllowedPattern: '(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})'
   EnvironmentName:
     Description: An environment name that is prefixed to resource names
     Type: String
     Default: "Chatbot"
-
-  VpcId:
-    Description: ID of the VPC to deploy resources into (leave blank to create a new VPC)
-    Type: AWS::EC2::VPC::Id
-    Default: AWS::NoValue
-
-  PublicSubnetId:
-    Description: ID of the public subnet to deploy resources into (leave blank to create a new one)
-    Type: AWS::EC2::Subnet::Id
-    Default: AWS::NoValue
-
-  
-  KeyPairName:
-    Description: Name of an existing EC2 KeyPair to enable SSH access. Leave blank for no SSH access
+  VpcCIDR:
+    Description: Please enter the IP range (CIDR notation) for this VPC
     Type: String
-
-  VolumeSize:
-    Description: EBS volume size (GB) for the instance
-    Type: Number
-    MinValue: 20
-    Default: 20
-
+    Default: 10.192.0.0/16
+  PublicSubnet1CIDR:
+    Description: Please enter the IP range (CIDR notation) for the public subnet in the first Availability Zone
+    Type: String
+    Default: 10.192.10.0/24
+  PublicSubnet2CIDR:
+    Description: Please enter the IP range (CIDR notation) for the public subnet in the second Availability Zone
+    Type: String
+    Default: 10.192.11.0/24
   TrustedAccounts:
     Description: List of AWS accounts that are trusted to publish assets and deploy stacks to this environment
     Default: ""
@@ -86,6 +82,59 @@ Parameters:
     Default: "AWS CDK: Default Resources"
     Description: Describe the provenance of the resources in this bootstrap stack. Change this when you customize the template. To prevent accidents, the CDK CLI will not overwrite bootstrap stacks with a different variant.
 
+Conditions:
+  HasTrustedAccounts:
+    Fn::Not:
+      - Fn::Equals:
+          - ""
+          - Fn::Join:
+              - ""
+              - Ref: TrustedAccounts
+  HasTrustedAccountsForLookup:
+    Fn::Not:
+      - Fn::Equals:
+          - ""
+          - Fn::Join:
+              - ""
+              - Ref: TrustedAccountsForLookup
+  HasCloudFormationExecutionPolicies:
+    Fn::Not:
+      - Fn::Equals:
+          - ""
+          - Fn::Join:
+              - ""
+              - Ref: CloudFormationExecutionPolicies
+  HasCustomFileAssetsBucketName:
+    Fn::Not:
+      - Fn::Equals:
+          - ""
+          - Ref: FileAssetsBucketName
+  CreateNewKey:
+    Fn::Equals:
+      - ""
+      - Ref: FileAssetsBucketKmsKeyId
+  UseAwsManagedKey:
+    Fn::Equals:
+      - AWS_MANAGED_KEY
+      - Ref: FileAssetsBucketKmsKeyId
+  ShouldCreatePermissionsBoundary:
+    Fn::Equals:
+      - "true"
+      - Ref: UseExamplePermissionsBoundary
+  PermissionsBoundarySet:
+    Fn::Not:
+      - Fn::Equals:
+          - ""
+          - Ref: InputPermissionsBoundary
+  HasCustomContainerAssetsRepositoryName:
+    Fn::Not:
+      - Fn::Equals:
+          - ""
+          - Ref: ContainerAssetsRepositoryName
+  UsePublicAccessBlockConfiguration:
+    Fn::Equals:
+      - "true"
+      - Ref: PublicAccessBlockConfiguration
 Resources:
   FileAssetsBucketEncryptionKey:
     Type: AWS::KMS::Key
@@ -570,53 +619,76 @@ Resources:
 
   VPC:
     Type: AWS::EC2::VPC
-    Condition: CreateNewVPC
     Properties:
-      CidrBlock: 10.0.0.0/16
-      EnableDnsHostnames: true
+      CidrBlock: !Ref VpcCIDR
       EnableDnsSupport: true
-      InstanceTenancy: default
+      EnableDnsHostnames: true
       Tags:
-        - Key: Name 
-          Value: 'chatbot'
+        - Key: Name
+          Value: !Ref EnvironmentName
 
   InternetGateway:
     Type: AWS::EC2::InternetGateway
-    Condition: CreateNewVPC
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Ref EnvironmentName
 
   InternetGatewayAttachment:
     Type: AWS::EC2::VPCGatewayAttachment
-    Condition: CreateNewVPC 
     Properties:
       InternetGatewayId: !Ref InternetGateway
       VpcId: !Ref VPC
 
-  PublicSubnet:
+  PublicSubnet1:
     Type: AWS::EC2::Subnet
-    Condition: CreateNewSubnetId
     Properties:
-      VpcId: !If [CreateNewVPC, !Ref VPC, !Ref VpcId]
-      AvailabilityZone: !Select [0, !GetAZs '']
-      CidrBlock: 10.0.0.0/24
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      CidrBlock: !Ref PublicSubnet1CIDR
       MapPublicIpOnLaunch: true
-      Tags: 
+      Tags:
         - Key: Name
-          Value: 'Public-Subnet'
+          Value: !Sub ${EnvironmentName} Public Subnet (AZ1)
 
-  SecurityGroup:
-    Type: AWS::EC2::SecurityGroup
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
     Properties:
-      GroupDescription: Allow SSH and custom ports
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 22
-          ToPort: 22
-          CidrIp: 0.0.0.0/0
-        - IpProtocol: tcp  
-          FromPort: 3000
-          ToPort: 3000
-          CidrIp: 0.0.0.0/0
-      VpcId: !If [CreateNewVPC, !Ref VPC, !Ref VpcId]
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 1, !GetAZs  '' ]
+      CidrBlock: !Ref PublicSubnet2CIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName} Public Subnet (AZ2)
+  
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName} Public Routes
+
+  DefaultPublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet1
+
+  PublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet2
 
   ec2Role:
     Type: AWS::IAM::Role
@@ -660,12 +732,11 @@ Resources:
           echo "\n[$?] yum update -y aws-cfn-bootstrap" >> "$logfile"
           sudo /opt/aws/bin/cfn-init -v --role chatbot_deploy_role --stack ${AWS::StackName} --resource Bootstrapper --region ${AWS::Region}
           echo "\n[$?] sudo /opt/aws/bin/cfn-init -v --role chatbot_deploy_role --stack ${AWS::StackName} --resource Bootstrapper --region ${AWS::Region}" >> "$logfile"
-          aws iam create-service-linked-role --aws-service-name es.amazonaws.com
           sudo yum install -y git
           sudo yum update -y
           sudo curl --silent --location https://rpm.nodesource.com/setup_18.x | bash -
           sudo yum install -y nodejs --nogpgcheck
-          sudo -u ec2-user git clone --recurse-submodules https://github.com/aws-samples/private-llm-qa-bot.git -b v1.3.6
+          sudo -u ec2-user git clone --recurse-submodules https://github.com/aws-samples/private-llm-qa-bot.git -b main_dev
           cd private-llm-qa-bot/deploy/
           sh gen_env.sh ${AWS::Region} ${AWS::AccountId}
           echo "\n[$?] sh gen_env.sh ${AWS::Region} ${AWS::AccountId}" >> "$logfile"
@@ -677,8 +748,6 @@ Resources:
           sudo npm install
           sudo yum install -y docker
           sudo systemctl start docker
-          cdk bootstrap
-          echo "\n[$?] cdk bootstrap" >> "$logfile"
           sudo cdk synth
           echo "\n[$?] sudo cdk synth" >> "$logfile"
           sudo cdk deploy --require-approval never --all
@@ -688,27 +757,36 @@ Resources:
           echo "\n[$?] /opt/aws/bin/cfn-signal" >> "$logfile"
 
       InstanceType: !Ref InstanceType
-      KeyName: 
-        Fn::If:
-          - HasKeyPairName
-          - !Ref 'KeyPairName'
-          - !Ref 'AWS::NoValue'
       IamInstanceProfile: !Ref RootInstanceProfile
-      BlockDeviceMappings:
-        - DeviceName: /dev/sda1
-          Ebs:
-            VolumeSize: !Ref 'VolumeSize'
-            VolumeType: gp3
-      NetworkInterfaces:
-        - AssociatePublicIpAddress: "true"
-          DeviceIndex: "0"
-          GroupSet: 
-            - !Ref SecurityGroup
-          SubnetId: !If [CreateNewSubnetId, !Ref PublicSubnet, !Ref PublicSubnetId]
+      SecurityGroupIds:
+        - !GetAtt "SSHOnlySecurityGroup.GroupId"
       ImageId: !Ref LatestAmiId
+      SubnetId: !Ref PublicSubnet1
       Tags: 
         - Key: "Name"
           Value: "cdk_deployer"
+  SSHOnlySecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: F1000
+            reason: 'require all traffic for outbound to connect to external amazonlinux-2-repos, otherwise Timeout'
+    Properties:
+      GroupDescription: Restrict SSH access to SSHLocation
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '22'
+          ToPort: '22'
+          CidrIp: !Ref SSHLocation
+        - IpProtocol: tcp  
+          FromPort: 3000
+          ToPort: 3000
+          CidrIp: 0.0.0.0/0
+      VpcId: !Ref VPC
+      Tags: 
+        - Key: "Name"
+          Value: "cdk_deployer_sg"
 
   IAMPolicy:
     Type: AWS::IAM::ManagedPolicy
@@ -943,63 +1021,6 @@ Resources:
       Path: /
       Roles:
         - !Ref RoleWithIAMPolicy
-
-Conditions:
-  CreateNewVPC: !Equals [!Ref VpcId, '']
-  CreateNewSubnetId: !Equals [!Ref PublicSubnetId, '']
-  HasKeyPairName: !Not [!Equals [!Ref KeyPairName, '']]
-  HasTrustedAccounts:
-    Fn::Not:
-      - Fn::Equals:
-          - ""
-          - Fn::Join:
-              - ""
-              - Ref: TrustedAccounts
-  HasTrustedAccountsForLookup:
-    Fn::Not:
-      - Fn::Equals:
-          - ""
-          - Fn::Join:
-              - ""
-              - Ref: TrustedAccountsForLookup
-  HasCloudFormationExecutionPolicies:
-    Fn::Not:
-      - Fn::Equals:
-          - ""
-          - Fn::Join:
-              - ""
-              - Ref: CloudFormationExecutionPolicies
-  HasCustomFileAssetsBucketName:
-    Fn::Not:
-      - Fn::Equals:
-          - ""
-          - Ref: FileAssetsBucketName
-  CreateNewKey:
-    Fn::Equals:
-      - ""
-      - Ref: FileAssetsBucketKmsKeyId
-  UseAwsManagedKey:
-    Fn::Equals:
-      - AWS_MANAGED_KEY
-      - Ref: FileAssetsBucketKmsKeyId
-  ShouldCreatePermissionsBoundary:
-    Fn::Equals:
-      - "true"
-      - Ref: UseExamplePermissionsBoundary
-  PermissionsBoundarySet:
-    Fn::Not:
-      - Fn::Equals:
-          - ""
-          - Ref: InputPermissionsBoundary
-  HasCustomContainerAssetsRepositoryName:
-    Fn::Not:
-      - Fn::Equals:
-          - ""
-          - Ref: ContainerAssetsRepositoryName
-  UsePublicAccessBlockConfiguration:
-    Fn::Equals:
-      - "true"
-      - Ref: PublicAccessBlockConfiguration
 
 Outputs:
   BucketName:
