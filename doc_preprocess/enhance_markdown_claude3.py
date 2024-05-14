@@ -135,7 +135,7 @@ if __name__ == '__main__':
     parser.add_argument('--prefix', type=str, default='mihoyo-poc/enhanced_test/', help='input bucket')
     parser.add_argument('--input_path', type=str, default='', help='input path')
     parser.add_argument('--output_path', type=str, default='./output', help='output path')
-    parser.add_argument('--region_name', type=str, default='us-west-2', help='aws region')
+    parser.add_argument('--region_name', type=str, default='us-east-1', help='aws region')
     args = parser.parse_args()
 
     input_path = args.input_path
