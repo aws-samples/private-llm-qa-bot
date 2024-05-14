@@ -16,7 +16,9 @@ BEDROCK_EMBEDDING_MODELID_LIST = ["cohere.embed-multilingual-v3","cohere.embed-e
 BEDROCK_LLM_MODELID_LIST = {'claude-instant':'anthropic.claude-instant-v1',
                             'claude-v2':'anthropic.claude-v2',
                             'claude-v3-sonnet': 'anthropic.claude-3-sonnet-20240229-v1:0',
-                            'claude-v3-haiku' : 'anthropic.claude-3-haiku-20240307-v1:0'}
+                            'claude-v3-haiku' : 'anthropic.claude-3-haiku-20240307-v1:0',
+                            'llama3-70b': 'meta.llama3-70b-instruct-v1:0',
+                            'llama3-8b': 'meta.llama3-8b-instruct-v1:0'}
 
 SIMS_THRESHOLD= float(os.environ.get('intent_detection_threshold',0.7))
 
