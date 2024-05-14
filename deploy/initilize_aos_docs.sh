@@ -21,8 +21,8 @@ echo $output_values3
 kd_path="s3://$bucketname/ai-content/init_docs/"
 
 aws s3 cp ../docs/intentions/aws_price.example $kd_path
-aws s3 cp ../docs/intentions/conversations.example $kd_path
-aws s3 cp ../docs/intentions/get_contact.example $kd_path
+# aws s3 cp ../docs/intentions/conversations.example $kd_path
+# aws s3 cp ../docs/intentions/get_contact.example $kd_path
 aws s3 cp ../docs/aws_cleanroom.faq $kd_path
 aws s3 cp ../docs/aws_emr.faq $kd_path
 aws s3 cp ../docs/aws_msk.faq $kd_path
