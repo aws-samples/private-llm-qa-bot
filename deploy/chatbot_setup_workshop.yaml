@@ -690,6 +690,12 @@ Resources:
       RouteTableId: !Ref PublicRouteTable
       SubnetId: !Ref PublicSubnet2
 
+  VolumeSize:
+    Description: EBS volume size (GB) for the instance
+    Type: Number
+    MinValue: 20
+    Default: 20
+
   ec2Role:
     Type: AWS::IAM::Role
     Properties:
@@ -758,6 +764,11 @@ Resources:
 
       InstanceType: !Ref InstanceType
       IamInstanceProfile: !Ref RootInstanceProfile
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            VolumeSize: !Ref 'VolumeSize'
+            VolumeType: gp3
       SecurityGroupIds:
         - !GetAtt "SSHOnlySecurityGroup.GroupId"
       ImageId: !Ref LatestAmiId
