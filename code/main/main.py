@@ -70,6 +70,7 @@ BEDROCK_LLM_MODELID_LIST = {'claude-instant':'anthropic.claude-instant-v1',
                             'claude-v2':'anthropic.claude-v2',
                             'claude-v3-sonnet': 'anthropic.claude-3-sonnet-20240229-v1:0',
                             'claude-v3-haiku' : 'anthropic.claude-3-haiku-20240307-v1:0',
+                            'mistral-large' : 'mistral.mistral-large-2402-v1:0',
                             'llama3-70b': 'meta.llama3-70b-instruct-v1:0',
                             'llama3-8b': 'meta.llama3-8b-instruct-v1:0'}
 
@@ -205,8 +206,8 @@ def handle_error(func):
 
     return wrapper
 
-def detect_intention(query, example_index='chatbot-example-index',fewshot_cnt=5):
-    msg = {"fewshot_cnt":fewshot_cnt, "query": query,"example_index":example_index}
+def detect_intention(query,llm_model_name,example_index='chatbot-example-index',fewshot_cnt=5):
+    msg = {"fewshot_cnt":fewshot_cnt, "query": query,"example_index":example_index,"llm_model_name":llm_model_name}
     invoke_response = lambda_client.invoke(FunctionName="Detect_Intention",
                                            InvocationType='RequestResponse',
                                            Payload=json.dumps(msg))
@@ -217,7 +218,7 @@ def detect_intention(query, example_index='chatbot-example-index',fewshot_cnt=5)
 
     return json.loads(response_str)
 
-def rewrite_query(query, session_history, round_cnt=2):
+def rewrite_query(query, session_history, llm_model_name, round_cnt=2):
     logger.info(f"session_history {str(session_history)}")
     if len(session_history) == 0:
         return query
@@ -231,7 +232,8 @@ def rewrite_query(query, session_history, round_cnt=2):
       "params": {
         "history": history,
         "query": query
-      }
+      },
+      "llm_model_name":llm_model_name
     }
     response = lambda_client.invoke(FunctionName="Query_Rewrite",
                                            InvocationType='RequestResponse',
@@ -241,13 +243,14 @@ def rewrite_query(query, session_history, round_cnt=2):
 
     return response_str.strip('"')
 
-def chat_agent(query, detection):
+def chat_agent(query, detection,llm_model_name):
 
     msg = {
       "params": {
         "query": query,
         "detection": detection 
-      }
+      },
+      "llm_model_name":llm_model_name
     }
     response = lambda_client.invoke(FunctionName="Chat_Agent",
                                            InvocationType='RequestResponse',
@@ -625,7 +628,7 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
     TRACE_LOGGER.trace(f'**Starting trace mode...**')
     if multi_rounds:
         before_rewrite = time.time()
-        query_input = rewrite_query(origin_query, session_history, round_cnt=3)
+        query_input = rewrite_query(origin_query, session_history, llm_model_name,round_cnt=3)
         elpase_time_rewrite = time.time() - before_rewrite
 
         chat_history_msgs=[]
@@ -672,7 +675,7 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
     if use_qa and not cache_answer and len(other_intentions) > 0 and len(other_intentions[0]) > 1:
         before_detect = time.time()
         TRACE_LOGGER.trace(f'**Detecting intention...**')
-        detection = detect_intention(query_input,example_index, fewshot_cnt=5)
+        detection = detect_intention(query_input,llm_model_name,example_index, fewshot_cnt=5)
         intention = detection['func']
         elpase_time_detect = time.time() - before_detect
         logger.info(f'detection: {detection}')
@@ -861,7 +864,7 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
         TRACE_LOGGER.trace('**Using Agent...**')
         reply_stratgy = ReplyStratgy.AGENT
 
-        answer,ref_doc = chat_agent(query_input, detection)
+        answer,ref_doc = chat_agent(query_input, detection,llm_model_name)
         recall_knowledge,opensearch_knn_respose,opensearch_query_response = [ref_doc],[],[]
         TRACE_LOGGER.add_ref(f'\n\n**Refer to {len(recall_knowledge)} knowledge:**')
         TRACE_LOGGER.add_ref(f"**[1]** {ref_doc}")

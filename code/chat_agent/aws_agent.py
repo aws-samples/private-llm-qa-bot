@@ -28,6 +28,7 @@ BEDROCK_LLM_MODELID_LIST = {'claude-instant':'anthropic.claude-instant-v1',
                             'claude-v2':'anthropic.claude-v2:1',
                             'claude-v3-sonnet': 'anthropic.claude-3-sonnet-20240229-v1:0',
                             'claude-v3-haiku' : 'anthropic.claude-3-haiku-20240307-v1:0',
+                            'mistral-large' : 'mistral.mistral-large-2402-v1:0',
                             'llama3-70b': 'meta.llama3-70b-instruct-v1:0',
                             'llama3-8b': 'meta.llama3-8b-instruct-v1:0'}
 REFUSE_ANSWER = '对不起, 根据{func_name}({args}),没有查询到您想要的信息，请您更具体的描述下您的要求.'
@@ -322,7 +323,6 @@ def lambda_handler(event, context):
     params = event.get('params')
     param_dict = params
     query = param_dict["query"]
-    intention = param_dict.get("intention")      
     detection = param_dict.get("detection")
     
     region = os.environ.get('region')
@@ -330,37 +330,12 @@ def lambda_handler(event, context):
 
     global BEDROCK_REGION
     BEDROCK_REGION = region
-    llm_model_endpoint = os.environ.get('llm_model_endpoint')
-    use_bedrock = True if llm_model_endpoint.startswith('anthropic') or llm_model_endpoint.startswith('claude') else False
+    llm_model_endpoint = event.get("llm_model_name") if event.get("llm_model_name") else os.environ.get('llm_model_endpoint', BEDROCK_LLM_MODELID_LIST["claude-v3-sonnet"])
     logger.info("region:{}".format(region))
     logger.info("params:{}".format(params))
     logger.info("llm_model_endpoint:{}".format(llm_model_endpoint))
 
-    # llm = None
-    # if not use_bedrock:
-    #     logger.info(f'not use bedrock, use {llm_model_endpoint}')
-    #     llmcontent_handler = llmContentHandler()
-    #     llm=SagemakerEndpoint(
-    #             endpoint_name=llm_model_endpoint, 
-    #             region_name=region, 
-    #             model_kwargs={'parameters':parameters},
-    #             content_handler=llmcontent_handler
-    #         )
-    # else:
-    #     boto3_bedrock = boto3.client(
-    #         service_name="bedrock-runtime",
-    #         region_name=region
-    #     )
-    
-    #     parameters = {
-    #         "max_tokens_to_sample": 8096,
-    #         "stop_sequences": ["</response>"],
-    #         "temperature":0.01,
-    #         "top_p":0.85
-    #     }
-        
-    #     model_id = "anthropic.claude-v2"
-    #     llm = Bedrock(model_id=model_id, client=boto3_bedrock, model_kwargs=parameters)
+
     
     parameters = {
         "temperature":0.01,
@@ -368,8 +343,14 @@ def lambda_handler(event, context):
         "stop": ["</response>"],
     }
     
-    if llm_model_endpoint.startswith('claude') or llm_model_endpoint.startswith('anthropic'):
-        model_id = BEDROCK_LLM_MODELID_LIST.get(llm_model_endpoint, BEDROCK_LLM_MODELID_LIST["claude-v3-sonnet"])
+    if llm_model_endpoint.startswith('claude') or llm_model_endpoint.startswith('anthropic') \
+        or llm_model_endpoint.startswith('llama') or llm_model_endpoint.startswith('mistral'):
+            
+        #如果前端不是选的claude模型，则指定用mistral-large， 因为llama3 不work
+        if not llm_model_endpoint.startswith('claude'):
+            model_id = BEDROCK_LLM_MODELID_LIST.get('mistral-large')
+        else:
+            model_id = BEDROCK_LLM_MODELID_LIST.get(llm_model_endpoint)
     else:
         model_id = llm_model_endpoint
 

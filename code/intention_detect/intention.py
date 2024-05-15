@@ -17,6 +17,7 @@ BEDROCK_LLM_MODELID_LIST = {'claude-instant':'anthropic.claude-instant-v1',
                             'claude-v2':'anthropic.claude-v2',
                             'claude-v3-sonnet': 'anthropic.claude-3-sonnet-20240229-v1:0',
                             'claude-v3-haiku' : 'anthropic.claude-3-haiku-20240307-v1:0',
+                            'mistral-large' : 'mistral.mistral-large-2402-v1:0',
                             'llama3-70b': 'meta.llama3-70b-instruct-v1:0',
                             'llama3-8b': 'meta.llama3-8b-instruct-v1:0'}
 
@@ -47,7 +48,7 @@ def handle_error(func):
 
     return wrapper
 
-def create_detect_prompt_templete():
+def create_detect_prompt_templete():   
     prompt_template = """Here is a list of aimed functions:\n\n<api_schemas>{api_schemas}</api_schemas>\n\nYou should follow below examples to choose the corresponding function and params according to user's query\n\n<examples>{examples}</examples>\n\n"""
 
     PROMPT = PromptTemplate(
@@ -66,7 +67,7 @@ def lambda_handler(event, context):
     query = event.get('query')
     index_name = event.get('example_index')
     fewshot_cnt = event.get('fewshot_cnt')
-    llm_model_endpoint = os.environ.get('llm_model_endpoint', BEDROCK_LLM_MODELID_LIST["claude-v3-sonnet"])
+    llm_model_endpoint =event.get("llm_model_name") if event.get("llm_model_name") else os.environ.get('llm_model_endpoint', BEDROCK_LLM_MODELID_LIST["claude-v3-sonnet"])
     
     logger.info("embedding_endpoint: {}".format(embedding_endpoint))
     logger.info("region:{}".format(region))
@@ -92,6 +93,14 @@ def lambda_handler(event, context):
     api_schema_list = [ doc['api_schema'] for doc in docs_simple]
 
     options = set([ doc['detection'] for doc in docs_simple])
+    
+    func_list= []
+    for doc in docs_simple:
+        try:
+            func_list.append(json.loads(doc['detection'])['func'])
+        except Exception as e:
+            logger.info(f"json format error:{doc['detection']}")
+    func_set = set(func_list)
 
     default_ret = {"func":"QA"}
 
@@ -119,8 +128,14 @@ def lambda_handler(event, context):
         "top_p":0.95
     }
     
-    if llm_model_endpoint.startswith('claude') or llm_model_endpoint.startswith('anthropic'):
-        model_id = BEDROCK_LLM_MODELID_LIST.get(llm_model_endpoint, BEDROCK_LLM_MODELID_LIST["claude-v3-sonnet"])
+    if llm_model_endpoint.startswith('claude') or llm_model_endpoint.startswith('anthropic') \
+        or llm_model_endpoint.startswith('llama') or llm_model_endpoint.startswith('mistral'):
+            
+        #如果前端不是选的claude模型，则指定用mistral-large， 因为llama3 不work
+        if not llm_model_endpoint.startswith('claude'):
+            model_id = BEDROCK_LLM_MODELID_LIST.get('mistral-large')
+        else:
+            model_id = BEDROCK_LLM_MODELID_LIST.get(llm_model_endpoint)
     else:
         model_id = llm_model_endpoint
 
@@ -144,17 +159,14 @@ def lambda_handler(event, context):
     # log_dict_str = json.dumps(log_dict, ensure_ascii=False)
     logger.info(log_dict)
 
-    # if answer not in options:
-    #     answer = intention_counter.most_common(1)[0]
-    #     for opt in options:
-    #         if opt in answer:
-    #             answer = opt
-    #             break
 
     try:
         ret = json.loads(answer)
+        #判断是否在召回的example，杜绝幻觉
+        ret = ret if ret.get('func') in func_set else default_ret
     except Exception as e:
         logger.info("Fail to detect function, caused by {}".format(str(e)))
+        ret = default_ret
     finally:
         ret = ret if ret.get('func') else default_ret
     return ret 

@@ -16,6 +16,7 @@ BEDROCK_LLM_MODELID_LIST = {'claude-instant':'anthropic.claude-instant-v1',
                             'claude-v2':'anthropic.claude-v2:1',
                             'claude-v3-sonnet': 'anthropic.claude-3-sonnet-20240229-v1:0',
                             'claude-v3-haiku' : 'anthropic.claude-3-haiku-20240307-v1:0',
+                            'mistral-large' : 'mistral.mistral-large-2402-v1:0',
                             'llama3-70b': 'meta.llama3-70b-instruct-v1:0',
                             'llama3-8b': 'meta.llama3-8b-instruct-v1:0'}
 logger = logging.getLogger()
@@ -121,16 +122,14 @@ def extract_content(content: str):
 @handle_error
 def lambda_handler(event, context):
     region = os.environ.get('region')
-    llm_model_endpoint = os.environ.get('llm_model_endpoint')
+    llm_model_endpoint = event.get("llm_model_name") if event.get("llm_model_name") else os.environ.get('llm_model_endpoint', BEDROCK_LLM_MODELID_LIST["claude-v3-sonnet"])
     params = event.get('params')
-    use_bedrock = True if llm_model_endpoint.startswith('anthropic') or llm_model_endpoint.startswith('claude') else False
     role_a = event.get('role_a', 'user')
     role_b = event.get('role_b', 'AI')
     
     logger.info("region:{}".format(region))
     logger.info("params:{}".format(params))
     logger.info("llm_model_endpoint:{}".format(llm_model_endpoint))
-    logger.info("use_bedrock:{}".format(bool(use_bedrock)))
 
     param_dict = params
     query = param_dict["query"]
@@ -138,40 +137,21 @@ def lambda_handler(event, context):
 
     history_with_role = [ "{}: {}".format(role_a if idx % 2 == 0 else role_b, item) for idx, item in enumerate(history) ]
     history_str = "\n".join(history_with_role)
-    # history_str += f'\n{role_a}: {query}'
 
-    # llm = None
-    # if not use_bedrock:
-    #     llmcontent_handler = llmContentHandler()
-    #     llm=SagemakerEndpoint(
-    #             endpoint_name=llm_model_endpoint, 
-    #             region_name=region, 
-    #             model_kwargs={'parameters':parameters},
-    #             content_handler=llmcontent_handler
-    #         )
-    # else:
-    #     boto3_bedrock = boto3.client(
-    #         service_name="bedrock-runtime",
-    #         region_name=region
-    #     )
-    
-    #     parameters = {
-    #         "max_tokens_to_sample": 100,
-    #         "stop_sequences": ["\n\n", '</standalone_question>'],
-    #         "temperature":0.01,
-    #         "top_p":1
-    #     }
-
-    #     model_id = BEDROCK_LLM_MODELID_LIST.get(llm_model_endpoint, llm_model_endpoint)
-    #     llm = Bedrock(model_id=model_id, client=boto3_bedrock, model_kwargs=parameters)
     parameters = {
         "temperature":0.0,
         "top_p":0.95,
         "stop": ['</standalone_question>']
     }
     
-    if llm_model_endpoint.startswith('claude') or llm_model_endpoint.startswith('anthropic'):
-        model_id = BEDROCK_LLM_MODELID_LIST.get(llm_model_endpoint, BEDROCK_LLM_MODELID_LIST["claude-v3-sonnet"])
+    if llm_model_endpoint.startswith('claude') or llm_model_endpoint.startswith('anthropic') \
+        or llm_model_endpoint.startswith('llama') or llm_model_endpoint.startswith('mistral'):
+            
+        #如果前端不是选的claude模型，则指定用mistral-large， 因为llama3 不work
+        if not llm_model_endpoint.startswith('claude'):
+            model_id = BEDROCK_LLM_MODELID_LIST.get('mistral-large')
+        else:
+            model_id = BEDROCK_LLM_MODELID_LIST.get(llm_model_endpoint)
     else:
         model_id = llm_model_endpoint
 
@@ -184,8 +164,7 @@ def lambda_handler(event, context):
     ai_reply = invoke_model(llm=llm, prompt=prompt, messages=msg_list)
     final_prompt = json.dumps(msg_list,ensure_ascii=False)
     answer = ai_reply.content
-    # llmchain = LLMChain(llm=llm, verbose=False, prompt=prompt_template)
-    # answer = llmchain.run({'history':history_str,  "cur_query":query,"role_a":role_a})
+
     answer = answer.strip()
     answer = answer.replace('<standalone_question>','')
 
