@@ -601,7 +601,7 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
         "top_p":0.95
     }
 
-    if llm_model_name.startswith('claude') or llm_model_name.startswith('llama'):
+    if llm_model_name.startswith('claude') or llm_model_name.startswith('llama') or llm_model_name.startswith('mistral'):
         model_id = BEDROCK_LLM_MODELID_LIST.get(llm_model_name, BEDROCK_LLM_MODELID_LIST['claude-v3-sonnet'])
     else:
         model_id = llm_model_endpoint
