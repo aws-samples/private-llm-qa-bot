@@ -9,9 +9,11 @@ from langchain.chains import LLMChain
 from langchain.llms.base import LLM
 from langchain.callbacks.base import BaseCallbackHandler
 from langchain.callbacks.manager import CallbackManagerForLLMRun
-from langchain.llms.bedrock import Bedrock
+from langchain_aws import ChatBedrock
+from langchain_aws import BedrockLLM
 from langchain_community.chat_models import BedrockChat
-from langchain.llms.sagemaker_endpoint import LLMContentHandler, SagemakerEndpoint
+from langchain_community.llms.sagemaker_endpoint import LLMContentHandler
+from langchain_community.llms import SagemakerEndpoint
 from langchain.prompts import PromptTemplate
 from langchain_core.prompts import ChatPromptTemplate
 from .llm_manager import get_all_private_llm, get_all_bedrock_llm
@@ -87,7 +89,7 @@ def get_langchain_llm_model(llm_model_id, params, region, llm_stream=False, llm_
             logger.info("--------adapt_parameters------")
             logger.info(adapt_parameters)
             logger.info("--------adapt_parameters------")
-            llm = BedrockChat(model_id=llm_model_id, 
+            llm = ChatBedrock(model_id=llm_model_id, 
                 client=boto3_bedrock, 
                 streaming=llm_stream, 
                 callbacks=llm_callbacks,
@@ -159,7 +161,7 @@ def get_langchain_llm_model(llm_model_id, params, region, llm_stream=False, llm_
             logger.info("--------adapt_parameters------")
             logger.info(adapt_parameters)
             logger.info("--------adapt_parameters------")
-            llm = Bedrock(model_id=llm_model_id, 
+            llm = ChatBedrock(model_id=llm_model_id, 
                 client=boto3_bedrock, 
                 streaming=llm_stream, 
                 callbacks=llm_callbacks,
@@ -208,12 +210,12 @@ def format_to_message(query:str, image_base64_list:List[str]=None, role:str = "u
 
 def invoke_model(llm, prompt:str=None, messages:List[Dict]=[], callbacks=[]) -> AIMessage:
     ai_reply = None
-    if isinstance(llm, BedrockChat):
+    if isinstance(llm, ChatBedrock):
         if messages:
             ai_reply = llm.invoke(input=messages, stop=None, config={'callbacks': callbacks})
         else:
             raise RuntimeError("No valid input for BedrockChat")
-    elif isinstance(llm, Bedrock) or isinstance(llm, SagemakerEndpoint):
+    elif isinstance(llm, BedrockLLM) or isinstance(llm, SagemakerEndpoint):
         if prompt:
             if llm.streaming:
                 answer = llm.invoke(input=prompt, stop=None, config={'callbacks': callbacks})

@@ -12,13 +12,13 @@ def get_all_bedrock_llm():
             region_name='us-west-2'
         )
 
-        bedrock.list_foundation_models()
+        # bedrock.list_foundation_models()
 
         response = bedrock.list_foundation_models(
             byOutputModality='TEXT',
             byInferenceType='ON_DEMAND'
         )
-        model_ids = [ item['modelId'] for item in response['modelSummaries'] if not item['modelId'].startswith('mistral') ]
+        model_ids = [ item['modelId'] for item in response['modelSummaries'] ]
     except Exception as e:
         print(f"{str(e)}")
 

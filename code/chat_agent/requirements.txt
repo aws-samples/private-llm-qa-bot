@@ -1,8 +1,9 @@
-boto3==1.28.70
-botocore==1.31.70
+boto3>=1.28.52
+botocore>=1.31.52
 huggingface-hub==0.17.3
-langchain==0.1.11
-langchain_community==0.0.27
+langchain==0.1.20
+langchain_community==0.0.38
+langchain_aws==0.1.3
 langchainhub==0.1.13
 requests_aws4auth==1.2.2
 openai==0.27.6

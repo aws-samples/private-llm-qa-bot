@@ -1009,6 +1009,12 @@ Resources:
             Effect: Allow
             Action: dynamodb:PutItem
             Resource: !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/chatbotFE_user'
+          - Sid: VisualEditor11
+            Effect: Allow
+            Action: 
+              - bedrock:InvokeModelWithResponseStream
+              - bedrock:InvokeModel
+            Resource: '*'
     DeletionPolicy: Delete
 
   RoleWithIAMPolicy:
