@@ -562,6 +562,12 @@ Resources:
         Fn::Sub: /cdk-bootstrap/${Qualifier}/version
       Value: "18"
 
+  AmazonElasticsearchServiceRole:
+    Type: AWS::IAM::ServiceLinkedRole
+    Properties:
+      AWSServiceName: es.amazonaws.com
+      Description: Service-linked role for Amazon Elasticsearch Service
+
   VPC:
     Type: AWS::EC2::VPC
     Condition: CreateNewVPC
@@ -689,9 +695,9 @@ Resources:
           - !Ref 'AWS::NoValue'
       IamInstanceProfile: !Ref RootInstanceProfile
       BlockDeviceMappings:
-        - DeviceName: /dev/sda1
+        - DeviceName: /dev/xvda
           Ebs:
-            VolumeSize: 20
+            VolumeSize: 30
             VolumeType: gp3
       NetworkInterfaces:
         - AssociatePublicIpAddress: "true"
