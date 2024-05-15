@@ -28,12 +28,6 @@ Parameters:
     Description: Name of an existing EC2 KeyPair to enable SSH access. Leave blank for no SSH access
     Type: String
 
-  VolumeSize:
-    Description: EBS volume size (GB) for the instance
-    Type: Number
-    MinValue: 20
-    Default: 20
-
   TrustedAccounts:
     Description: List of AWS accounts that are trusted to publish assets and deploy stacks to this environment
     Default: ""
@@ -697,7 +691,7 @@ Resources:
       BlockDeviceMappings:
         - DeviceName: /dev/sda1
           Ebs:
-            VolumeSize: !Ref 'VolumeSize'
+            VolumeSize: 20
             VolumeType: gp3
       NetworkInterfaces:
         - AssociatePublicIpAddress: "true"
