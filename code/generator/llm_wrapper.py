@@ -161,7 +161,7 @@ def get_langchain_llm_model(llm_model_id, params, region, llm_stream=False, llm_
             logger.info("--------adapt_parameters------")
             logger.info(adapt_parameters)
             logger.info("--------adapt_parameters------")
-            llm = BedrockLLM(model_id=llm_model_id, 
+            llm = ChatBedrock(model_id=llm_model_id, 
                 client=boto3_bedrock, 
                 streaming=llm_stream, 
                 callbacks=llm_callbacks,
