@@ -1,0 +1,35 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: CloudFormation template for CloudLab consoel role
+Resources:
+  TrialUseOnlyRole:
+    Type: AWS::IAM::Role
+    DeletionPolicy: Delete
+    Properties:
+      RoleName: TrialUseOnly-ContentGeneratedByGenAIDoesNotRepresentViewsOfAWS
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+        Version: '2012-10-17'
+      Description: Console role for lab user
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonBedrockReadOnly
+        - arn:aws:iam::aws:policy/AmazonEC2FullAccess
+        - arn:aws:iam::aws:policy/AmazonSageMakerFullAccess
+        - arn:aws:iam::aws:policy/AmazonOpenSearchServiceFullAccess
+        - arn:aws:iam::aws:policy/CloudWatchFullAccess
+        - arn:aws:iam::aws:policy/AWSCloudFormationFullAccess
+        - arn:aws:iam::aws:policy/AmazonKinesisFullAccess
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+        - arn:aws:iam::aws:policy/AwsGlueDataBrewFullAccessPolicy
+        - arn:aws:iam::aws:policy/AWSLambda_FullAccess
+      Policies:
+        - PolicyName: EC2InstanceConnectPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: ec2-instance-connect:SendSSHPublicKey
+                Resource: "*"
