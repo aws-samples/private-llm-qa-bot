@@ -19,7 +19,7 @@
                 },
                 "term": {
                     "type": "string",
-                    "description": "the payment term, the valid value should be 'OnDemand' or 'Reserved' "
+                    "description": "the payment term, 'RI' is normalized to 'Reserved'. the valid value should be 'OnDemand' or 'Reserved' "
                 },
                 "purchase_option": {
                     "type": "string",
@@ -51,6 +51,14 @@
             "detection": {"func" : "ec2_price", "param" : {"instance_type" : "c5.xlarge", "region":"us-east-1"}}
         },
         {
+            "query":"What is the price of g4dn.2x in us west 2",
+            "detection": {"func" : "ec2_price", "param" : {"instance_type" : "g4dn.2xlarge", "region":"us-west-2"}}
+        },
+        {
+            "query":"What is the 3-year RI price of g5.2x in us west 2",
+            "detection": {"func" : "ec2_price", "param" : {"instance_type" : "g5.2xlarge", "region":"us-west-2","term":"Reserved"}}
+        },
+        {
             "query":"c5.xlarge的windows实例价格？",
             "detection": {"func" : "ec2_price", "param" : {"instance_type" : "c5.xlarge", "os":"Windows"}}
         },
@@ -69,6 +77,14 @@
         {
             "query":"g4dn.2xlarge在美西2的OnDemand什么价格？",
             "detection": {"func" : "ec2_price", "param" : {"instance_type" : "g4dn.2xlarge", "region":"us-west-2", "term": "OnDemand"}}
+        },
+        {
+            "query":"R6gd.large 在宁夏预留实例价格是？",
+            "detection": {"func" : "ec2_price", "param" : {"instance_type" : "r6gd.large", "region":"cn-northwest-1", "term": "Reserved"}}
+        },
+        {
+            "query":"R6gd.large 在宁夏区3年RI价格是？",
+            "detection": {"func" : "ec2_price", "param" : {"instance_type" : "r6gd.large", "region":"cn-northwest-1", "term": "Reserved"}}
         },
         {
             "query":"SageMaker中ml.t3.large的什么价格？",
