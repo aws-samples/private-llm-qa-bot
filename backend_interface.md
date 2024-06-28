@@ -20,6 +20,8 @@
         "template_id": "类型string, prompt模板id，默认使用default",
         "company":"租户名，默认default或者不填",
         "user_id": "类型string，用户名",
+        "refuse_strategy":"", // 默认设置为空，那么如果知识库没有相关知识时，让LLM进行回答，如果设置为SAY_DONT_KNOW, 那么知识库没有相关知识时，直接采用refuse_answer进行回复，不走LLM
+        "refuse_answer":"对不起，我不太清楚这个问题，请问问人工吧"
       }
     ```
     examples:
