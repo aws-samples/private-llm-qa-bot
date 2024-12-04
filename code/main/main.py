@@ -69,7 +69,10 @@ KNOWLEDGE_BASE_ID = os.environ.get('knowledge_base_id',None)
 BEDROCK_LLM_MODELID_LIST = {'claude-instant':'anthropic.claude-instant-v1',
                             'claude-v2':'anthropic.claude-v2',
                             'claude-v3-sonnet': 'anthropic.claude-3-sonnet-20240229-v1:0',
-                            'claude-v3-haiku' : 'anthropic.claude-3-haiku-20240307-v1:0'}
+                            'claude-v3-haiku' : 'anthropic.claude-3-haiku-20240307-v1:0',
+                            'claude-v35-haiku' : 'anthropic.claude-3-5-haiku-20241022-v1:0',
+                            'claude-v35-sonnet-v2' : 'anthropic.claude-3-5-sonnet-20241022-v2:0',
+                            'claude-v35-sonnet-v1' : 'anthropic.claude-3-5-sonnet-20240620-v1:0'}
 
 ###记录跟踪日志，用于前端输出
 class TraceLogger(BaseModel):
@@ -583,7 +586,7 @@ def main_entry_new(user_id:str,wsconnection_id:str,session_id:str, query_input:s
     }
 
     if llm_model_name.startswith('claude'):
-        model_id = BEDROCK_LLM_MODELID_LIST.get(llm_model_name, BEDROCK_LLM_MODELID_LIST['claude-v3-sonnet'])
+        model_id = BEDROCK_LLM_MODELID_LIST.get(llm_model_name, llm_model_name)
     else:
         model_id = llm_model_endpoint
 

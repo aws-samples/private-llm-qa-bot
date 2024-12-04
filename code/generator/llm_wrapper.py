@@ -70,7 +70,7 @@ def get_langchain_llm_model(llm_model_id, params, region, llm_stream=False, llm_
 
         # make sure its default value
         if bool(parameters) == False:
-            parameters = {'temperature':0.1, 'max_tokens': 256, 'top_p': 0.8}
+            parameters = {'temperature':0.1, 'max_tokens': 256, 'top_p': 0.8, 'stop' : STOP }
 
         adapt_parameters = copy.deepcopy(parameters)
 

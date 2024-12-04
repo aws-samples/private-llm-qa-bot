@@ -59,14 +59,14 @@ BEDROCK_EMBEDDING_MODELID_LIST = ["cohere.embed-multilingual-v3","cohere.embed-e
 bedrock = boto3.client(service_name='bedrock-runtime',
                        region_name= os.environ.get('bedrock_region',REGION))
 
-from anthropic_bedrock import AnthropicBedrock
-anthropic_bedrock = AnthropicBedrock(
-    aws_region=os.environ.get('bedrock_region',REGION),
-)
+# from anthropic_bedrock import AnthropicBedrock
+# anthropic_bedrock = AnthropicBedrock(
+#     aws_region=os.environ.get('bedrock_region',REGION),
+# )
 
-def num_tokens_from_string(string: str) -> int:
+def num_tokens_from_string(text: str) -> int:
     """Returns the number of tokens in a text string."""
-    num_tokens = anthropic_bedrock.count_tokens(string)  # 
+    num_tokens = len(text)
     # print(f"num_tokens:{num_tokens}")
     return num_tokens
 
