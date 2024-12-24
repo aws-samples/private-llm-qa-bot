@@ -276,7 +276,7 @@ export class DeployStack extends Stack {
       securityGroups:securityGroups,
       architecture: Architecture.X86_64,
       environment: {
-        llm_model_endpoint:"claude-v3-sonnet",
+        llm_model_endpoint:"claude-v35-sonnet-v2",
         region:region
       },
     });

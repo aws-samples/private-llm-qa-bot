@@ -13,9 +13,13 @@ import re
 from generator.llm_wrapper import get_langchain_llm_model, invoke_model, format_to_message
 
 BEDROCK_LLM_MODELID_LIST = {'claude-instant':'anthropic.claude-instant-v1',
-                            'claude-v2':'anthropic.claude-v2:1',
+                            'claude-v2':'anthropic.claude-v2',
                             'claude-v3-sonnet': 'anthropic.claude-3-sonnet-20240229-v1:0',
-                            'claude-v3-haiku' : 'anthropic.claude-3-haiku-20240307-v1:0'}
+                            'claude-v3-haiku' : 'anthropic.claude-3-haiku-20240307-v1:0',
+                            'claude-v35-haiku' : 'anthropic.claude-3-5-haiku-20241022-v1:0',
+                            'claude-v35-sonnet-v2' : 'anthropic.claude-3-5-sonnet-20241022-v2:0',
+                            'claude-v35-sonnet-v1' : 'anthropic.claude-3-5-sonnet-20240620-v1:0'}
+
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
@@ -68,6 +72,7 @@ def create_rewrite_prompt_templete():
 </question>
 
 please use the context in the chat conversation to rephrase the user question to be a standalone question, respond in the original language of user's question, don't translate the chat history and user question.
+determine the primary language of the user's question inside <question> XML tags, rephrase using the same language.
 if you don't understand the {role_a}'s question, or the question is not relevant to the conversation. please keep the orginal question.
 Skip the preamble, don't explain, go straight into the answer. Please put the standalone question in <standalone_question> tag
 """
@@ -168,10 +173,7 @@ def lambda_handler(event, context):
         "stop": ['</standalone_question>']
     }
     
-    if llm_model_endpoint.startswith('claude') or llm_model_endpoint.startswith('anthropic'):
-        model_id = BEDROCK_LLM_MODELID_LIST.get(llm_model_endpoint, BEDROCK_LLM_MODELID_LIST["claude-v3-sonnet"])
-    else:
-        model_id = llm_model_endpoint
+    model_id = BEDROCK_LLM_MODELID_LIST.get(llm_model_endpoint, llm_model_endpoint)
 
     llm = get_langchain_llm_model(model_id, parameters, region, llm_stream=False)
 
