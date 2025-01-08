@@ -1,7 +1,7 @@
 [submodule "chatbotFE"]
 	path = chatbotFE
 	url = https://github.com/xiehust/chatbotFE.git
-	branch = pehub
+	branch = pehub_2025
 [submodule "Agent_Pydantic_Lambda"]
 	path = Agent_Pydantic_Lambda
 	url = https://github.com/ybalbert001/Agent_Pydantic_Lambda.git
