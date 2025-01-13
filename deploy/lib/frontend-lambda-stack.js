@@ -17,6 +17,7 @@ import { join } from "path";
 import * as dotenv from "dotenv";
 import { WebSocketLambdaIntegration } from "@aws-cdk/aws-apigatewayv2-integrations-alpha";
 import * as apigwv2 from "@aws-cdk/aws-apigatewayv2-alpha";
+import * as ses from 'aws-cdk-lib/aws-ses';
 
 
 dotenv.config();
@@ -258,12 +259,25 @@ export class LambdaStack extends NestedStack {
       runtime: lambda.Runtime.PYTHON_3_10,
       timeout: Duration.minutes(3),
       environment: {
+        environment: {
+          // 添加SES相关环境变量
+          SENDER_EMAIL: process.env.SENDER_EMAIL, // 发件人邮箱
+          RECIPIENT_EMAIL: process.env.RECIPIENT_EMAIL // 收件人邮箱 
+        },
       },
       memorySize: 256,
     })
     feedback_us_table.grantReadWriteData(this.lambda_feedback_us);
 
-
+    // 授予SES发送邮件的权限
+    lambda_feedback_us.addToRolePolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'ses:SendEmail',
+        'ses:SendRawEmail'
+      ],
+      resources: ['*'] // 你也可以限制特定的ARN
+    }));
     //automatic pe function
     this.lambda_auto_pe = new lambda.Function(this, 'lambda_automatic_prompt',{
       code: lambda.Code.fromAsset('../chatbotFE/deploy/lambda/lambda_automatic_prompt'),
