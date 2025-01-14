@@ -299,23 +299,60 @@ class CustomDocRetriever(BaseRetriever):
                 doc += item['_source']['content']+'\n'            
         return doc
 
-    ## 调用排序模型
     def rerank(self, query_input: str, docs: List[Any], sm_client, rerank_endpoint:str):
-        inputs = [query_input]*len(docs)
-        response_model = sm_client.invoke_endpoint(
-            EndpointName=rerank_endpoint,
-            Body=json.dumps(
-                {
-                    "inputs": inputs,
-                    "docs": [item['doc'] for item in docs]
-                }
-            ),
-            ContentType="application/json",
-        )
-        json_str = response_model['Body'].read().decode('utf8')
-        json_obj = json.loads(json_str)
-        scores = json_obj['scores']
-        return scores if isinstance(scores, list) else [scores]
+        if rerank_endpoint in ["cohere.rerank-v3-5:0", "amazon.rerank-v1:0"]:
+            # only us-west-2 can access bedrock rerank model
+            rerank_client = boto3.client("bedrock-agent-runtime", 'us-west-2')
+            queries = [{"type": "TEXT", "textQuery": {"text": query_input}}]
+            text_sources = []
+            for text in docs:
+                text_sources.append(
+                    {
+                        "type": "INLINE",
+                        "inlineDocumentSource": {
+                            "type": "TEXT",
+                            "textDocument": {
+                                "text": text,
+                            },
+                        },
+                    }
+                )
+
+            modelId = rerank_endpoint
+            model_package_arn = f"arn:aws:bedrock:us-west-2::foundation-model/{modelId}"
+            rerankingConfiguration = {
+                "type": "BEDROCK_RERANKING_MODEL",
+                "bedrockRerankingConfiguration": {
+                    "numberOfResults": len(docs),
+                    "modelConfiguration": {
+                        "modelArn": model_package_arn,
+                    },
+                },
+            }
+
+            response = rerank_client.rerank(
+                queries=queries, sources=text_sources, rerankingConfiguration=rerankingConfiguration
+            )
+
+            sorted_data = sorted(response["results"], key=lambda x: x['index'])
+            scores = [ result["relevanceScore"] for result in sorted_data ]
+            return scores
+        else:
+            inputs = [query_input]*len(docs)
+            response_model = sm_client.invoke_endpoint(
+                EndpointName=rerank_endpoint,
+                Body=json.dumps(
+                    {
+                        "inputs": inputs,
+                        "docs": [item['doc'] for item in docs]
+                    }
+                ),
+                ContentType="application/json",
+            )
+            json_str = response_model['Body'].read().decode('utf8')
+            json_obj = json.loads(json_str)
+            scores = json_obj['scores']
+            return scores if isinstance(scores, list) else [scores]
     
     def de_duplicate(self, docs):
         unique_ids = set()
