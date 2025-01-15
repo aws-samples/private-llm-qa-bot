@@ -312,7 +312,7 @@ class CustomDocRetriever(BaseRetriever):
                         "inlineDocumentSource": {
                             "type": "TEXT",
                             "textDocument": {
-                                "text": text,
+                                "text": text["doc"],
                             },
                         },
                     }
