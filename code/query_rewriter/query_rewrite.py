@@ -62,19 +62,33 @@ class llmContentHandler(LLMContentHandler):
 def create_rewrite_prompt_templete():
     # prompt_template = """Given the following conversation and a follow up question, rephrase the follow up question to be a standalone question, in its original language. don't translate the chat history and input. \n\nChat History:\n{history}\nFollow Up Input: {cur_query}\nStandalone question:"""
     prompt_template = \
-"""Given the following conversation in <conversation></conversation>, and a follow up user question in <question></question>.
+"""You will be given a conversation history and a follow-up question. Your task is to rephrase the follow-up question into a standalone question that maintains its original meaning and intent while being understandable without the conversation context.
+
+The conversation history will be provided in <conversation> tags:
 <conversation>
 {history}
 </conversation>
 
+The follow-up question will be provided in <question> tags:
 <question>
 {cur_query}
 </question>
 
-please use the context in the chat conversation to rephrase the user question to be a standalone question, respond in the original language of user's question, don't translate the chat history and user question.
-determine the primary language of the user's question inside <question> XML tags, rephrase using the same language.
-if you don't understand the {role_a}'s question, or the question is not relevant to the conversation. please keep the orginal question.
-Skip the preamble, don't explain, go straight into the answer. Please put the standalone question in <standalone_question> tag
+Rules for rephrasing:
+- Use exactly the same language as the follow-up question in <question> tags
+- Maintain the same level of specificity - don't make it more general or more specific
+- Don't add any platforms, tools or details not mentioned in the original
+- Keep the same style, terminology and tone
+- If the question is already clear and standalone, use it exactly as is
+- If you don't understand {role_a}'s question or it's not relevant to the conversation, keep it unchanged
+- Don't translate the content
+
+Present your answer in this format:
+<standalone_question>
+[Your rephrased question here, in the same language as the original]
+</standalone_question>
+
+Do not include any explanation or commentary - go straight to the standalone question.
 """
     PROMPT = PromptTemplate(
         template=prompt_template, 
