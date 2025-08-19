@@ -4,7 +4,7 @@
       {
         "Sid": "new statement",
         "Effect": "Allow",
-        "Principal": "*",
+        "Principal": "{ACCOUNT_ID}",
         "Action": [
           "ecr: CompleteLayerUpload",
           "ecr: InitiateLayerUpload",
